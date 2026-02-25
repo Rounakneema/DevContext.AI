@@ -1,0 +1,702 @@
+openapi: 3.0.0
+info:
+  title: DevContext AI API
+  description: API for GitHub repository analysis and interview preparation
+  version: 1.0.0
+  contact:
+    name: DevContext AI Team
+
+servers:
+  - url: https://api.devcontext-ai.com/v1
+    description: Production API
+  - url: https://dev-api.devcontext-ai.com/v1
+    description: Development API
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: Analysis
+    description: Repository analysis operations
+  - name: Interview
+    description: Interview practice operations
+  - name: User
+    description: User management operations
+
+paths:
+  /analyze:
+    post:
+      tags:
+        - Analysis
+      summary: Initiate repository analysis
+      description: Submit a GitHub repository URL for analysis
+      operationId: analyzeRepository
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+            examples:
+              publicRepo:
+                summary: Public repository
+                value:
+                  repositoryUrl: "https://github.com/username/project"
+                  isPrivate: false
+                  targetRole: "Junior SDE"
+              privateRepo:
+                summary: Private repository
+                value:
+                  repositoryUrl: "https://github.com/username/private-project"
+                  isPrivate: true
+                  githubToken: "ghp_xxxxxxxxxxxx"
+                  targetRole: "Full Stack Developer"
+      responses:
+        '200':
+          description: Analysis initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+              example:
+                analysisId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                status: "initiated"
+                estimatedCompletionTime: 90
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+  /analysis/{analysisId}:
+    get:
+      tags:
+        - Analysis
+      summary: Get analysis results
+      description: Retrieve complete analysis results for a given analysis ID
+      operationId: getAnalysis
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '200':
+          description: Analysis results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+  /analysis/{analysisId}/status:
+    get:
+      tags:
+        - Analysis
+      summary: Get analysis status
+      description: Poll the current status of an ongoing analysis
+      operationId: getAnalysisStatus
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '200':
+          description: Status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                analysisId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                status: "processing"
+                completedStages: ["project_review"]
+                currentStage: "intelligence_report"
+                progress: 65
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+  /interview/{analysisId}/answer:
+    post:
+      tags:
+        - Interview
+      summary: Submit interview answer
+      description: Submit an answer to an interview question and receive evaluation
+      operationId: submitAnswer
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+            example:
+              questionId: "q1b2c3d4-e5f6-7890-abcd-ef1234567890"
+              answer: "I chose JWT because it's stateless and doesn't require server-side session storage..."
+      responses:
+        '200':
+          description: Answer evaluated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerEvaluation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+  /analysis/history:
+    get:
+      tags:
+        - Analysis
+      summary: Get user's analysis history
+      description: Retrieve all past analyses for the authenticated user
+      operationId: getAnalysisHistory
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: History retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  analyses:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AnalysisSummary'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+  /analysis/{analysisId}:
+    delete:
+      tags:
+        - Analysis
+      summary: Delete analysis
+      description: Delete an analysis and all associated data
+      operationId: deleteAnalysis
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '204':
+          description: Analysis deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+components:
+  securitySchemes:
+    CognitoAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: AWS Cognito JWT token
+
+  parameters:
+    AnalysisId:
+      name: analysisId
+      in: path
+      required: true
+      description: Unique identifier for the analysis
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    AnalyzeRequest:
+      type: object
+      required:
+        - repositoryUrl
+        - isPrivate
+      properties:
+        repositoryUrl:
+          type: string
+          format: uri
+          description: GitHub repository URL
+          example: "https://github.com/username/project"
+        isPrivate:
+          type: boolean
+          description: Whether the repository is private
+          example: false
+        githubToken:
+          type: string
+          description: GitHub personal access token (required for private repos)
+          example: "ghp_xxxxxxxxxxxx"
+        targetRole:
+          type: string
+          enum:
+            - "Junior SDE"
+            - "Senior SDE"
+            - "DevOps Engineer"
+            - "Data Engineer"
+            - "Full Stack Developer"
+          description: Target role for tailored analysis
+          example: "Junior SDE"
+
+    AnalyzeResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+          description: Unique identifier for this analysis
+        status:
+          type: string
+          enum: [initiated, processing, completed, failed]
+          description: Current status of the analysis
+        estimatedCompletionTime:
+          type: integer
+          description: Estimated time to completion in seconds
+          example: 90
+
+    StatusResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [processing, completed, failed]
+        completedStages:
+          type: array
+          items:
+            type: string
+            enum: [project_review, intelligence_report, interview_simulation]
+        currentStage:
+          type: string
+          description: Stage currently being processed
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Overall progress percentage
+        errorMessage:
+          type: string
+          description: Error message if status is failed
+
+    AnalysisResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        repositoryUrl:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+        projectReview:
+          $ref: '#/components/schemas/ProjectReview'
+        intelligenceReport:
+          $ref: '#/components/schemas/IntelligenceReport'
+        interviewSimulation:
+          $ref: '#/components/schemas/InterviewSimulation'
+
+    ProjectReview:
+      type: object
+      properties:
+        codeQuality:
+          type: object
+          properties:
+            score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            readability:
+              type: integer
+            maintainability:
+              type: integer
+            bestPractices:
+              type: integer
+            justification:
+              type: string
+        architectureClarity:
+          type: object
+          properties:
+            score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            componentOrganization:
+              type: string
+            separationOfConcerns:
+              type: string
+            examples:
+              type: array
+              items:
+                $ref: '#/components/schemas/FileReference'
+        employabilitySignal:
+          type: object
+          properties:
+            score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            justification:
+              type: string
+            productionReadiness:
+              type: string
+        strengths:
+          type: array
+          items:
+            type: object
+            properties:
+              pattern:
+                type: string
+              description:
+                type: string
+              fileReferences:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileReference'
+        improvementAreas:
+          type: array
+          items:
+            type: object
+            properties:
+              issue:
+                type: string
+              priority:
+                type: string
+                enum: [high, medium, low]
+              actionableSuggestion:
+                type: string
+              codeExample:
+                type: string
+        projectAuthenticity:
+          type: object
+          properties:
+            score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            commitDiversity:
+              type: string
+            warning:
+              type: string
+
+    IntelligenceReport:
+      type: object
+      properties:
+        systemArchitecture:
+          type: object
+          properties:
+            overview:
+              type: string
+            componentDiagram:
+              type: string
+              description: Mermaid diagram syntax
+            dataFlow:
+              type: string
+            architecturalPatterns:
+              type: array
+              items:
+                type: string
+        designDecisions:
+          type: array
+          items:
+            type: object
+            properties:
+              decision:
+                type: string
+              rationale:
+                type: string
+              alternativesConsidered:
+                type: array
+                items:
+                  type: string
+              tradeoffs:
+                type: string
+              fileReferences:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileReference'
+              groundingConfidence:
+                type: string
+                enum: [high, medium, low, insufficient]
+        technicalTradeoffs:
+          type: array
+          items:
+            type: object
+            properties:
+              aspect:
+                type: string
+              pros:
+                type: array
+                items:
+                  type: string
+              cons:
+                type: array
+                items:
+                  type: string
+              fileReferences:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileReference'
+        scalabilityAnalysis:
+          type: object
+          properties:
+            bottlenecks:
+              type: array
+              items:
+                type: string
+            growthLimitations:
+              type: array
+              items:
+                type: string
+            optimizationOpportunities:
+              type: array
+              items:
+                type: string
+        resumeBullets:
+          type: array
+          items:
+            type: string
+          minItems: 5
+          maxItems: 7
+
+    InterviewSimulation:
+      type: object
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewQuestion'
+        categoryCounts:
+          type: object
+          properties:
+            architecture:
+              type: integer
+            implementation:
+              type: integer
+            tradeoffs:
+              type: integer
+            scalability:
+              type: integer
+        difficultyDistribution:
+          type: object
+          properties:
+            junior:
+              type: integer
+            midLevel:
+              type: integer
+            senior:
+              type: integer
+
+    InterviewQuestion:
+      type: object
+      properties:
+        questionId:
+          type: string
+          format: uuid
+        question:
+          type: string
+        category:
+          type: string
+          enum: [architecture, implementation, tradeoffs, scalability]
+        difficulty:
+          type: string
+          enum: [junior, mid-level, senior]
+        fileReferences:
+          type: array
+          items:
+            type: string
+        expectedTopics:
+          type: array
+          items:
+            type: string
+
+    AnswerRequest:
+      type: object
+      required:
+        - questionId
+        - answer
+      properties:
+        questionId:
+          type: string
+          format: uuid
+        answer:
+          type: string
+          minLength: 10
+
+    AnswerEvaluation:
+      type: object
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        strengths:
+          type: array
+          items:
+            type: string
+        weaknesses:
+          type: array
+          items:
+            type: string
+        missingPoints:
+          type: array
+          items:
+            type: string
+        exampleAnswer:
+          type: string
+        keyTerms:
+          type: array
+          items:
+            type: string
+        feedback:
+          type: string
+
+    FileReference:
+      type: object
+      properties:
+        file:
+          type: string
+          description: File path relative to repository root
+        lineNumbers:
+          type: string
+          description: Line numbers (e.g., "45-67")
+        snippet:
+          type: string
+          description: Code snippet
+
+    AnalysisSummary:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        repositoryUrl:
+          type: string
+        repositoryName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        employabilityScore:
+          type: integer
+        interviewAverageScore:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Human-readable error message
+        statusCode:
+          type: integer
+          description: HTTP status code
+        details:
+          type: object
+          description: Additional error details
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "ValidationError"
+            message: "Invalid repository URL format"
+            statusCode: 400
+
+    Unauthorized:
+      description: Unauthorized - authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Unauthorized"
+            message: "Valid authentication token required"
+            statusCode: 401
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "NotFound"
+            message: "Analysis not found"
+            statusCode: 404
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "RateLimitExceeded"
+            message: "You have exceeded the limit of 10 analyses per day"
+            statusCode: 429
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "InternalServerError"
+            message: "An unexpected error occurred"
+            statusCode: 500
