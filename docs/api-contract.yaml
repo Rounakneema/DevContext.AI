@@ -1,0 +1,664 @@
+openapi: 3.0.0
+info:
+  title: DevContext AI API
+  description: API for analyzing GitHub repositories and generating project intelligence reports
+  version: 1.0.0
+  contact:
+    name: DevContext AI Team
+
+servers:
+  - url: https://api.devcontext.ai/dev
+    description: Development server
+  - url: https://api.devcontext.ai/prod
+    description: Production server
+
+security:
+  - CognitoAuth: []
+
+paths:
+  /analyze:
+    post:
+      summary: Initiate repository analysis
+      description: Submit a GitHub repository URL for analysis. Returns an analysis ID for tracking progress.
+      tags:
+        - Analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+            examples:
+              publicRepo:
+                summary: Public repository
+                value:
+                  repositoryUrl: "https://github.com/username/repo"
+                  isPrivate: false
+                  targetRole: "Junior SDE"
+              privateRepo:
+                summary: Private repository
+                value:
+                  repositoryUrl: "https://github.com/username/private-repo"
+                  isPrivate: true
+                  githubToken: "ghp_xxxxxxxxxxxx"
+                  targetRole: "Full Stack Developer"
+      responses:
+        '200':
+          description: Analysis initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+              example:
+                analysisId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                status: "initiated"
+                estimatedCompletionTime: 90
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /analysis/{analysisId}/status:
+    get:
+      summary: Get analysis status
+      description: Poll the current status of an ongoing analysis
+      tags:
+        - Analysis
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '200':
+          description: Status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                analysisId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                status: "processing"
+                completedStages: ["project_review"]
+                currentStage: "intelligence_report"
+                progress: 60
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /analysis/{analysisId}:
+    get:
+      summary: Get complete analysis results
+      description: Retrieve the full analysis report including all stages
+      tags:
+        - Analysis
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '200':
+          description: Analysis results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      summary: Delete analysis
+      description: Delete an analysis and all associated data
+      tags:
+        - Analysis
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '204':
+          description: Analysis deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /analysis/history:
+    get:
+      summary: Get user's analysis history
+      description: Retrieve all past analyses for the authenticated user
+      tags:
+        - Analysis
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: History retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  analyses:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AnalysisSummary'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+  /interview/{analysisId}/answer:
+    post:
+      summary: Submit and evaluate interview answer
+      description: Submit an answer to an interview question and receive instant evaluation
+      tags:
+        - Interview
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+            example:
+              questionId: "q1b2c3d4-e5f6-7890-abcd-ef1234567890"
+              answer: "I used JWT tokens for authentication because they are stateless and scalable. The token contains user information and is signed with a secret key, making it secure and eliminating the need for server-side session storage."
+      responses:
+        '200':
+          description: Answer evaluated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerEvaluation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /export/{analysisId}:
+    post:
+      summary: Export analysis report
+      description: Generate and download analysis report in specified format
+      tags:
+        - Export
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum: [pdf, markdown]
+              required:
+                - format
+      responses:
+        '200':
+          description: Export generated successfully
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/markdown:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    CognitoAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: AWS Cognito JWT token
+
+  parameters:
+    AnalysisId:
+      name: analysisId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for the analysis
+
+  schemas:
+    AnalyzeRequest:
+      type: object
+      required:
+        - repositoryUrl
+        - isPrivate
+      properties:
+        repositoryUrl:
+          type: string
+          format: uri
+          description: GitHub repository URL
+          example: "https://github.com/username/repo"
+        isPrivate:
+          type: boolean
+          description: Whether the repository is private
+        githubToken:
+          type: string
+          description: GitHub personal access token (required for private repos)
+        targetRole:
+          type: string
+          enum:
+            - Junior SDE
+            - Senior SDE
+            - DevOps Engineer
+            - Data Engineer
+            - Full Stack Developer
+          description: Target job role for tailored analysis
+
+    AnalyzeResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [initiated, processing, completed, failed]
+        estimatedCompletionTime:
+          type: integer
+          description: Estimated time to completion in seconds
+
+    StatusResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [processing, completed, failed]
+        completedStages:
+          type: array
+          items:
+            type: string
+            enum: [project_review, intelligence_report, interview_simulation]
+        currentStage:
+          type: string
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        errorMessage:
+          type: string
+
+    AnalysisResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        repositoryUrl:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        projectReview:
+          $ref: '#/components/schemas/ProjectReview'
+        intelligenceReport:
+          $ref: '#/components/schemas/IntelligenceReport'
+        interviewSimulation:
+          $ref: '#/components/schemas/InterviewSimulation'
+
+    ProjectReview:
+      type: object
+      properties:
+        codeQuality:
+          type: object
+          properties:
+            score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            readability:
+              type: integer
+            maintainability:
+              type: integer
+            bestPractices:
+              type: integer
+            justification:
+              type: string
+        architectureClarity:
+          type: object
+          properties:
+            score:
+              type: integer
+            componentOrganization:
+              type: string
+            separationOfConcerns:
+              type: string
+            examples:
+              type: array
+              items:
+                $ref: '#/components/schemas/FileReference'
+        employabilitySignal:
+          type: object
+          properties:
+            score:
+              type: integer
+            justification:
+              type: string
+            productionReadiness:
+              type: string
+        strengths:
+          type: array
+          items:
+            type: object
+            properties:
+              pattern:
+                type: string
+              description:
+                type: string
+              fileReferences:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileReference'
+        improvementAreas:
+          type: array
+          items:
+            type: object
+            properties:
+              issue:
+                type: string
+              priority:
+                type: string
+                enum: [high, medium, low]
+              actionableSuggestion:
+                type: string
+              codeExample:
+                type: string
+        projectAuthenticity:
+          type: object
+          properties:
+            score:
+              type: integer
+            commitDiversity:
+              type: string
+            warning:
+              type: string
+
+    IntelligenceReport:
+      type: object
+      properties:
+        systemArchitecture:
+          type: object
+          properties:
+            overview:
+              type: string
+            componentDiagram:
+              type: string
+              description: Mermaid diagram syntax
+            dataFlow:
+              type: string
+            architecturalPatterns:
+              type: array
+              items:
+                type: string
+        designDecisions:
+          type: array
+          items:
+            type: object
+            properties:
+              decision:
+                type: string
+              rationale:
+                type: string
+              alternativesConsidered:
+                type: array
+                items:
+                  type: string
+              tradeoffs:
+                type: string
+              fileReferences:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileReference'
+              groundingConfidence:
+                type: string
+                enum: [high, medium, low, insufficient]
+        technicalTradeoffs:
+          type: array
+          items:
+            type: object
+            properties:
+              aspect:
+                type: string
+              pros:
+                type: array
+                items:
+                  type: string
+              cons:
+                type: array
+                items:
+                  type: string
+              fileReferences:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileReference'
+        scalabilityAnalysis:
+          type: object
+          properties:
+            bottlenecks:
+              type: array
+              items:
+                type: string
+            growthLimitations:
+              type: array
+              items:
+                type: string
+            optimizationOpportunities:
+              type: array
+              items:
+                type: string
+        resumeBullets:
+          type: array
+          items:
+            type: string
+
+    InterviewSimulation:
+      type: object
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewQuestion'
+        categoryCounts:
+          type: object
+          properties:
+            architecture:
+              type: integer
+            implementation:
+              type: integer
+            tradeoffs:
+              type: integer
+            scalability:
+              type: integer
+        difficultyDistribution:
+          type: object
+          properties:
+            junior:
+              type: integer
+            midLevel:
+              type: integer
+            senior:
+              type: integer
+
+    InterviewQuestion:
+      type: object
+      properties:
+        questionId:
+          type: string
+          format: uuid
+        question:
+          type: string
+        category:
+          type: string
+          enum: [architecture, implementation, tradeoffs, scalability]
+        difficulty:
+          type: string
+          enum: [junior, mid-level, senior]
+        fileReferences:
+          type: array
+          items:
+            type: string
+        expectedTopics:
+          type: array
+          items:
+            type: string
+
+    AnswerRequest:
+      type: object
+      required:
+        - questionId
+        - answer
+      properties:
+        questionId:
+          type: string
+          format: uuid
+        answer:
+          type: string
+
+    AnswerEvaluation:
+      type: object
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        criteriaBreakdown:
+          type: object
+          properties:
+            technicalAccuracy:
+              type: integer
+            completeness:
+              type: integer
+            clarity:
+              type: integer
+        strengths:
+          type: array
+          items:
+            type: string
+        weaknesses:
+          type: array
+          items:
+            type: string
+        missingPoints:
+          type: array
+          items:
+            type: string
+        exampleAnswer:
+          type: string
+        keyTerms:
+          type: array
+          items:
+            type: string
+        feedback:
+          type: string
+        improvementTrajectory:
+          type: object
+          properties:
+            previousScore:
+              type: integer
+            trend:
+              type: string
+              enum: [improving, stable, declining]
+
+    FileReference:
+      type: object
+      properties:
+        file:
+          type: string
+        lineNumbers:
+          type: string
+          example: "45-67"
+        snippet:
+          type: string
+
+    AnalysisSummary:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        repositoryUrl:
+          type: string
+        repositoryName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+        employabilityScore:
+          type: integer
+        codeQualityScore:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        statusCode:
+          type: integer
+        details:
+          type: object
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "ValidationError"
+            message: "Invalid repository URL format"
+            statusCode: 400
+
+    Unauthorized:
+      description: Unauthorized - invalid or missing authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Unauthorized"
+            message: "Invalid or expired authentication token"
+            statusCode: 401
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "NotFound"
+            message: "Analysis not found"
+            statusCode: 404
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "RateLimitExceeded"
+            message: "Maximum 10 analyses per day exceeded"
+            statusCode: 429
