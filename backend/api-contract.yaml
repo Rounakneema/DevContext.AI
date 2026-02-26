@@ -1,0 +1,458 @@
+openapi: 3.0.0
+info:
+  title: DevContext AI API
+  description: API for GitHub repository analysis and interview preparation
+  version: 1.0.0
+  contact:
+    name: DevContext AI Team
+
+servers:
+  - url: https://2jhc5i9ex2.execute-api.ap-southeast-1.amazonaws.com/prod
+    description: Production API (AWS Singapore)
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: Analysis
+    description: Repository analysis operations
+  - name: Interview
+    description: Interview practice operations
+
+paths:
+  /analyze:
+    post:
+      tags:
+        - Analysis
+      summary: Initiate repository analysis
+      description: Submit a GitHub repository URL for analysis
+      operationId: analyzeRepository
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+            examples:
+              publicRepo:
+                summary: Public repository
+                value:
+                  repositoryUrl: "https://github.com/facebook/react"
+                  isPrivate: false
+      responses:
+        '200':
+          description: Analysis initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+              example:
+                analysisId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                status: "initiated"
+                estimatedCompletionTime: 90
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+  /analysis/{analysisId}:
+    get:
+      tags:
+        - Analysis
+      summary: Get analysis results
+      description: Retrieve complete analysis results for a given analysis ID
+      operationId: getAnalysis
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '200':
+          description: Analysis results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+  /analysis/{analysisId}/status:
+    get:
+      tags:
+        - Analysis
+      summary: Get analysis status
+      description: Poll the current status of an ongoing analysis
+      operationId: getAnalysisStatus
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '200':
+          description: Status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                analysisId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                status: "processing"
+                completedStages: ["project_review"]
+                currentStage: "intelligence_report"
+                progress: 65
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+  /interview/{analysisId}/answer:
+    post:
+      tags:
+        - Interview
+      summary: Submit interview answer
+      description: Submit an answer to an interview question and receive evaluation
+      operationId: submitAnswer
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+            example:
+              questionId: "q1b2c3d4-e5f6-7890-abcd-ef1234567890"
+              answer: "I chose JWT because it's stateless and doesn't require server-side session storage..."
+      responses:
+        '200':
+          description: Answer evaluated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerEvaluation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - CognitoAuth: []
+
+components:
+  securitySchemes:
+    CognitoAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: AWS Cognito JWT token (IdToken)
+
+  parameters:
+    AnalysisId:
+      name: analysisId
+      in: path
+      required: true
+      description: Unique identifier for the analysis
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    AnalyzeRequest:
+      type: object
+      required:
+        - repositoryUrl
+      properties:
+        repositoryUrl:
+          type: string
+          format: uri
+          description: GitHub repository URL
+          example: "https://github.com/facebook/react"
+
+    AnalyzeResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+          description: Unique identifier for this analysis
+        status:
+          type: string
+          enum: [initiated, processing, completed, failed]
+          description: Current status of the analysis
+        estimatedCompletionTime:
+          type: integer
+          description: Estimated time to completion in seconds
+          example: 90
+
+    StatusResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [processing, completed, failed]
+        completedStages:
+          type: array
+          items:
+            type: string
+            enum: [project_review, intelligence_report, interview_simulation]
+        currentStage:
+          type: string
+          description: Stage currently being processed
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Overall progress percentage
+        errorMessage:
+          type: string
+          description: Error message if status is failed
+
+    AnalysisResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        repositoryUrl:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+        projectReview:
+          $ref: '#/components/schemas/ProjectReview'
+        intelligenceReport:
+          $ref: '#/components/schemas/IntelligenceReport'
+        interviewSimulation:
+          $ref: '#/components/schemas/InterviewSimulation'
+
+    ProjectReview:
+      type: object
+      properties:
+        codeQuality:
+          type: object
+          properties:
+            score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            readability:
+              type: integer
+            maintainability:
+              type: integer
+            bestPractices:
+              type: integer
+            justification:
+              type: string
+        architectureClarity:
+          type: object
+          properties:
+            score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            componentOrganization:
+              type: string
+            separationOfConcerns:
+              type: string
+        employabilitySignal:
+          type: object
+          properties:
+            score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            justification:
+              type: string
+            productionReadiness:
+              type: string
+        strengths:
+          type: array
+          items:
+            type: object
+            properties:
+              pattern:
+                type: string
+              description:
+                type: string
+        improvementAreas:
+          type: array
+          items:
+            type: object
+            properties:
+              issue:
+                type: string
+              priority:
+                type: string
+                enum: [high, medium, low]
+              actionableSuggestion:
+                type: string
+
+    IntelligenceReport:
+      type: object
+      properties:
+        systemArchitecture:
+          type: object
+          properties:
+            overview:
+              type: string
+            componentDiagram:
+              type: string
+              description: Mermaid diagram syntax
+            dataFlow:
+              type: string
+        designDecisions:
+          type: array
+          items:
+            type: object
+            properties:
+              decision:
+                type: string
+              rationale:
+                type: string
+        resumeBullets:
+          type: array
+          items:
+            type: string
+          minItems: 5
+          maxItems: 7
+
+    InterviewSimulation:
+      type: object
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewQuestion'
+
+    InterviewQuestion:
+      type: object
+      properties:
+        questionId:
+          type: string
+          format: uuid
+        question:
+          type: string
+        category:
+          type: string
+          enum: [architecture, implementation, tradeoffs, scalability]
+        difficulty:
+          type: string
+          enum: [junior, mid-level, senior]
+
+    AnswerRequest:
+      type: object
+      required:
+        - questionId
+        - answer
+      properties:
+        questionId:
+          type: string
+          format: uuid
+        answer:
+          type: string
+          minLength: 10
+
+    AnswerEvaluation:
+      type: object
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        strengths:
+          type: array
+          items:
+            type: string
+        weaknesses:
+          type: array
+          items:
+            type: string
+        feedback:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Human-readable error message
+        statusCode:
+          type: integer
+          description: HTTP status code
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "ValidationError"
+            message: "Invalid repository URL format"
+            statusCode: 400
+
+    Unauthorized:
+      description: Unauthorized - authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Unauthorized"
+            message: "Valid authentication token required"
+            statusCode: 401
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "NotFound"
+            message: "Analysis not found"
+            statusCode: 404
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "RateLimitExceeded"
+            message: "You have exceeded the limit of 10 analyses per day"
+            statusCode: 429
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "InternalServerError"
+            message: "An unexpected error occurred"
+            statusCode: 500
