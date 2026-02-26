@@ -1,0 +1,317 @@
+{
+  "POST /analyze": {
+    "success": {
+      "analysisId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "status": "initiated",
+      "estimatedCompletionTime": 90
+    },
+    "error_invalid_url": {
+      "error": "ValidationError",
+      "message": "Invalid repository URL format",
+      "statusCode": 400
+    },
+    "error_rate_limit": {
+      "error": "RateLimitExceeded",
+      "message": "Maximum 10 analyses per day exceeded",
+      "statusCode": 429
+    }
+  },
+
+  "GET /analysis/{id}/status": {
+    "processing": {
+      "analysisId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "status": "processing",
+      "completedStages": ["project_review"],
+      "currentStage": "intelligence_report",
+      "progress": 60
+    },
+    "completed": {
+      "analysisId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "status": "completed",
+      "completedStages": ["project_review", "intelligence_report", "interview_simulation"],
+      "progress": 100
+    },
+    "failed": {
+      "analysisId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "status": "failed",
+      "completedStages": [],
+      "progress": 0,
+      "errorMessage": "Repository not found or access denied"
+    }
+  },
+
+  "GET /analysis/{id}": {
+    "success": {
+      "analysisId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "repositoryUrl": "https://github.com/username/sample-project",
+      "createdAt": "2024-01-15T10:30:00Z",
+      "projectReview": {
+        "codeQuality": {
+          "score": 75,
+          "readability": 80,
+          "maintainability": 70,
+          "bestPractices": 75,
+          "justification": "Code demonstrates good structure with clear naming conventions. Some areas could benefit from additional comments and documentation."
+        },
+        "architectureClarity": {
+          "score": 72,
+          "componentOrganization": "Well-organized with clear separation between frontend and backend components",
+          "separationOfConcerns": "Good separation of business logic from presentation layer",
+          "examples": [
+            {
+              "file": "src/services/UserService.java",
+              "lineNumbers": "15-45",
+              "snippet": "public class UserService implements IUserService..."
+            }
+          ]
+        },
+        "employabilitySignal": {
+          "score": 68,
+          "justification": "Project demonstrates solid fundamentals and understanding of core concepts. Production-ready with minor improvements needed.",
+          "productionReadiness": "Ready for deployment with recommended security enhancements"
+        },
+        "strengths": [
+          {
+            "pattern": "Dependency Injection",
+            "description": "Proper use of dependency injection pattern for loose coupling",
+            "fileReferences": [
+              {
+                "file": "src/config/AppConfig.java",
+                "lineNumbers": "20-35"
+              }
+            ]
+          },
+          {
+            "pattern": "Error Handling",
+            "description": "Comprehensive error handling with custom exceptions",
+            "fileReferences": [
+              {
+                "file": "src/exceptions/CustomExceptionHandler.java"
+              }
+            ]
+          }
+        ],
+        "improvementAreas": [
+          {
+            "issue": "Missing input validation",
+            "priority": "high",
+            "actionableSuggestion": "Add validation annotations (@NotNull, @Size) to DTOs and implement validation logic",
+            "codeExample": "@NotNull(message = \"Email cannot be null\")\n@Email(message = \"Invalid email format\")\nprivate String email;"
+          },
+          {
+            "issue": "No unit tests",
+            "priority": "high",
+            "actionableSuggestion": "Add JUnit tests for service layer with at least 70% coverage"
+          },
+          {
+            "issue": "Hardcoded configuration values",
+            "priority": "medium",
+            "actionableSuggestion": "Move configuration to application.properties or environment variables"
+          }
+        ],
+        "projectAuthenticity": {
+          "score": 85,
+          "commitDiversity": "Good commit history with 47 commits over 3 months showing iterative development"
+        }
+      },
+      "intelligenceReport": {
+        "systemArchitecture": {
+          "overview": "Three-tier web application following MVC pattern with RESTful API backend and React frontend",
+          "componentDiagram": "graph TB\n    A[React Frontend] --> B[REST API]\n    B --> C[Service Layer]\n    C --> D[Data Access Layer]\n    D --> E[MySQL Database]",
+          "dataFlow": "User requests flow through the frontend to REST controllers, which delegate to service layer for business logic, then to repositories for data persistence",
+          "architecturalPatterns": ["MVC", "Repository Pattern", "Dependency Injection", "RESTful API"]
+        },
+        "designDecisions": [
+          {
+            "decision": "JWT-based authentication instead of session-based",
+            "rationale": "Enables stateless authentication, better scalability for distributed systems, and easier mobile app integration",
+            "alternativesConsidered": ["Session-based auth", "OAuth 2.0"],
+            "tradeoffs": "JWT tokens cannot be invalidated server-side without additional infrastructure. Chose simplicity over advanced features for MVP.",
+            "fileReferences": [
+              {
+                "file": "src/security/JwtAuthenticationFilter.java",
+                "lineNumbers": "25-60"
+              }
+            ],
+            "groundingConfidence": "high"
+          },
+          {
+            "decision": "MySQL over NoSQL database",
+            "rationale": "Data has clear relational structure with foreign key constraints. ACID compliance important for user data integrity.",
+            "alternativesConsidered": ["MongoDB", "PostgreSQL"],
+            "tradeoffs": "Less flexible schema evolution compared to NoSQL, but stronger data consistency guarantees",
+            "fileReferences": [
+              {
+                "file": "src/models/User.java",
+                "lineNumbers": "10-30"
+              }
+            ],
+            "groundingConfidence": "high"
+          }
+        ],
+        "technicalTradeoffs": [
+          {
+            "aspect": "Synchronous API calls",
+            "pros": ["Simpler error handling", "Easier to debug", "Predictable execution flow"],
+            "cons": ["Blocking operations reduce throughput", "Poor user experience for long-running tasks"],
+            "fileReferences": [
+              {
+                "file": "src/controllers/AnalysisController.java",
+                "lineNumbers": "45-70"
+              }
+            ]
+          }
+        ],
+        "scalabilityAnalysis": {
+          "bottlenecks": [
+            "Single database instance limits concurrent connections",
+            "Synchronous processing blocks threads during analysis",
+            "No caching layer for frequently accessed data"
+          ],
+          "growthLimitations": [
+            "Current architecture supports ~100 concurrent users",
+            "Database connection pool size limits throughput",
+            "No horizontal scaling strategy implemented"
+          ],
+          "optimizationOpportunities": [
+            "Implement Redis caching for user sessions and analysis results",
+            "Add message queue (SQS) for asynchronous processing",
+            "Use database read replicas for query scaling",
+            "Implement CDN for static assets"
+          ]
+        },
+        "resumeBullets": [
+          "Architected and developed a full-stack web application using Spring Boot and React, serving 500+ users with 99.5% uptime",
+          "Implemented JWT-based authentication system with role-based access control, securing user data and API endpoints",
+          "Designed RESTful API with 15+ endpoints following OpenAPI specification, enabling seamless frontend-backend integration",
+          "Built responsive React dashboard with real-time updates using WebSocket connections, improving user engagement by 40%",
+          "Optimized database queries and implemented connection pooling, reducing average response time from 800ms to 200ms"
+        ]
+      },
+      "interviewSimulation": {
+        "questions": [
+          {
+            "questionId": "q1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "question": "In your UserService.java file, you implemented JWT-based authentication. Why did you choose JWT over session-based authentication?",
+            "category": "tradeoffs",
+            "difficulty": "mid-level",
+            "fileReferences": ["src/security/JwtAuthenticationFilter.java"],
+            "expectedTopics": ["JWT", "stateless authentication", "scalability", "security"]
+          },
+          {
+            "questionId": "q2b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "question": "Your application uses a single MySQL database. How would you handle scaling this to support 10,000 concurrent users?",
+            "category": "scalability",
+            "difficulty": "senior",
+            "fileReferences": ["src/config/DatabaseConfig.java"],
+            "expectedTopics": ["database scaling", "read replicas", "connection pooling", "caching"]
+          },
+          {
+            "questionId": "q3b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "question": "Walk me through the data flow when a user submits a form in your React frontend. What happens at each layer?",
+            "category": "architecture",
+            "difficulty": "junior",
+            "fileReferences": ["src/components/UserForm.tsx", "src/controllers/UserController.java"],
+            "expectedTopics": ["MVC pattern", "REST API", "data flow", "request-response cycle"]
+          }
+        ],
+        "categoryCounts": {
+          "architecture": 4,
+          "implementation": 4,
+          "tradeoffs": 4,
+          "scalability": 3
+        },
+        "difficultyDistribution": {
+          "junior": 6,
+          "midLevel": 6,
+          "senior": 3
+        }
+      }
+    }
+  },
+
+  "POST /interview/{id}/answer": {
+    "good_answer": {
+      "score": 85,
+      "criteriaBreakdown": {
+        "technicalAccuracy": 90,
+        "completeness": 80,
+        "clarity": 85
+      },
+      "strengths": [
+        "Correctly explained stateless nature of JWT",
+        "Mentioned scalability benefits",
+        "Discussed token structure and signing"
+      ],
+      "weaknesses": [
+        "Could have mentioned token expiration strategy"
+      ],
+      "missingPoints": [
+        "Refresh token implementation",
+        "Token revocation challenges",
+        "Security considerations for token storage"
+      ],
+      "exampleAnswer": "I chose JWT over session-based authentication for several reasons: 1) Stateless nature - the server doesn't need to store session data, making it easier to scale horizontally. 2) Mobile-friendly - tokens can be easily stored and sent from mobile apps. 3) Microservices compatibility - tokens can be validated by any service without central session store. However, I'm aware of the tradeoffs: JWTs can't be easily revoked without additional infrastructure like a token blacklist, and they're larger than session IDs. For this project, the scalability benefits outweighed the revocation complexity.",
+      "keyTerms": ["JWT", "stateless", "scalability", "token", "authentication", "session"],
+      "feedback": "Strong answer demonstrating good understanding of JWT fundamentals and scalability considerations. To improve, discuss token expiration and refresh token strategies, which are critical for production systems.",
+      "improvementTrajectory": {
+        "previousScore": 75,
+        "trend": "improving"
+      }
+    },
+    "weak_answer": {
+      "score": 45,
+      "criteriaBreakdown": {
+        "technicalAccuracy": 50,
+        "completeness": 40,
+        "clarity": 45
+      },
+      "strengths": [
+        "Mentioned that JWT is more secure"
+      ],
+      "weaknesses": [
+        "Incorrect claim that JWT is inherently more secure",
+        "Didn't explain how JWT works",
+        "Missing discussion of tradeoffs"
+      ],
+      "missingPoints": [
+        "Stateless authentication concept",
+        "Scalability benefits",
+        "Token structure and validation",
+        "Comparison with session-based auth",
+        "Security considerations"
+      ],
+      "exampleAnswer": "I chose JWT over session-based authentication for several reasons: 1) Stateless nature - the server doesn't need to store session data, making it easier to scale horizontally. 2) Mobile-friendly - tokens can be easily stored and sent from mobile apps. 3) Microservices compatibility - tokens can be validated by any service without central session store. However, I'm aware of the tradeoffs: JWTs can't be easily revoked without additional infrastructure like a token blacklist, and they're larger than session IDs.",
+      "keyTerms": ["JWT", "stateless", "scalability", "token", "authentication", "session", "signing", "validation"],
+      "feedback": "Your answer shows basic awareness of JWT but lacks technical depth. Focus on understanding: 1) How JWT enables stateless authentication, 2) The structure of a JWT token (header, payload, signature), 3) Specific scalability benefits, 4) Tradeoffs like token revocation challenges. Review authentication patterns and practice explaining technical decisions with specific reasoning."
+    }
+  },
+
+  "GET /analysis/history": {
+    "success": {
+      "analyses": [
+        {
+          "analysisId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "repositoryUrl": "https://github.com/username/project1",
+          "repositoryName": "project1",
+          "createdAt": "2024-01-15T10:30:00Z",
+          "status": "completed",
+          "employabilityScore": 68,
+          "codeQualityScore": 75
+        },
+        {
+          "analysisId": "b2c3d4e5-f6g7-8901-bcde-fg2345678901",
+          "repositoryUrl": "https://github.com/username/project2",
+          "repositoryName": "project2",
+          "createdAt": "2024-01-10T14:20:00Z",
+          "status": "completed",
+          "employabilityScore": 72,
+          "codeQualityScore": 78
+        }
+      ],
+      "total": 2,
+      "limit": 10,
+      "offset": 0
+    }
+  }
+}
