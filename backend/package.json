@@ -1,0 +1,36 @@
+{
+  "name": "devcontext-backend",
+  "version": "1.0.0",
+  "description": "DevContext AI Backend - AWS Lambda Functions",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "deploy": "sam deploy"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "bedrock",
+    "devcontext"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.700.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.998.0",
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/client-lambda": "^3.998.0",
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "@octokit/rest": "^22.0.1",
+    "simple-git": "^3.27.0",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.10.2",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.2"
+  }
+}

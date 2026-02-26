@@ -1,0 +1,21 @@
+{
+  "name": "@devcontext/shared-types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types for DevContext AI frontend and backend",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "typescript",
+    "types",
+    "devcontext"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

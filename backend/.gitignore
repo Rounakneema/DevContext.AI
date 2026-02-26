@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+.aws-sam/
+
+# Environment & Secrets
+.env
+.env.local
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Test & Development files
+get-token.js
+set-password.js
+test-*.js
+*.test.ts
+*.test.js
+
+# Documentation (keep only README.md)
+*.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# AWS
+samconfig.toml
+.aws-sam/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

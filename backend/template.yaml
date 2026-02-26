@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: DevContext AI Backend
+
+Parameters:
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID
+    Default: ""
+  CognitoClientId:
+    Type: String
+    Description: Cognito App Client ID
+    Default: ""
+
+Globals:
+  Function:
+    Timeout: 180
+    MemorySize: 1024
+    Runtime: nodejs18.x
+    Environment:
+      Variables:
+        ANALYSES_TABLE: !Ref AnalysesTable
+        INTERVIEW_SESSIONS_TABLE: !Ref InterviewSessionsTable
+        USER_PROGRESS_TABLE: !Ref UserProgressTable
+        CACHE_TABLE: !Ref CacheTable
+        CACHE_BUCKET: !Ref CacheBucket
+        BEDROCK_REGION: ap-southeast-1
+        COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+        COGNITO_CLIENT_ID: !Ref CognitoClientId
+
+Resources:
+  # DynamoDB Tables
+  AnalysesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: devcontext-analyses
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: analysisId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: analysisId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: userId-createdAt-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  InterviewSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: devcontext-interview-sessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sessionId
+          AttributeType: S
+        - AttributeName: analysisId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sessionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: analysisId-createdAt-index
+          KeySchema:
+            - AttributeName: analysisId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  UserProgressTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: devcontext-user-progress
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: analysisId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: analysisId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  CacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: devcontext-cache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: repositoryUrl
+          AttributeType: S
+      KeySchema:
+        - AttributeName: repositoryUrl
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # S3 Bucket
+  CacheBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub devcontext-cache-${AWS::AccountId}
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteAfter24Hours
+            Status: Enabled
+            ExpirationInDays: 1
+
+  # API Gateway with Cognito Authorizer
+  DevContextApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
+        AddDefaultAuthorizerToCorsPreflight: false
+
+  # Lambda Functions
+  OrchestratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: orchestrator.handler
+      Environment:
+        Variables:
+          REPO_PROCESSOR_FUNCTION: !Ref RepoProcessorFunction
+          STAGE1_FUNCTION: !Ref Stage1Function
+          STAGE3_FUNCTION: !Ref Stage3Function
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnalysesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref InterviewSessionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProgressTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CacheTable
+        - S3CrudPolicy:
+            BucketName: !Ref CacheBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: '*'
+      Events:
+        Analyze:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analyze
+            Method: post
+        GetAnalysis:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}
+            Method: get
+        GetStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/status
+            Method: get
+
+  RepoProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: repo-processor.handler
+      Timeout: 180
+      MemorySize: 1024
+      EphemeralStorage:
+        Size: 2048
+      Layers:
+        - arn:aws:lambda:ap-southeast-1:553035198032:layer:git-lambda2:8
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref CacheBucket
+
+  Stage1Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: stage1-review.handler
+      Timeout: 120
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnalysesTable
+        - S3ReadPolicy:
+            BucketName: !Ref CacheBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+
+  Stage3Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: stage3-questions.handler
+      Timeout: 180
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnalysesTable
+        - S3ReadPolicy:
+            BucketName: !Ref CacheBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+
+  AnswerEvalFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: answer-eval.handler
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnalysesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+      Events:
+        SubmitAnswer:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/{id}/answer
+            Method: post
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${DevContextApi}.execute-api.${AWS::Region}.amazonaws.com/prod/
+  AnalysesTableName:
+    Description: DynamoDB table name
+    Value: !Ref AnalysesTable
+  CacheBucketName:
+    Description: S3 cache bucket name
+    Value: !Ref CacheBucket
