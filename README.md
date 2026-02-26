@@ -34,9 +34,9 @@ Engineering graduates build impressive projects but struggle to articulate their
 
 ```mermaid
 flowchart LR
-    A[🔗 GitHub URL] --> B[🔬 Stage 1\nProject Review]
-    B --> C[📊 Stage 2\nIntelligence Report]
-    C --> D[🎤 Stage 3\nInterview Simulation]
+    A[🔗 GitHub URL] --> B[🔬 Stage 1 Project Review]
+    B --> C[📊 Stage 2 Intelligence Report]
+    C --> D[🎤 Stage 3 Interview Simulation]
 
     B -.- E[⚡ ~30 seconds]
     C -.- F[🔄 Background]
