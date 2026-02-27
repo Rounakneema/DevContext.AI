@@ -1,0 +1,15 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "devcontext-backend"
+resolve_s3 = true
+s3_prefix = "devcontext-backend"
+region = "ap-southeast-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+image_repositories = []
+parameter_overrides = "CognitoUserPoolId=\"YOUR_USER_POOL_ID\" CognitoClientId=\"YOUR_CLIENT_ID\""
+
+[default.global.parameters]
+region = "ap-southeast-1"

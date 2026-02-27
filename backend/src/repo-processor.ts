@@ -1,13 +1,11 @@
 import { Handler } from 'aws-lambda';
-import simpleGit from 'simple-git';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import * as fs from 'fs';
-import * as path from 'path';
 import { ProjectContextMap } from './types';
 import { TokenBudgetManager } from './token-budget-manager';
 
 const s3Client = new S3Client({});
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN; // Optional: for higher rate limits
 
 // Exclusion patterns
 const EXCLUDED_DIRS = [
@@ -53,39 +51,59 @@ interface ProcessorResponse {
 
 export const handler: Handler<ProcessorEvent, ProcessorResponse> = async (event) => {
   const { analysisId, repositoryUrl } = event;
-  const tmpDir = `/tmp/${analysisId}`;
   
   try {
     console.log(`Processing repository: ${repositoryUrl}`);
     
-    // Clone repository
-    const git = simpleGit();
-    await git.clone(repositoryUrl, tmpDir, ['--depth', '1']);
-    console.log('Repository cloned successfully');
+    // Parse GitHub URL
+    const { owner, repo } = parseGitHubUrl(repositoryUrl);
+    console.log(`Fetching ${owner}/${repo} via GitHub API`);
+    
+    // Fetch repository tree via GitHub API
+    const files = await fetchRepositoryFiles(owner, repo);
+    console.log(`Fetched ${files.length} files from GitHub API`);
     
     // Filter files
-    const filteredFiles = await filterFiles(tmpDir);
-    console.log(`Filtered ${filteredFiles.length} files`);
+    const filteredFiles = filterFilesFromAPI(files);
+    console.log(`Filtered to ${filteredFiles.length} files`);
     
     // Generate project context map
-    const projectContextMap = generateContextMap(filteredFiles, tmpDir);
+    const projectContextMap = generateContextMapFromAPI(filteredFiles);
     
     // NEW: Apply token budget management
     const tokenManager = new TokenBudgetManager();
-    const priorities = tokenManager.prioritizeFiles(filteredFiles, projectContextMap, tmpDir);
-    const allocation = tokenManager.selectFilesWithinBudget(priorities, tmpDir);
-    const codeContext = await tokenManager.loadCodeContext(priorities, tmpDir);
+    
+    // Create priority list without filesystem access
+    const priorities = filteredFiles.map(file => {
+      const tier = determineTierFromPath(file.path, projectContextMap);
+      const priority = calculatePriorityFromPath(file.path, tier, projectContextMap);
+      return {
+        path: file.path,
+        tier,
+        priority,
+        estimatedTokens: Math.ceil((file.size || 1000) / 4) // Estimate from file size
+      };
+    }).sort((a, b) => b.priority - a.priority);
+    
+    // Fetch file contents for prioritized files
+    const fileContents = await fetchFileContents(owner, repo, priorities.slice(0, 30));
+    
+    // Upload to S3
+    const s3Key = `repositories/${analysisId}/`;
+    await uploadFilesToS3FromAPI(fileContents, s3Key);
+    console.log(`Uploaded files to S3: ${s3Key}`);
+    
+    // Generate code context
+    const codeContext = generateCodeContext(fileContents, priorities);
+    const allocation = {
+      selectedFiles: fileContents.map(f => f.path),
+      totalTokens: tokenManager.estimateTokens(codeContext),
+      truncatedFiles: [],
+      skippedFiles: []
+    };
     const budgetStats = tokenManager.getBudgetStats(allocation);
     
     console.log('Token Budget Stats:', budgetStats);
-    
-    // Upload filtered files to S3
-    const s3Key = `repositories/${analysisId}/`;
-    await uploadFilesToS3(filteredFiles, tmpDir, s3Key);
-    console.log(`Uploaded files to S3: ${s3Key}`);
-    
-    // Cleanup
-    fs.rmSync(tmpDir, { recursive: true, force: true });
     
     return {
       success: true,
@@ -98,11 +116,6 @@ export const handler: Handler<ProcessorEvent, ProcessorResponse> = async (event)
     
   } catch (error) {
     console.error('Repository processing failed:', error);
-    
-    // Cleanup on error
-    if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
     
     return {
       success: false,
@@ -121,134 +134,246 @@ export const handler: Handler<ProcessorEvent, ProcessorResponse> = async (event)
   }
 };
 
-function filterFiles(rootDir: string): string[] {
-  const files: string[] = [];
-  
-  function traverse(dir: string) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      const relativePath = path.relative(rootDir, fullPath);
-      
-      // Skip excluded directories
-      if (entry.isDirectory()) {
-        if (EXCLUDED_DIRS.includes(entry.name)) continue;
-        traverse(fullPath);
-        continue;
-      }
-      
-      // Skip excluded files
-      if (EXCLUDED_FILES.includes(entry.name)) continue;
-      
-      // Skip excluded extensions
-      const ext = path.extname(entry.name);
-      if (EXCLUDED_EXTENSIONS.includes(ext)) continue;
-      
-      // Skip security-sensitive files
-      if (SECURITY_PATTERNS.some(pattern => pattern.test(entry.name))) continue;
-      
-      // Skip minified files
-      if (entry.name.includes('.min.') || entry.name.includes('.bundle.')) continue;
-      
-      files.push(relativePath);
-    }
+// GitHub API Helper Functions
+
+function parseGitHubUrl(url: string): { owner: string; repo: string } {
+  const match = url.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
+  if (!match) {
+    throw new Error('Invalid GitHub URL');
   }
-  
-  traverse(rootDir);
-  return files;
+  return { owner: match[1], repo: match[2] };
 }
 
-function generateContextMap(files: string[], rootDir: string): ProjectContextMap {
+async function fetchRepositoryFiles(owner: string, repo: string): Promise<any[]> {
+  try {
+    const headers: any = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'DevContext-AI'
+    };
+    
+    if (GITHUB_TOKEN) {
+      headers['Authorization'] = `Bearer ${GITHUB_TOKEN}`;
+    }
+    
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`,
+      { headers }
+    );
+    
+    if (!response.ok) {
+      throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
+    }
+    
+    const data: any = await response.json();
+    return data.tree.filter((item: any) => item.type === 'blob');
+  } catch (error) {
+    console.error('GitHub API error:', error);
+    throw new Error(`Failed to fetch repository: ${error}`);
+  }
+}
+
+function filterFilesFromAPI(files: any[]): any[] {
+  return files.filter((file: any) => {
+    const path = file.path;
+    
+    // Check excluded directories
+    if (EXCLUDED_DIRS.some(dir => path.includes(`/${dir}/`) || path.startsWith(`${dir}/`))) {
+      return false;
+    }
+    
+    // Check excluded extensions
+    if (EXCLUDED_EXTENSIONS.some(ext => path.endsWith(ext))) {
+      return false;
+    }
+    
+    // Check excluded files
+    const fileName = path.split('/').pop();
+    if (EXCLUDED_FILES.includes(fileName)) {
+      return false;
+    }
+    
+    // Check security patterns
+    if (SECURITY_PATTERNS.some(pattern => pattern.test(path))) {
+      return false;
+    }
+    
+    return true;
+  });
+}
+
+function generateContextMapFromAPI(files: any[]): ProjectContextMap {
+  const userCodeFiles = files.map(f => f.path);
   const entryPoints: string[] = [];
   const coreModules: string[] = [];
   const frameworks: string[] = [];
-  const userCodeFiles: string[] = [];
   
-  // Entry point patterns
+  // Detect entry points
   const entryPatterns = [
-    'main.py', 'app.py', 'index.js', 'index.ts', 
-    'App.tsx', 'App.jsx', 'server.js', 'server.ts',
-    'main.java', 'Main.java'
+    'main.', 'index.', 'app.', 'server.', '__init__.py',
+    'Program.cs', 'Main.java', 'main.go'
   ];
   
-  // Framework detection patterns
-  const frameworkPatterns = {
-    'package.json': ['react', 'express', 'next', 'vue', 'angular'],
-    'requirements.txt': ['django', 'flask', 'fastapi'],
-    'pom.xml': ['spring-boot', 'spring'],
-    'build.gradle': ['spring-boot']
-  };
+  files.forEach(file => {
+    const fileName = file.path.split('/').pop();
+    if (entryPatterns.some(pattern => fileName.startsWith(pattern))) {
+      entryPoints.push(file.path);
+    }
+  });
   
-  let totalSize = 0;
-  
-  for (const file of files) {
-    const fileName = path.basename(file);
-    const fullPath = path.join(rootDir, file);
-    
-    // Check if entry point
-    if (entryPatterns.includes(fileName)) {
-      entryPoints.push(file);
-    }
-    
-    // Detect frameworks
-    if (frameworkPatterns[fileName as keyof typeof frameworkPatterns]) {
-      try {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        const patterns = frameworkPatterns[fileName as keyof typeof frameworkPatterns];
-        for (const pattern of patterns) {
-          if (content.includes(pattern)) {
-            frameworks.push(pattern);
-          }
-        }
-      } catch (err) {
-        console.error(`Error reading ${file}:`, err);
-      }
-    }
-    
-    // Categorize as user code (source files)
-    const ext = path.extname(file);
-    if (['.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.go', '.rs'].includes(ext)) {
-      userCodeFiles.push(file);
-      
-      // Add to core modules if in src/ or app/ directory
-      if (file.startsWith('src/') || file.startsWith('app/')) {
-        coreModules.push(file);
-      }
-    }
-    
-    // Calculate size
-    try {
-      const stats = fs.statSync(fullPath);
-      totalSize += stats.size;
-    } catch (err) {
-      console.error(`Error getting stats for ${file}:`, err);
-    }
+  // Detect frameworks
+  const frameworkFiles = files.map(f => f.path);
+  if (frameworkFiles.some(f => f.includes('package.json'))) {
+    frameworks.push('Node.js');
+  }
+  if (frameworkFiles.some(f => f.includes('requirements.txt') || f.includes('setup.py'))) {
+    frameworks.push('Python');
+  }
+  if (frameworkFiles.some(f => f.includes('pom.xml') || f.includes('build.gradle'))) {
+    frameworks.push('Java');
+  }
+  if (frameworkFiles.some(f => f.includes('go.mod'))) {
+    frameworks.push('Go');
   }
   
+  // Identify core modules (files in src/, lib/, core/)
+  files.forEach(file => {
+    if (file.path.match(/^(src|lib|core)\//)) {
+      coreModules.push(file.path);
+    }
+  });
+  
   return {
+    totalFiles: files.length,
+    totalSize: files.reduce((sum, f) => sum + (f.size || 0), 0),
+    userCodeFiles,
     entryPoints,
     coreModules,
-    frameworks: [...new Set(frameworks)],
-    userCodeFiles,
-    totalFiles: files.length,
-    totalSize
+    frameworks
   };
 }
 
-async function uploadFilesToS3(files: string[], rootDir: string, s3KeyPrefix: string): Promise<void> {
-  const uploadPromises = files.map(async (file) => {
-    const fullPath = path.join(rootDir, file);
-    const content = fs.readFileSync(fullPath);
-    
+async function fetchFileContents(owner: string, repo: string, priorities: any[]): Promise<any[]> {
+  const contents: any[] = [];
+  const headers: any = {
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'DevContext-AI'
+  };
+  
+  if (GITHUB_TOKEN) {
+    headers['Authorization'] = `Bearer ${GITHUB_TOKEN}`;
+  }
+  
+  // Fetch top priority files (limit to avoid rate limits)
+  const filesToFetch = priorities.slice(0, 30);
+  
+  for (const priority of filesToFetch) {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/contents/${priority.path}`,
+        { headers }
+      );
+      
+      if (!response.ok) {
+        console.error(`Failed to fetch ${priority.path}: ${response.status}`);
+        continue;
+      }
+      
+      const data: any = await response.json();
+      
+      if (data.content) {
+        const content = Buffer.from(data.content, 'base64').toString('utf-8');
+        contents.push({
+          path: priority.path,
+          content,
+          size: data.size
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to fetch ${priority.path}:`, error);
+    }
+  }
+  
+  return contents;
+}
+
+async function uploadFilesToS3FromAPI(files: any[], s3KeyPrefix: string): Promise<void> {
+  for (const file of files) {
     const command = new PutObjectCommand({
       Bucket: CACHE_BUCKET,
-      Key: `${s3KeyPrefix}${file}`,
-      Body: content
+      Key: `${s3KeyPrefix}${file.path}`,
+      Body: file.content,
+      ContentType: 'text/plain'
     });
     
     await s3Client.send(command);
+  }
+}
+
+function generateCodeContext(files: any[], priorities: any[]): string {
+  const contextParts: string[] = [];
+  
+  files.forEach(file => {
+    const truncated = file.content.length > 5000 
+      ? file.content.substring(0, 5000) + '\n... (truncated)'
+      : file.content;
+    
+    contextParts.push(`\n--- File: ${file.path} ---\n${truncated}`);
   });
   
-  await Promise.all(uploadPromises);
+  return contextParts.join('\n\n');
+}
+
+// Helper functions for prioritization without filesystem
+function determineTierFromPath(filePath: string, contextMap: ProjectContextMap): 1 | 2 | 3 | 4 {
+  const fileName = filePath.split('/').pop() || '';
+  const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
+  
+  // Tier 1: Entry points and core modules
+  if (contextMap.entryPoints.includes(filePath) || contextMap.coreModules.includes(filePath)) {
+    return 1;
+  }
+  
+  const entryPatterns = ['main.', 'index.', 'app.', 'server.', 'App.', 'Main.', 'Program.'];
+  if (entryPatterns.some(p => fileName.startsWith(p))) {
+    return 1;
+  }
+  
+  // Tier 2: API routes, controllers, services
+  if (filePath.match(/\/(routes?|controllers?|services?|api|handlers?|endpoints?)\//i)) {
+    return 2;
+  }
+  
+  // Tier 3: Utilities, configs
+  if (filePath.match(/\/(utils?|helpers?|lib|common|config|constants?)\//i)) {
+    return 3;
+  }
+  
+  if (['.json', '.yaml', '.yml', '.toml'].includes(ext)) {
+    return 3;
+  }
+  
+  // Tier 4: Tests, generated files
+  if (fileName.match(/\.(test|spec|min|generated)\./)) {
+    return 4;
+  }
+  
+  // Default: Tier 2 for source files
+  const sourceExtensions = ['.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.go', '.rs', '.cs'];
+  return sourceExtensions.includes(ext) ? 2 : 3;
+}
+
+function calculatePriorityFromPath(filePath: string, tier: number, contextMap: ProjectContextMap): number {
+  let priority = (5 - tier) * 250;
+  
+  if (contextMap.entryPoints.includes(filePath)) priority += 500;
+  if (contextMap.coreModules.includes(filePath)) priority += 300;
+  if (contextMap.userCodeFiles.includes(filePath)) priority += 200;
+  
+  const depth = filePath.split('/').length;
+  priority += Math.max(0, 50 - (depth * 10));
+  
+  const fileName = filePath.split('/').pop() || '';
+  if (fileName.match(/^(main|app|index|server)\./i)) priority += 400;
+  
+  return priority;
 }

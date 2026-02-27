@@ -1,4 +1,36 @@
-devcontext_*.docx
-Idea Submission _ AWS AI for Bharat Hackathon.pdf
-Idea Submission _ AWS AI for Bharat Hackathon.pptx 
-.kiro/
+# Local development folder (contains credentials and test scripts)
+local-dev/
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.aws-sam/
+
+# Environment & Secrets
+.env
+.env.local
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+tmp/
+temp/
+*.tmp

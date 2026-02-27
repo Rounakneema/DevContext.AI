@@ -40,35 +40,40 @@ npm install
 
 ### 2. Configure AWS Cognito
 
-Create a Cognito User Pool and App Client (without secret).
+**IMPORTANT: Keep your Cognito IDs private!**
 
-Update `template.yaml` parameters or use deployment command:
+1. Create a Cognito User Pool and App Client (without secret)
 
+2. Copy the example config:
 ```bash
-sam deploy --parameter-overrides \
-  CognitoUserPoolId=YOUR_POOL_ID \
-  CognitoClientId=YOUR_CLIENT_ID
+cp samconfig.toml.example samconfig.toml
 ```
+
+3. Edit `samconfig.toml` and replace placeholders:
+```toml
+parameter_overrides = "CognitoUserPoolId=\"ap-southeast-1_XXXXX\" CognitoClientId=\"your-client-id\""
+```
+
+**Note:** `samconfig.toml` is in `.gitignore` and will NOT be committed to GitHub.
+
+See [COGNITO_SETUP.md](./COGNITO_SETUP.md) for detailed instructions.
 
 ### 3. Build
 
 ```bash
 npm run build
+cp package.json dist/
+cp package-lock.json dist/
 ```
 
 ### 4. Deploy
 
 ```bash
 sam build
-sam deploy --guided
+sam deploy
 ```
 
-Follow prompts to configure:
-- Stack name: `devcontext-backend`
-- Region: `ap-southeast-1` (or your preferred region)
-- Confirm changes: Yes
-- Allow SAM CLI IAM role creation: Yes
-- Save arguments to config: Yes
+The deployment will use your Cognito IDs from `samconfig.toml`.
 
 ## Configuration
 
@@ -127,11 +132,13 @@ sam logs -n OrchestratorFunction --stack-name devcontext-backend --tail
 
 ## Security
 
-- No hardcoded credentials
-- Cognito authentication required
-- IAM roles with least privilege
-- Secrets in environment variables
-- Rate limiting via API Gateway
+- ✅ No hardcoded credentials in code
+- ✅ `samconfig.toml` excluded from git (contains your Cognito IDs)
+- ✅ Cognito authentication required for API access
+- ✅ IAM roles with least privilege
+- ✅ Environment variables for configuration
+- ✅ Rate limiting via API Gateway
+- ✅ S3 bucket lifecycle (auto-delete after 24 hours)
 
 ## Monitoring
 

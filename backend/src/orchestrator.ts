@@ -1,6 +1,6 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { AnalysisRecord } from './types';
@@ -9,23 +9,23 @@ const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const lambdaClient = new LambdaClient({});
 
 const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
+const REPO_PROCESSOR_FUNCTION = process.env.REPO_PROCESSOR_FUNCTION!;
+const STAGE1_FUNCTION = process.env.STAGE1_FUNCTION!;
+const STAGE3_FUNCTION = process.env.STAGE3_FUNCTION!;
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   const path = event.path;
   const method = event.httpMethod;
   
   try {
-    // POST /analyze - Initiate analysis
     if (path === '/analyze' && method === 'POST') {
       return await handleAnalyze(event);
     }
     
-    // GET /analysis/{id} - Get analysis results
     if (path.startsWith('/analysis/') && method === 'GET' && !path.endsWith('/status')) {
       return await handleGetAnalysis(event);
     }
     
-    // GET /analysis/{id}/status - Get analysis status
     if (path.endsWith('/status') && method === 'GET') {
       return await handleGetStatus(event);
     }
@@ -66,7 +66,6 @@ async function handleAnalyze(event: any) {
   const userId = 'demo-user'; // TODO: Get from Cognito
   const repositoryName = repositoryUrl.split('/').pop() || 'unknown';
   
-  // Create initial analysis record
   const analysis: AnalysisRecord = {
     analysisId,
     userId,
@@ -76,61 +75,16 @@ async function handleAnalyze(event: any) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     completedStages: [],
-    ttl: Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60) // 90 days
+    ttl: Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60)
   };
   
-  const putCommand = new PutCommand({
+  await dynamoClient.send(new PutCommand({
     TableName: ANALYSES_TABLE,
     Item: analysis
-  });
+  }));
   
-  await dynamoClient.send(putCommand);
-  
-  // Invoke repository processor asynchronously
-  invokeAsync(process.env.REPO_PROCESSOR_FUNCTION!, {
-    analysisId,
-    repositoryUrl
-  }).then(async (repoResult) => {
-    if (!repoResult.success) {
-      console.error('Repository processing failed:', repoResult.error);
-      return;
-    }
-    
-    console.log('Token Budget Stats:', repoResult.budgetStats);
-    
-    // Invoke Stage 1 (Project Review) with pre-loaded code context
-    const stage1Promise = invokeAsync(process.env.STAGE1_FUNCTION!, {
-      analysisId,
-      projectContextMap: repoResult.projectContextMap,
-      s3Key: repoResult.s3Key,
-      codeContext: repoResult.codeContext
-    });
-    
-    // Invoke Stage 3 (Interview Questions) in parallel
-    const stage3Promise = invokeAsync(process.env.STAGE3_FUNCTION!, {
-      analysisId,
-      projectContextMap: repoResult.projectContextMap,
-      s3Key: repoResult.s3Key
-    });
-    
-    // Wait for both stages
-    await Promise.all([stage1Promise, stage3Promise]);
-    
-    // Update status to completed
-    const updateCommand = new PutCommand({
-      TableName: ANALYSES_TABLE,
-      Item: {
-        ...analysis,
-        status: 'completed',
-        updatedAt: new Date().toISOString()
-      }
-    });
-    
-    await dynamoClient.send(updateCommand);
-    
-  }).catch(error => {
-    console.error('Analysis pipeline failed:', error);
-  });
+  // Background processing
+  processAnalysisPipeline(analysisId, repositoryUrl, analysis);
   
   return {
     statusCode: 200,
@@ -141,6 +95,87 @@ async function handleAnalyze(event: any) {
       estimatedCompletionTime: 90
     })
   };
+}
+
+async function processAnalysisPipeline(analysisId: string, repositoryUrl: string, analysis: AnalysisRecord) {
+  try {
+    console.log(`Starting pipeline for analysis: ${analysisId}`);
+    
+    // Step 1: Repository Processing
+    const repoResult = await invokeAsync(REPO_PROCESSOR_FUNCTION, {
+      analysisId,
+      repositoryUrl
+    });
+    
+    if (!repoResult.success) {
+      throw new Error(repoResult.error || 'Repository processing failed');
+    }
+    
+    console.log('Repository processed. Token budget:', repoResult.budgetStats);
+    
+    // Step 2: Stage 1 (Project Review) and Stage 3 (Interview) in parallel
+    const stage1Promise = invokeAsync(STAGE1_FUNCTION, {
+      analysisId,
+      projectContextMap: repoResult.projectContextMap,
+      s3Key: repoResult.s3Key,
+      codeContext: repoResult.codeContext
+    }).then(async (stage1Result) => {
+      console.log('Stage 1 completed');
+      await updateStageCompletion(analysisId, 'project_review');
+      return stage1Result;
+    });
+    
+    const stage3Promise = invokeAsync(STAGE3_FUNCTION, {
+      analysisId,
+      projectContextMap: repoResult.projectContextMap,
+      s3Key: repoResult.s3Key
+    }).then(async (stage3Result) => {
+      console.log('Stage 3 completed');
+      await updateStageCompletion(analysisId, 'interview_simulation');
+      return stage3Result;
+    });
+    
+    await Promise.all([stage1Promise, stage3Promise]);
+    
+    // Update final status
+    await dynamoClient.send(new PutCommand({
+      TableName: ANALYSES_TABLE,
+      Item: {
+        ...analysis,
+        status: 'completed',
+        updatedAt: new Date().toISOString()
+      }
+    }));
+    
+    console.log(`Analysis ${analysisId} completed successfully`);
+    
+  } catch (error) {
+    console.error('Pipeline failed:', error);
+    
+    // Mark as failed
+    await dynamoClient.send(new PutCommand({
+      TableName: ANALYSES_TABLE,
+      Item: {
+        ...analysis,
+        status: 'failed',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        updatedAt: new Date().toISOString()
+      }
+    }));
+  }
+}
+
+async function updateStageCompletion(analysisId: string, stage: string) {
+  await dynamoClient.send(new UpdateCommand({
+    TableName: ANALYSES_TABLE,
+    Key: { analysisId },
+    UpdateExpression: 'SET completedStages = list_append(if_not_exists(completedStages, :empty), :stage), updatedAt = :time',
+    ExpressionAttributeValues: {
+      ':stage': [stage],
+      ':empty': [],
+      ':time': new Date().toISOString()
+    }
+  }));
 }
 
 async function handleGetAnalysis(event: any) {
@@ -154,12 +189,10 @@ async function handleGetAnalysis(event: any) {
     };
   }
   
-  const getCommand = new GetCommand({
+  const result = await dynamoClient.send(new GetCommand({
     TableName: ANALYSES_TABLE,
     Key: { analysisId }
-  });
-  
-  const result = await dynamoClient.send(getCommand);
+  }));
   
   if (!result.Item) {
     return {
@@ -187,12 +220,11 @@ async function handleGetStatus(event: any) {
     };
   }
   
-  const getCommand = new GetCommand({
+  const result = await dynamoClient.send(new GetCommand({
     TableName: ANALYSES_TABLE,
     Key: { analysisId }
-  });
+  }));
   
-  const result = await dynamoClient.send(getCommand);
   const analysis = result.Item as AnalysisRecord;
   
   if (!analysis) {
@@ -203,7 +235,10 @@ async function handleGetStatus(event: any) {
     };
   }
   
-  const progress = (analysis.completedStages.length / 2) * 100; // 2 stages total
+  // Calculate progress: processing = 50%, completed = 100%, failed = 0%
+  let progress = 0;
+  if (analysis.status === 'completed') progress = 100;
+  else if (analysis.status === 'processing') progress = 50;
   
   return {
     statusCode: 200,
@@ -212,12 +247,15 @@ async function handleGetStatus(event: any) {
       analysisId: analysis.analysisId,
       status: analysis.status,
       completedStages: analysis.completedStages,
-      progress
+      progress,
+      errorMessage: (analysis as any).errorMessage
     })
   };
 }
 
 async function invokeAsync(functionName: string, payload: any): Promise<any> {
+  console.log(`Invoking ${functionName} with payload:`, JSON.stringify(payload).substring(0, 200));
+  
   const command = new InvokeCommand({
     FunctionName: functionName,
     InvocationType: 'RequestResponse',
@@ -225,7 +263,17 @@ async function invokeAsync(functionName: string, payload: any): Promise<any> {
   });
   
   const response = await lambdaClient.send(command);
-  const result = JSON.parse(new TextDecoder().decode(response.Payload));
   
-  return result;
+  if (response.FunctionError) {
+    throw new Error(`Lambda invocation failed: ${response.FunctionError}`);
+  }
+  
+  const lambdaResponse = JSON.parse(new TextDecoder().decode(response.Payload));
+  
+  // Handle API Gateway-wrapped responses
+  if (lambdaResponse.body && typeof lambdaResponse.body === 'string') {
+    return JSON.parse(lambdaResponse.body);
+  }
+  
+  return lambdaResponse;
 }

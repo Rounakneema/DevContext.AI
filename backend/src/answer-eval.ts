@@ -8,8 +8,8 @@ const bedrockClient = new BedrockRuntimeClient({ region: 'ap-southeast-1' });
 const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
-// Using Sonnet 4.5 for nuanced answer evaluation
-const MODEL_ID = 'anthropic.claude-sonnet-4-5-20250929-v1:0';
+// Using Amazon Nova 2 Lite (Global) - verified working
+const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {
@@ -116,15 +116,20 @@ Respond in JSON format:
 }`;
 
   const requestBody = {
-    anthropic_version: 'bedrock-2023-05-31',
-    max_tokens: 1500,
     messages: [
       {
         role: 'user',
-        content: prompt
+        content: [
+          {
+            text: prompt
+          }
+        ]
       }
     ],
-    temperature: 0.3
+    inferenceConfig: {
+      max_new_tokens: 1500,
+      temperature: 0.3
+    }
   };
   
   const command = new InvokeModelCommand({
@@ -137,7 +142,7 @@ Respond in JSON format:
   const response = await bedrockClient.send(command);
   const responseBody = JSON.parse(new TextDecoder().decode(response.body));
   
-  const content = responseBody.content[0].text;
+  const content = responseBody.output?.message?.content?.[0]?.text || '';
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   
   if (!jsonMatch) {

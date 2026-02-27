@@ -15,6 +15,7 @@ id_rsa*
 id_ed25519*
 
 # Test & Development files
+check-status.js
 get-token.js
 set-password.js
 test-*.js
@@ -24,6 +25,8 @@ test-*.js
 # Documentation (keep only README.md)
 *.md
 !README.md
+!COGNITO_SETUP.md
+!samconfig.toml.example
 
 # OS files
 .DS_Store
@@ -41,6 +44,7 @@ npm-debug.log*
 
 # AWS
 samconfig.toml
+samconfig.*.toml
 .aws-sam/
 
 # Temporary files
