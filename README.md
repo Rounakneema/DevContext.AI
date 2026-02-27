@@ -424,7 +424,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## Team
 
-Built with <3 for the **AWS AI for Bharat Hackathon**
+Built with <3 for the **AWS AI for Bharat Hackathon 🇮🇳!**
 
 <div align="center">
 
