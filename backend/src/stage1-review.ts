@@ -12,8 +12,8 @@ const s3Client = new S3Client({});
 
 const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
-// Using Sonnet 4.5 for complex code review analysis (better quality for critical evaluation)
-const MODEL_ID = 'anthropic.claude-sonnet-4-5-20250929-v1:0';
+// Using Amazon Nova 2 Lite (Global) - verified working, no payment required
+const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
 
 interface Stage1Event {
   analysisId: string;
@@ -100,9 +100,19 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
         const truncated = content.length > 5000 ? content.substring(0, 5000) + '\n... (truncated)' : content;
         fileContents.push(`\n--- File: ${file} ---\n${truncated}`);
       }
-    } catch (err) {
-      console.error(`Error loading ${file}:`, err);
+    } catch (err: any) {
+      // Log but continue - some files might not exist in S3
+      if (err.Code === 'NoSuchKey') {
+        console.warn(`File not found in S3: ${file}`);
+      } else {
+        console.error(`Error loading ${file}:`, err);
+      }
     }
+  }
+  
+  // If no files were loaded, return a minimal context
+  if (fileContents.length === 0) {
+    return `Project has ${contextMap.totalFiles} files. Frameworks: ${contextMap.frameworks.join(', ') || 'None'}`;
   }
   
   return fileContents.join('\n\n');
@@ -171,15 +181,20 @@ Respond in JSON format:
 }`;
 
   const requestBody = {
-    anthropic_version: 'bedrock-2023-05-31',
-    max_tokens: 3000,
     messages: [
       {
         role: 'user',
-        content: prompt
+        content: [
+          {
+            text: prompt
+          }
+        ]
       }
     ],
-    temperature: 0.3
+    inferenceConfig: {
+      max_new_tokens: 3000,
+      temperature: 0.3
+    }
   };
   
   const command = new InvokeModelCommand({
@@ -192,8 +207,8 @@ Respond in JSON format:
   const response = await bedrockClient.send(command);
   const responseBody = JSON.parse(new TextDecoder().decode(response.body));
   
-  // Extract JSON from response
-  const content = responseBody.content[0].text;
+  // Extract JSON from response (Amazon Nova format)
+  const content = responseBody.output?.message?.content?.[0]?.text || '';
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   
   if (!jsonMatch) {

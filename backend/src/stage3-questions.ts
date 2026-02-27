@@ -14,8 +14,8 @@ const s3Client = new S3Client({});
 
 const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
-// Using Haiku 4.5 for question generation (cost-effective with self-correction)
-const MODEL_ID = 'anthropic.claude-haiku-4-5-20251001-v1:0';
+// Using Amazon Nova Micro (APAC) - verified working, fast and cheap
+const MODEL_ID = 'apac.amazon.nova-micro-v1:0';
 
 interface Stage3Event {
   analysisId: string;
@@ -92,9 +92,19 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
         const truncated = content.length > 3000 ? content.substring(0, 3000) + '\n... (truncated)' : content;
         fileContents.push(`\n--- File: ${file} ---\n${truncated}`);
       }
-    } catch (err) {
-      console.error(`Error loading ${file}:`, err);
+    } catch (err: any) {
+      // Log but continue - some files might not exist in S3
+      if (err.Code === 'NoSuchKey') {
+        console.warn(`File not found in S3: ${file}`);
+      } else {
+        console.error(`Error loading ${file}:`, err);
+      }
     }
+  }
+  
+  // If no files were loaded, return a minimal context
+  if (fileContents.length === 0) {
+    return `Project has ${contextMap.totalFiles} files. Frameworks: ${contextMap.frameworks.join(', ') || 'None'}`;
   }
   
   return fileContents.join('\n\n');
@@ -215,15 +225,20 @@ Respond in JSON format as an array:
 ]`;
 
   const requestBody = {
-    anthropic_version: 'bedrock-2023-05-31',
-    max_tokens: 2000,
     messages: [
       {
         role: 'user',
-        content: prompt
+        content: [
+          {
+            text: prompt
+          }
+        ]
       }
     ],
-    temperature: 0.5
+    inferenceConfig: {
+      max_new_tokens: 2000,
+      temperature: 0.5
+    }
   };
   
   const command = new InvokeModelCommand({
@@ -236,7 +251,7 @@ Respond in JSON format as an array:
   const response = await bedrockClient.send(command);
   const responseBody = JSON.parse(new TextDecoder().decode(response.body));
   
-  const content = responseBody.content[0].text;
+  const content = responseBody.output?.message?.content?.[0]?.text || '';
   const jsonMatch = content.match(/\[[\s\S]*\]/);
   
   if (!jsonMatch) {
@@ -267,7 +282,13 @@ function calculateDistributions(questions: InterviewQuestion[]): InterviewSimula
   };
   
   for (const q of questions) {
-    categoryCounts[q.category]++;
+    // Normalize category names (handle variations like "trade-offs" vs "tradeoffs")
+    const normalizedCategory = q.category.toLowerCase().replace(/[^a-z]/g, '');
+    
+    if (normalizedCategory === 'architecture') categoryCounts.architecture++;
+    else if (normalizedCategory === 'implementation') categoryCounts.implementation++;
+    else if (normalizedCategory === 'tradeoffs') categoryCounts.tradeoffs++;
+    else if (normalizedCategory === 'scalability') categoryCounts.scalability++;
     
     if (q.difficulty === 'junior') difficultyDistribution.junior++;
     else if (q.difficulty === 'mid-level') difficultyDistribution.midLevel++;
