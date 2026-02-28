@@ -5,6 +5,7 @@ import ReviewTab from "../components/dashboard/ReviewTab";
 import ReportTab from "../components/dashboard/ReportTab";
 import InterviewTab from "../components/dashboard/InterviewTab";
 import HistoryTab from "../components/dashboard/HistoryTab";
+import FileExplorer from "../components/dashboard/FileExplorer";
 
 type Tab = "overview" | "review" | "report" | "interview" | "history";
 
@@ -14,6 +15,7 @@ const DashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(
     (searchParams.get("tab") as Tab) || "overview",
   );
+  const analysisId = searchParams.get("id") || undefined;
 
   const tabs = [
     {
@@ -156,7 +158,7 @@ const DashboardPage: React.FC = () => {
         <div className="ds-spacer"></div>
 
         <div style={{ padding: "0 12px 8px" }}>
-          <button className="ds-new-btn" onClick={() => navigate("/")}>
+          <button className="ds-new-btn" onClick={() => navigate("/app")}>
             <svg
               width="12"
               height="12"
@@ -174,6 +176,15 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {/* File Explorer - Show only for Analysis tabs */}
+      {!practiceTabIds.includes(activeTab) && (
+        <FileExplorer
+          onSelectionChange={(files) => {
+            console.log("Selected files for analysis:", files);
+          }}
+        />
+      )}
+
       {/* Dash Main Content */}
       <div className="dash-main">
         <div className={`tab-view ${activeTab === "overview" ? "active" : ""}`}>
@@ -188,7 +199,7 @@ const DashboardPage: React.FC = () => {
         <div
           className={`tab-view ${activeTab === "interview" ? "active" : ""}`}
         >
-          <InterviewTab />
+          <InterviewTab analysisId={analysisId} />
         </div>
         <div className={`tab-view ${activeTab === "history" ? "active" : ""}`}>
           <HistoryTab />

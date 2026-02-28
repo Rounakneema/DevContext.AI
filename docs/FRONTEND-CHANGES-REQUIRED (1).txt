@@ -1,0 +1,483 @@
+=============================================================================
+FRONTEND CHANGES REQUIRED FOR PROGRESSIVE WORKFLOW
+=============================================================================
+
+## Overview
+The backend now implements a PROGRESSIVE, USER-CONTROLLED workflow where:
+- Stage 1 (Project Review) runs automatically
+- User decides: Continue to Stage 2 OR Download report & go home
+- Stage 2 (Intelligence Report) runs only if user clicks "Continue"
+- User decides: Start Interview OR Download & go home  
+- Stage 3 (Interview) runs only if user clicks "Start Interview"
+
+=============================================================================
+## NEW API ENDPOINTS IMPLEMENTED
+=============================================================================
+
+### Progressive Workflow Control
+1. POST /analysis/{analysisId}/continue-stage2
+   - Triggers Stage 2 (Intelligence Report)
+   - Returns: { analysisId, message, status: 'processing', estimatedCompletionTime: 120 }
+
+2. POST /analysis/{analysisId}/continue-stage3
+   - Triggers Stage 3 (Interview Questions)
+   - Returns: { analysisId, message, status: 'processing', estimatedCompletionTime: 90 }
+
+### User Profile (NOW IMPLEMENTED)
+3. GET /user/profile
+   - Returns full user profile with subscription info
+
+4. POST /user/profile
+   - Create/update profile (onboarding)
+   - Body: { displayName, targetRole, language, githubConnected }
+
+5. PATCH /user/preferences
+   - Update user preferences
+   - Body: { targetRole?, language?, notifications?, emailDigest? }
+
+6. GET /user/stats
+   - Dashboard stats
+   - Returns: { totalAnalyses, averageCodeQuality, totalInterviewSessions, averageInterviewScore, etc }
+
+7. GET /user/progress
+   - Detailed progress with trends
+   - Returns: { improvementTrend[], identifiedSkillGaps[], recommendedTopics[], categoryPerformance }
+
+### Interview Sessions (NOW FULLY IMPLEMENTED)
+8. POST /interview/sessions
+   - Create interview session
+   - Body: { analysisId, config: { targetRole, difficulty, timeLimit, feedbackMode } }
+
+9. GET /interview/sessions/{sessionId}
+   - Get session details and progress
+
+10. POST /interview/sessions/{sessionId}/answer
+    - Submit answer for evaluation
+    - Body: { questionId, answer, timeSpentSeconds }
+    - Returns: { attemptId, evaluation with 4 criteria scores, comparison, feedback }
+
+11. POST /interview/sessions/{sessionId}/complete
+    - Complete session and get summary
+    - Returns: { summary with categoryPerformance, improvementAreas, strengths }
+
+=============================================================================
+## FRONTEND CHANGES NEEDED
+=============================================================================
+
+### 1. LoadingPage.tsx - MAJOR CHANGES
+Current: Shows all 3 stages processing
+New: Progressive workflow with user decisions
+
+CHANGES:
+```typescript
+// Check workflowState instead of status for user decisions
+// After Stage 1 completes (workflowState === 'stage1_complete_awaiting_approval'):
+- Show "Stage 1 Complete!" message
+- Display action buttons:
+  [Continue to Intelligence Report] [Download Report] [Go Home]
+  
+// When user clicks "Continue to Intelligence Report":
+- Call: POST /analysis/{id}/continue-stage2
+- workflowState changes to 'stage2_pending'
+- Show Stage 2 processing
+- Poll /analysis/{id}/status until workflowState === 'stage2_complete_awaiting_approval'
+
+// After Stage 2 completes (workflowState === 'stage2_complete_awaiting_approval'):
+- Show "Stage 2 Complete!" message
+- Display action buttons:
+  [Start Interview Practice] [Download Full Report] [Go Home]
+  
+// When user clicks "Start Interview Practice":
+- Call: POST /analysis/{id}/continue-stage3
+- workflowState changes to 'stage3_pending'
+- Show Stage 3 processing
+- Poll until workflowState === 'all_complete', then redirect to Interview tab
+```
+
+NEW STATUS VALUES TO HANDLE:
+- status: 'initiated' | 'processing' | 'completed' | 'failed' - Technical processing state
+- workflowState: User approval/decision state:
+  - 'stage1_pending' - Stage 1 is running
+  - 'stage1_complete_awaiting_approval' - Stage 1 done, awaiting user decision
+  - 'stage2_pending' - Stage 2 is running
+  - 'stage2_complete_awaiting_approval' - Stage 2 done, awaiting user decision
+  - 'stage3_pending' - Stage 3 is running
+  - 'all_complete' - All stages done
+
+### 2. HomePage.tsx - ADD USER STATS
+Current: Basic greeting
+New: Show user statistics
+
+CHANGES:
+```typescript
+// Add UserStatsPanel component
+- Fetch: GET /user/stats on mount
+- Display:
+  - Analyses Completed: {totalAnalyses}
+  - Average Code Quality: {averageCodeQuality}/100
+  - Interview Sessions: {totalInterviewSessions}
+  - Average Score: {averageInterviewScore}/100
+```
+
+### 3. ProfileSetupPage.tsx - NEW PAGE (ONBOARDING)
+Route: /setup (after email verification)
+
+IMPLEMENTATION:
+```typescript
+// Form fields:
+- Display Name (text input)
+- Target Role (dropdown: Junior SDE, Mid-Level SDE, Senior SDE, DevOps, Data Engineer)
+- Preferred Language (dropdown: English, Hinglish)
+- GitHub Integration (optional):
+  - [Connect GitHub] button
+  - "For private repositories" note
+  - [Skip] option
+
+// On submit:
+- Call: POST /user/profile with form data
+- Redirect to /app (HomePage)
+```
+
+### 4. SettingsPage.tsx - NEW PAGE
+Route: /app/settings
+
+IMPLEMENTATION:
+```typescript
+// Fetch: GET /user/profile on mount
+// Form fields (editable):
+- Target Role
+- Language
+- Notifications toggle
+- Email Digest toggle
+
+// On save:
+- Call: PATCH /user/preferences
+- Show success toast
+```
+
+### 5. AccountPage.tsx - NEW PAGE
+Route: /app/account
+
+IMPLEMENTATION:
+```typescript
+// Fetch: GET /user/profile
+// Display (read-only):
+- Email
+- Display Name
+- Subscription Tier
+- Analysis Quota: {analysisUsed}/{analysisQuota}
+- Reset Date
+
+// Actions:
+- [Change Password] button (Cognito)
+- [Delete Account] button (with confirmation)
+```
+
+### 6. InterviewTab.tsx - MAJOR CHANGES
+Current: Static question display
+New: Full interactive session
+
+CHANGES:
+```typescript
+// Step 1: Create Session
+- Button: [Start Interview Session]
+- On click: POST /interview/sessions { analysisId, config }
+- Store sessionId in state
+
+// Step 2: Display Questions One-by-One
+- Show current question from interviewSimulation.questions
+- Textarea for answer
+- Timer display
+- [Submit Answer] button
+
+// Step 3: Submit Answer
+- Call: POST /interview/sessions/{sessionId}/answer
+- Show evaluation immediately:
+  - Overall Score: 75/100
+  - Criteria breakdown (4 scores)
+  - Strengths (green checkmarks)
+  - Weaknesses (amber warnings)
+  - Missing key points
+  - Weak vs Strong answer comparison
+  - Feedback text
+  - Improvement suggestions
+- [Next Question] button
+
+// Step 4: Complete Session
+- After all questions answered:
+- Call: POST /interview/sessions/{sessionId}/complete
+- Show InterviewSummaryPanel:
+  - Overall Performance: {averageScore}/100
+  - Category breakdown (architecture, implementation, tradeoffs, scalability)
+  - Performance trend (vs previous sessions)
+  - Key insights (strengths + improvements)
+  - Recommended next steps
+  - [Download Interview Report] [Start New Session] [Back to Dashboard]
+```
+
+### 7. HistoryTab.tsx - ADD PROGRESS TRACKING
+Current: Basic list
+New: Add SkillProgressionPanel
+
+CHANGES:
+```typescript
+// Fetch: GET /user/progress on mount
+// Add SkillProgressionPanel component:
+- Overall trend chart (line graph)
+- Category breakdowns
+- Strongest improving area
+- Areas needing focus
+- Identified skill gaps with priority
+- Recommended topics
+```
+
+### 8. DashboardPage.tsx - UPDATE NAVIGATION
+Current: All tabs always available
+New: Conditional tab availability
+
+CHANGES:
+```typescript
+// Tab availability based on analysis status:
+- Overview: Always available after Stage 1
+- Review: Always available after Stage 1
+- Report: Only available after Stage 2 complete
+- Interview: Only available after Stage 3 complete
+- History: Always available
+
+// Show badges on tabs:
+- "New" badge on Report tab when Stage 2 just completed
+- "Ready" badge on Interview tab when Stage 3 just completed
+```
+
+### 9. OverviewTab.tsx - ADD COMPANY TIER MATCHING
+Current: Basic employability score
+New: Detailed tier breakdown
+
+CHANGES:
+```typescript
+// Add EmployabilitySignalPanel component:
+- Overall score: {overall}/100
+- Company Tier Match breakdown:
+  - Big Tech (FAANG): {bigTech}/100 with progress bar
+  - Product Companies: {productCompanies}/100 with progress bar
+  - Startups: {startups}/100 with progress bar
+  - Service Companies: {serviceCompanies}/100 with progress bar
+- Summary quote (e.g., "Startup-ready. Demonstrates solid fundamentals...")
+```
+
+### 10. NEW COMPONENTS TO CREATE
+
+#### UserStatsPanel.tsx
+```typescript
+interface Props {
+  stats: {
+    totalAnalyses: number;
+    averageCodeQuality: number;
+    totalInterviewSessions: number;
+    averageInterviewScore: number;
+  };
+}
+// Display as 4 cards with icons and numbers
+```
+
+#### EmployabilitySignalPanel.tsx
+```typescript
+interface Props {
+  employabilitySignal: {
+    overall: number;
+    companyTierMatch: {
+      bigTech: number;
+      productCompanies: number;
+      startups: number;
+      serviceCompanies: number;
+    };
+  };
+}
+// Display tier scores with progress bars
+```
+
+#### AnswerEvaluationPanel.tsx
+```typescript
+interface Props {
+  evaluation: {
+    overallScore: number;
+    criteriaScores: {
+      technicalAccuracy: number;
+      completeness: number;
+      clarity: number;
+      depthOfUnderstanding: number;
+    };
+    strengths: string[];
+    weaknesses: string[];
+    missingKeyPoints: string[];
+    comparison: {
+      weakAnswer: string;
+      strongAnswer: string;
+      yourAnswerCategory: string;
+    };
+    feedback: string;
+    improvementSuggestions: string[];
+  };
+}
+// Display all evaluation details with color coding
+```
+
+#### InterviewSummaryPanel.tsx
+```typescript
+interface Props {
+  summary: {
+    totalQuestions: number;
+    questionsAnswered: number;
+    averageScore: number;
+    totalTimeSpentSeconds: number;
+    categoryPerformance: {
+      architecture: number;
+      implementation: number;
+      tradeoffs: number;
+      scalability: number;
+    };
+    improvementAreas: string[];
+    strengths: string[];
+  };
+}
+// Display session complete screen with all metrics
+```
+
+#### SkillProgressionPanel.tsx
+```typescript
+interface Props {
+  progress: {
+    improvementTrend: Array<{ date: string; metric: string; value: number }>;
+    identifiedSkillGaps: Array<{
+      skill: string;
+      currentLevel: number;
+      targetLevel: number;
+      priority: string;
+      learningResources: string[];
+    }>;
+    recommendedTopics: string[];
+    completedTopics: string[];
+    categoryPerformance: any;
+  };
+}
+// Display trend charts and skill gaps
+```
+
+=============================================================================
+## ROUTING CHANGES
+=============================================================================
+
+Update App.tsx routes:
+
+```typescript
+// Public routes
+<Route path="/" element={<LandingPage />} />
+<Route path="/login" element={<LoginPage />} />
+<Route path="/signup" element={<SignupPage />} />
+<Route path="/verify-email" element={<EmailVerificationPage />} />
+
+// Protected routes (require auth)
+<Route path="/setup" element={<ProtectedRoute><ProfileSetupPage /></ProtectedRoute>} />
+<Route path="/app" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+<Route path="/app/loading" element={<ProtectedRoute><LoadingPage /></ProtectedRoute>} />
+<Route path="/app/dashboard/:id" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+<Route path="/app/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+<Route path="/app/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+```
+
+=============================================================================
+## API SERVICE UPDATES (services/api.ts)
+=============================================================================
+
+Add new API functions:
+
+```typescript
+// Progressive workflow
+export const continueToStage2 = (analysisId: string) => 
+  api.post(`/analysis/${analysisId}/continue-stage2`);
+
+export const continueToStage3 = (analysisId: string) => 
+  api.post(`/analysis/${analysisId}/continue-stage3`);
+
+// User profile
+export const getUserProfile = () => api.get('/user/profile');
+export const createUserProfile = (data: any) => api.post('/user/profile', data);
+export const updateUserPreferences = (data: any) => api.patch('/user/preferences', data);
+export const getUserStats = () => api.get('/user/stats');
+export const getUserProgress = () => api.get('/user/progress');
+
+// Interview sessions
+export const createInterviewSession = (data: { analysisId: string; config?: any }) => 
+  api.post('/interview/sessions', data);
+
+export const getInterviewSession = (sessionId: string) => 
+  api.get(`/interview/sessions/${sessionId}`);
+
+export const submitAnswer = (sessionId: string, data: { questionId: string; answer: string; timeSpentSeconds: number }) => 
+  api.post(`/interview/sessions/${sessionId}/answer`, data);
+
+export const completeSession = (sessionId: string) => 
+  api.post(`/interview/sessions/${sessionId}/complete`);
+```
+
+=============================================================================
+## TESTING CHECKLIST
+=============================================================================
+
+### Progressive Workflow
+- [ ] Submit repo URL → Stage 1 completes → See "Continue" buttons
+- [ ] Click "Continue to Intelligence Report" → Stage 2 starts
+- [ ] Stage 2 completes → See "Start Interview" button
+- [ ] Click "Start Interview" → Stage 3 starts
+- [ ] Stage 3 completes → Can start interview session
+
+### User Profile
+- [ ] After signup → Redirected to /setup
+- [ ] Complete profile setup → Redirected to /app
+- [ ] See user stats on homepage
+- [ ] Update preferences in settings
+- [ ] View account details
+
+### Interview Session
+- [ ] Create session → Get sessionId
+- [ ] Submit answer → Get evaluation with 4 criteria
+- [ ] See weak vs strong answer comparison
+- [ ] Complete session → See summary with category performance
+- [ ] View improvement areas and strengths
+
+### Progress Tracking
+- [ ] View history → See skill progression panel
+- [ ] See improvement trend chart
+- [ ] See identified skill gaps with priorities
+- [ ] See recommended topics
+
+=============================================================================
+## PRIORITY ORDER
+=============================================================================
+
+1. HIGH PRIORITY (Core UX):
+   - LoadingPage progressive workflow
+   - InterviewTab full session flow
+   - AnswerEvaluationPanel component
+
+2. MEDIUM PRIORITY (User Management):
+   - ProfileSetupPage
+   - UserStatsPanel on HomePage
+   - SettingsPage
+   - AccountPage
+
+3. LOW PRIORITY (Enhanced Features):
+   - SkillProgressionPanel
+   - EmployabilitySignalPanel with tier breakdown
+   - InterviewSummaryPanel enhancements
+
+=============================================================================
+## NOTES
+=============================================================================
+
+- All endpoints are NOW IMPLEMENTED in backend
+- Mock data removed - everything is dynamic
+- User decisions control workflow progression
+- Better UX: Users can stop after Stage 1 if they only want code review
+- Interview sessions are fully tracked with attempts and evaluations
+- Progress tracking aggregates data from all analyses and sessions
