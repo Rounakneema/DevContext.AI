@@ -7,9 +7,24 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetSent, setResetSent] = useState(false);
 
-  const { login } = useAuth();
+  const { login, logout, user } = useAuth();
   const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    setLoading(true);
+    try {
+      await logout();
+      setError("");
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -18,7 +33,7 @@ const LoginPage: React.FC = () => {
 
     try {
       await login(email, password);
-      navigate("/");
+      navigate("/app");
     } catch (err: any) {
       setError(
         err.message || "Failed to login. Please check your credentials.",
@@ -74,6 +89,67 @@ const LoginPage: React.FC = () => {
         >
           Welcome back.
         </div>
+
+        {/* Show logged-in user banner if exists */}
+        {user && (
+          <div
+            style={{
+              background: "var(--accent-light)",
+              border: "1px solid var(--accent)",
+              borderRadius: "8px",
+              padding: "14px 16px",
+              marginBottom: "16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: "500", color: "var(--text)" }}>
+                Already signed in
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--text2)", marginTop: "2px" }}>
+                {user.email}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                onClick={() => navigate("/app")}
+                style={{
+                  background: "var(--accent)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 14px",
+                  fontSize: "12px",
+                  fontWeight: "500",
+                  cursor: "pointer",
+                  fontFamily: "Geist, sans-serif",
+                }}
+              >
+                Go to App
+              </button>
+              <button
+                onClick={handleLogout}
+                disabled={loading}
+                style={{
+                  background: "transparent",
+                  color: "var(--accent)",
+                  border: "1px solid var(--accent)",
+                  borderRadius: "6px",
+                  padding: "8px 14px",
+                  fontSize: "12px",
+                  fontWeight: "500",
+                  cursor: "pointer",
+                  fontFamily: "Geist, sans-serif",
+                }}
+              >
+                {loading ? "..." : "Sign Out"}
+              </button>
+            </div>
+          </div>
+        )}
 
         <button
           onClick={handleGitHubLogin}
@@ -205,6 +281,91 @@ const LoginPage: React.FC = () => {
               }}
             />
           </div>
+
+          {/* Forgot Password Link */}
+          <div style={{ textAlign: 'right', marginBottom: '12px' }}>
+            <span
+              onClick={() => setShowForgotPassword(!showForgotPassword)}
+              style={{
+                fontSize: '12px',
+                color: 'var(--accent)',
+                cursor: 'pointer',
+                fontWeight: '500',
+              }}
+            >
+              Forgot password?
+            </span>
+          </div>
+
+          {/* Forgot Password Form */}
+          {showForgotPassword && (
+            <div
+              style={{
+                background: 'var(--surface2)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                padding: '14px',
+                marginBottom: '12px',
+              }}
+            >
+              {resetSent ? (
+                <div style={{ fontSize: '12.5px', color: '#27AE60', textAlign: 'center' }}>
+                  ✓ Password reset instructions sent to {resetEmail}
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: '12px', color: 'var(--text2)', marginBottom: '8px' }}>
+                    Enter your email to receive a password reset link
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      style={{
+                        flex: 1,
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '7px',
+                        padding: '8px 10px',
+                        fontFamily: 'Geist, sans-serif',
+                        fontSize: '12.5px',
+                        color: 'var(--text)',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (resetEmail.trim()) {
+                          setResetSent(true);
+                          setTimeout(() => {
+                            setResetSent(false);
+                            setShowForgotPassword(false);
+                          }, 4000);
+                        }
+                      }}
+                      style={{
+                        background: 'var(--accent)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '7px',
+                        padding: '8px 14px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        fontFamily: 'Geist, sans-serif',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Send Reset
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <button
             type="submit"
