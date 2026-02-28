@@ -1,10 +1,53 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import api from "../../services/api";
 
 interface ReportTabProps {
-  analysisData: any;
+  analysisId: string;
 }
 
-const ReportTab: React.FC<ReportTabProps> = ({ analysisData }) => {
+const ReportTab: React.FC<ReportTabProps> = ({ analysisId }) => {
+  const [analysis, setAnalysis] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadAnalysis();
+  }, [analysisId]);
+
+  const loadAnalysis = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getAnalysis(analysisId);
+      setAnalysis(data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load analysis:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load analysis');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+        <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+        <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Loading intelligence report...</div>
+      </div>
+    );
+  }
+
+  if (error || !analysis?.intelligenceReport) {
+    return (
+      <div style={{ background: '#FEF4F4', border: '1px solid #FACACA', borderRadius: '8px', padding: '12px 16px', color: '#C0392B', fontSize: '13px' }}>
+        {error || 'Intelligence report not available. Complete Stage 2 first.'}
+      </div>
+    );
+  }
+
+  const { intelligenceReport, repository } = analysis;
+  const { designDecisions, technicalInsights, technologyStack, architecturePatterns } = intelligenceReport;
+
   return (
     <>
       <div className="view-title">Intelligence Report</div>
@@ -18,188 +61,93 @@ const ReportTab: React.FC<ReportTabProps> = ({ analysisData }) => {
           <div className="chip green">Grounded</div>
         </div>
         <div className="panel-body">
-          <p
-            style={{
-              fontSize: "13px",
-              color: "var(--text2)",
-              lineHeight: "1.7",
-              marginBottom: "18px",
-            }}
-          >
-            Client-server architecture with a React SPA consuming a RESTful
-            Node.js/Express API. Enables independent frontend/backend
-            deployment, though lacks a reverse proxy configuration expected in
-            production.
-          </p>
-          <div
-            style={{
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: "8px",
-              padding: "28px",
-              minHeight: "220px",
-              position: "relative",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                top: "20px",
-                left: "50%",
-                transform: "translateX(-50%)",
-                background: "var(--accent-light)",
-                border: "1px solid var(--accent)",
-                borderRadius: "6px",
-                padding: "7px 14px",
-                fontSize: "11.5px",
-                fontWeight: "500",
-                color: "var(--accent)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              React SPA (Port 3000)
+          {architecturePatterns && architecturePatterns.length > 0 && (
+            <>
+              <p style={{ fontSize: "13px", color: "var(--text2)", lineHeight: "1.7", marginBottom: "18px" }}>
+                Detected architecture patterns: {architecturePatterns.join(', ')}
+              </p>
+              <div className="tag-row" style={{ marginBottom: "14px" }}>
+                {architecturePatterns.map((pattern: string) => (
+                  <span key={pattern} className="tag tech">{pattern}</span>
+                ))}
+              </div>
+            </>
+          )}
+
+          {technologyStack && (
+            <div style={{ marginTop: "14px" }}>
+              <div className="tag-row">
+                {technologyStack.frameworks?.map((fw: string) => (
+                  <span key={fw} className="tag acc">{fw}</span>
+                ))}
+                {technologyStack.libraries?.slice(0, 5).map((lib: string) => (
+                  <span key={lib} className="tag tech">{lib}</span>
+                ))}
+              </div>
             </div>
-            <div
-              style={{
-                position: "absolute",
-                top: "58px",
-                left: "50%",
-                transform: "translateX(-50%)",
-                fontSize: "18px",
-                color: "var(--text3)",
-              }}
-            >
-              ↓
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                top: "82px",
-                left: "50%",
-                transform: "translateX(-50%)",
-                background: "var(--surface)",
-                border: "1px solid var(--border2)",
-                borderRadius: "6px",
-                padding: "7px 14px",
-                fontSize: "11.5px",
-                fontWeight: "500",
-                color: "var(--text)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Express.js REST API (Port 5000)
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                top: "120px",
-                left: "28%",
-                fontSize: "16px",
-                color: "var(--text3)",
-              }}
-            >
-              ↓
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                top: "120px",
-                left: "62%",
-                fontSize: "16px",
-                color: "var(--text3)",
-              }}
-            >
-              ↓
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                bottom: "24px",
-                left: "12px",
-                background: "#F1FBF1",
-                border: "1px solid #4CAF50",
-                borderRadius: "6px",
-                padding: "7px 14px",
-                fontSize: "11.5px",
-                fontWeight: "500",
-                color: "#2E7D32",
-                whiteSpace: "nowrap",
-              }}
-            >
-              JWT Middleware
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                bottom: "24px",
-                right: "12px",
-                background: "#FEF9F0",
-                border: "1px solid #E67E22",
-                borderRadius: "6px",
-                padding: "7px 14px",
-                fontSize: "11.5px",
-                fontWeight: "500",
-                color: "#A04000",
-                whiteSpace: "nowrap",
-              }}
-            >
-              MongoDB Atlas
-            </div>
-          </div>
-          <div className="tag-row" style={{ marginTop: "14px" }}>
-            <span className="tag tech">Client-Server</span>
-            <span className="tag tech">REST API</span>
-            <span className="tag tech">MVC Pattern</span>
-            <span className="tag acc">JWT Auth</span>
-          </div>
+          )}
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-head">
-          <div className="panel-title">Key Design Decisions</div>
-          <div className="chip blue">4 found</div>
-        </div>
-        <div className="panel-body">
-          <div className="insight-list">
-            <div className="insight-item">
-              <div className="i-dot pos">1</div>
-              <div className="i-text">
-                <strong>JWT over session-based auth</strong> — Evidence in{" "}
-                <code>middleware/auth.js:L8-L22</code>. Implies stateless API
-                enabling horizontal scaling without shared session stores.
-              </div>
-            </div>
-            <div className="insight-item">
-              <div className="i-dot pos">2</div>
-              <div className="i-text">
-                <strong>MongoDB over relational DB</strong> — User schemas in{" "}
-                <code>models/</code> use embedded subdocuments. Suggests
-                flexible schema requirements during MVP development.
-              </div>
-            </div>
-            <div className="insight-item">
-              <div className="i-dot warn">3</div>
-              <div className="i-text">
-                <strong>No caching layer</strong> — Repeated API calls in{" "}
-                <code>src/hooks/useData.js</code> hit the DB every time. Redis
-                or React Query would address this.
-              </div>
-            </div>
-            <div className="insight-item">
-              <div className="i-dot warn">4</div>
-              <div className="i-text">
-                <strong>No startup config validation</strong> — Missing required
-                env vars silently crash at runtime. Add a validation check on
-                startup.
-              </div>
+      {designDecisions && designDecisions.length > 0 && (
+        <div className="panel">
+          <div className="panel-head">
+            <div className="panel-title">Key Design Decisions</div>
+            <div className="chip blue">{designDecisions.length} found</div>
+          </div>
+          <div className="panel-body">
+            <div className="insight-list">
+              {designDecisions.slice(0, 4).map((decision: any, idx: number) => (
+                <div key={decision.decisionId || idx} className="insight-item">
+                  <div className="i-dot pos">{idx + 1}</div>
+                  <div className="i-text">
+                    <strong>{decision.decision}</strong> — {decision.rationale}
+                    {decision.fileReferences && decision.fileReferences.length > 0 && (
+                      <> Evidence in <code>{decision.fileReferences[0].file}</code></>
+                    )}
+                    {decision.tradeoffs && (
+                      <div style={{ fontSize: "12px", color: "var(--text3)", marginTop: "4px", fontStyle: "italic" }}>
+                        Tradeoffs: {decision.tradeoffs}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {technicalInsights && technicalInsights.length > 0 && (
+        <div className="panel">
+          <div className="panel-head">
+            <div className="panel-title">Technical Insights</div>
+            <div className="chip green">{technicalInsights.length} insights</div>
+          </div>
+          <div className="panel-body">
+            <div className="insight-list">
+              {technicalInsights.slice(0, 3).map((insight: any, idx: number) => (
+                <div key={insight.insightId || idx} className="insight-item">
+                  <div className="i-dot pos">💡</div>
+                  <div className="i-text">
+                    <strong>{insight.insight}</strong>
+                    {insight.significance && (
+                      <div style={{ fontSize: "12px", color: "var(--text3)", marginTop: "4px" }}>
+                        {insight.significance}
+                      </div>
+                    )}
+                    {insight.fileReferences && insight.fileReferences.length > 0 && (
+                      <div style={{ fontSize: "11px", color: "var(--accent)", marginTop: "4px" }}>
+                        Found in: {insight.fileReferences.map((ref: any) => ref.file).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-head">
@@ -207,26 +155,21 @@ const ReportTab: React.FC<ReportTabProps> = ({ analysisData }) => {
           <div className="chip green">Ready to use</div>
         </div>
         <div className="panel-body">
-          <div
-            style={{
-              background: "var(--surface2)",
-              borderLeft: "3px solid var(--accent)",
-              borderRadius: "0 7px 7px 0",
-              padding: "16px",
-              fontSize: "13px",
-              color: "var(--text2)",
-              lineHeight: "1.75",
-              fontStyle: "italic",
-            }}
-          >
-            "I built a full-stack MERN application with a stateless REST API and
-            JWT-based authentication. I chose MongoDB for flexible schema
-            design, and structured the Express backend using MVC to separate
-            routing, business logic, and data access. JWT over sessions allowed
-            the React frontend to store the token locally and keeps the API
-            truly stateless — which matters for scaling. In hindsight I'd add
-            Joi validation and centralized error handling — areas I'm actively
-            addressing."
+          <div style={{
+            background: "var(--surface2)",
+            borderLeft: "3px solid var(--accent)",
+            borderRadius: "0 7px 7px 0",
+            padding: "16px",
+            fontSize: "13px",
+            color: "var(--text2)",
+            lineHeight: "1.75",
+            fontStyle: "italic",
+          }}>
+            {designDecisions && designDecisions.length > 0 ? (
+              `"I built this project using ${architecturePatterns?.join(' and ') || 'modern architecture patterns'}. ${designDecisions[0]?.decision} because ${designDecisions[0]?.rationale} ${designDecisions[1] ? `I also ${designDecisions[1].decision.toLowerCase()} to ${designDecisions[1].rationale.toLowerCase()}` : ''} These decisions helped me ${technicalInsights?.[0]?.significance || 'achieve better code organization and maintainability'}."`
+            ) : (
+              `"I built this project with a focus on ${technologyStack?.frameworks?.join(' and ') || 'modern web technologies'}. The architecture emphasizes ${architecturePatterns?.join(', ') || 'clean code principles and maintainability'}."`
+            )}
           </div>
           <button
             className="btn-ghost"
@@ -235,6 +178,12 @@ const ReportTab: React.FC<ReportTabProps> = ({ analysisData }) => {
               marginTop: "12px",
               padding: "7px 14px",
               fontSize: "12px",
+            }}
+            onClick={() => {
+              const narrative = document.querySelector('[style*="fontStyle: italic"]')?.textContent;
+              if (narrative) {
+                navigator.clipboard.writeText(narrative);
+              }
             }}
           >
             Copy Narrative

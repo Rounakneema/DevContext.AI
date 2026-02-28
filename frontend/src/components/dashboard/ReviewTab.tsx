@@ -1,229 +1,197 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import api from "../../services/api";
 
 interface ReviewTabProps {
-  analysisData: any;
+  analysisId: string;
 }
 
-const ReviewTab: React.FC<ReviewTabProps> = ({ analysisData }) => {
+const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
+  const [analysis, setAnalysis] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadAnalysis();
+  }, [analysisId]);
+
+  const loadAnalysis = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getAnalysis(analysisId);
+      setAnalysis(data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load analysis:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load analysis');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+        <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+        <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Loading project review...</div>
+      </div>
+    );
+  }
+
+  if (error || !analysis?.projectReview) {
+    return (
+      <div style={{ background: '#FEF4F4', border: '1px solid #FACACA', borderRadius: '8px', padding: '12px 16px', color: '#C0392B', fontSize: '13px' }}>
+        {error || 'Project review not available'}
+      </div>
+    );
+  }
+
+  const { projectReview, repository } = analysis;
+  const { architectureClarity, projectAuthenticity, codeQuality } = projectReview;
+
   return (
     <>
       <div className="view-title">Project Review</div>
       <div className="view-sub">
-        Detailed code quality analysis grounded in specific files and line
-        numbers.
+        Detailed code quality analysis grounded in specific files and line numbers.
       </div>
 
       <div className="panel">
         <div className="panel-head">
           <div className="panel-title">Architecture Clarity</div>
-          <div className="chip green">74 / 100</div>
+          <div className={`chip ${architectureClarity.score >= 70 ? 'green' : architectureClarity.score >= 50 ? 'amber' : 'red'}`}>
+            {architectureClarity.score} / 100
+          </div>
         </div>
         <div className="panel-body">
-          <p
-            style={{
-              fontSize: "13px",
-              color: "var(--text2)",
-              lineHeight: "1.7",
-              marginBottom: "14px",
-            }}
-          >
-            The project follows standard MVC with clear separation between
-            routes, controllers, and models. The feature-based folder structure
-            is a mature organizational decision for a project of this size.
+          <p style={{ fontSize: "13px", color: "var(--text2)", lineHeight: "1.7", marginBottom: "14px" }}>
+            {architectureClarity.componentOrganization}
           </p>
-          <div
-            style={{
-              background: "#FAFAF9",
-              border: "1px solid var(--border)",
-              borderRadius: "7px",
-              padding: "14px 16px",
-              fontFamily: "monospace",
-              fontSize: "12.5px",
-              color: "var(--text2)",
-              lineHeight: "1.7",
-              margin: "10px 0",
-              overflowX: "auto",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--accent)",
-                marginBottom: "8px",
-                fontFamily: "Geist, sans-serif",
-              }}
-            >
-              📄 src/controllers/userController.js · Lines 45–62
+          
+          {architectureClarity.designPatterns && architectureClarity.designPatterns.length > 0 && (
+            <div className="tag-row" style={{ marginBottom: "14px" }}>
+              {architectureClarity.designPatterns.map((pattern: string) => (
+                <span key={pattern} className="tag tech">{pattern}</span>
+              ))}
             </div>
-            <span style={{ color: "#8B5CF6" }}>const</span>{" "}
-            <span style={{ color: "#2563EB" }}>getUser</span> ={" "}
-            <span style={{ color: "#8B5CF6" }}>async</span> (req, res) =&gt;{" "}
-            {"{"}
-            <br />
-            &nbsp;&nbsp;
-            <span style={{ color: "var(--text3)", fontStyle: "italic" }}>
-              {"// ⚠️ Missing try/catch — unhandled promise rejection"}
-            </span>
-            <br />
-            &nbsp;&nbsp;<span style={{ color: "#8B5CF6" }}>const</span> user ={" "}
-            <span style={{ color: "#8B5CF6" }}>await</span> User.
-            <span style={{ color: "#2563EB" }}>findById</span>(req.params.id);
-            <br />
-            &nbsp;&nbsp;<span style={{ color: "#8B5CF6" }}>
-              if
-            </span> (!user) <span style={{ color: "#8B5CF6" }}>return</span>{" "}
-            res.<span style={{ color: "#2563EB" }}>status</span>(404).
-            <span style={{ color: "#2563EB" }}>json</span>({"{"} msg:{" "}
-            <span style={{ color: "#059669" }}>'User not found'</span> {"}"});
-            <br />
-            &nbsp;&nbsp;res.<span style={{ color: "#2563EB" }}>json</span>
-            (user);
-            <br />
-            {"}"}
-          </div>
-          <p
-            style={{
-              fontSize: "12px",
-              color: "var(--text3)",
-              marginTop: "6px",
-            }}
-          >
-            Fix: Wrap in try/catch and use centralized error handler via{" "}
-            <code
-              style={{
-                color: "var(--accent)",
-                background: "var(--accent-light)",
-                padding: "1px 5px",
-                borderRadius: "3px",
-                fontSize: "11px",
-              }}
-            >
-              next(err)
-            </code>{" "}
-            pattern.
-          </p>
+          )}
+
+          {architectureClarity.antiPatterns && architectureClarity.antiPatterns.length > 0 && (
+            <div className="insight-list">
+              {architectureClarity.antiPatterns.map((antiPattern: string, idx: number) => (
+                <div key={idx} className="insight-item">
+                  <div className="i-dot warn">!</div>
+                  <div className="i-text">
+                    <strong>Anti-pattern detected:</strong> {antiPattern}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="panel">
         <div className="panel-head">
-          <div className="panel-title">Commit Authenticity</div>
-          <div className="chip amber">68 / 100</div>
+          <div className="panel-title">Code Quality Breakdown</div>
+          <div className={`chip ${codeQuality.overall >= 70 ? 'green' : codeQuality.overall >= 50 ? 'amber' : 'red'}`}>
+            {codeQuality.overall} / 100
+          </div>
         </div>
         <div className="panel-body">
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3,1fr)",
-              gap: "10px",
-              marginBottom: "16px",
-            }}
-          >
-            <div
-              style={{
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: "7px",
-                padding: "12px",
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "24px",
-                  fontWeight: "700",
-                  letterSpacing: "-1px",
-                }}
-              >
-                6
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px", marginBottom: "16px" }}>
+            {[
+              { label: "Readability", score: codeQuality.readability },
+              { label: "Maintainability", score: codeQuality.maintainability },
+              { label: "Error Handling", score: codeQuality.errorHandling },
+              { label: "Security", score: codeQuality.security },
+              { label: "Performance", score: codeQuality.performance },
+              { label: "Documentation", score: codeQuality.documentation }
+            ].map(({ label, score }) => (
+              <div key={label} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: "500" }}>{label}</span>
+                  <span style={{ fontSize: "14px", fontWeight: "600", color: score >= 70 ? "#27AE60" : score >= 50 ? "#E67E22" : "#E74C3C" }}>
+                    {score}
+                  </span>
+                </div>
+                <div style={{ background: "var(--border2)", borderRadius: "3px", height: "4px", overflow: "hidden" }}>
+                  <div style={{ 
+                    background: score >= 70 ? "#27AE60" : score >= 50 ? "#E67E22" : "#E74C3C", 
+                    height: "100%", 
+                    width: `${score}%`,
+                    transition: "width 0.3s ease"
+                  }}></div>
+                </div>
               </div>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "var(--text3)",
-                  marginTop: "2px",
-                }}
-              >
-                Total Commits
-              </div>
-            </div>
-            <div
-              style={{
-                background: "#FEF9F0",
-                border: "1px solid #F5E0A0",
-                borderRadius: "7px",
-                padding: "12px",
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "24px",
-                  fontWeight: "700",
-                  letterSpacing: "-1px",
-                  color: "#E67E22",
-                }}
-              >
-                3
-              </div>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "var(--text3)",
-                  marginTop: "2px",
-                }}
-              >
-                Bulk Commits
-              </div>
-            </div>
-            <div
-              style={{
-                background: "#F4FCF8",
-                border: "1px solid #C8F0DF",
-                borderRadius: "7px",
-                padding: "12px",
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "24px",
-                  fontWeight: "700",
-                  letterSpacing: "-1px",
-                  color: "#27AE60",
-                }}
-              >
-                21
-              </div>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "var(--text3)",
-                  marginTop: "2px",
-                }}
-              >
-                Days Span
-              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: "12px", color: "var(--text3)", fontStyle: "italic" }}>
+            {codeQuality.justification}
+          </p>
+        </div>
+      </div>
+
+      {projectAuthenticity && (
+        <div className="panel">
+          <div className="panel-head">
+            <div className="panel-title">Project Authenticity</div>
+            <div className={`chip ${projectAuthenticity.score >= 70 ? 'green' : projectAuthenticity.score >= 50 ? 'amber' : 'red'}`}>
+              {projectAuthenticity.score} / 100
             </div>
           </div>
-          <div className="insight-list">
-            <div className="insight-item">
-              <div className="i-dot warn">~</div>
-              <div className="i-text">
-                Commit <code>a3f21bc</code> added 34 files in one push —
-                suggests code was developed offline and bulk-uploaded.
+          <div className="panel-body">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "16px" }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
+                <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>
+                  {projectAuthenticity.signals?.commitDiversity || 0}
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>
+                  Commit Diversity
+                </div>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
+                <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>
+                  {projectAuthenticity.signals?.timeSpread || 0}
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>
+                  Time Spread
+                </div>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
+                <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>
+                  {projectAuthenticity.signals?.messageQuality || 0}
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>
+                  Message Quality
+                </div>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
+                <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>
+                  {projectAuthenticity.signals?.codeEvolution || 0}
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>
+                  Code Evolution
+                </div>
               </div>
             </div>
-            <div className="insight-item">
-              <div className="i-dot pos">✓</div>
-              <div className="i-text">
-                3 incremental commits show genuine development: "Add auth
-                middleware", "Fix CORS issue", "Connect MongoDB atlas".
+            
+            {projectAuthenticity.warnings && projectAuthenticity.warnings.length > 0 && (
+              <div className="insight-list">
+                {projectAuthenticity.warnings.map((warning: string, idx: number) => (
+                  <div key={idx} className="insight-item">
+                    <div className="i-dot warn">⚠</div>
+                    <div className="i-text">{warning}</div>
+                  </div>
+                ))}
               </div>
+            )}
+            
+            <div style={{ fontSize: "12px", color: "var(--text3)", marginTop: "12px", fontStyle: "italic" }}>
+              Confidence: {projectAuthenticity.confidence}
             </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
 };

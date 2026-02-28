@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getAnalyses, getUserProgress, UserProgress } from "../../services/api";
+import api from "../../services/api";
 import SkillProgressionPanel from "./SkillProgressionPanel";
 
 interface AnalysisItem {
@@ -12,30 +12,36 @@ interface AnalysisItem {
 
 const HistoryTab: React.FC = () => {
   const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
-  const [progress, setProgress] = useState<UserProgress | null>(null);
+  const [progress, setProgress] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [analysesRes, progressRes] = await Promise.all([
-          getAnalyses(),
-          getUserProgress(),
-        ]);
-        // Handle both array and paginated responses
-        const items = Array.isArray(analysesRes)
-          ? analysesRes
-          : (analysesRes as any).items || [];
-        setAnalyses(items);
-        setProgress(progressRes);
-      } catch (err) {
-        console.error('Failed to load history:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
   }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [analysesRes, progressRes] = await Promise.all([
+        api.getAnalyses(),
+        api.getUserProgress().catch(() => null) // Progress is optional
+      ]);
+      
+      // Handle both array and paginated responses
+      const items = Array.isArray(analysesRes)
+        ? analysesRes
+        : (analysesRes as any).items || [];
+      setAnalyses(items);
+      setProgress(progressRes);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load history:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load history');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -56,6 +62,15 @@ const HistoryTab: React.FC = () => {
     if (item.repositoryName) return item.repositoryName;
     const parts = item.repositoryUrl.split('/');
     return parts[parts.length - 1] || item.repositoryUrl;
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return { color: '#27AE60', bg: '#E8F8F0' };
+      case 'processing': return { color: '#3498DB', bg: '#EBF3FD' };
+      case 'failed': return { color: '#E74C3C', bg: '#FDEBEB' };
+      default: return { color: '#E67E22', bg: '#FEF3DC' };
+    }
   };
 
   if (loading) {
@@ -82,6 +97,17 @@ const HistoryTab: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <>
+        <div className="view-title">Analysis History</div>
+        <div style={{ background: '#FEF4F4', border: '1px solid #FACACA', borderRadius: '8px', padding: '12px 16px', color: '#C0392B', fontSize: '13px' }}>
+          {error}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="view-title">Analysis History</div>
@@ -90,71 +116,79 @@ const HistoryTab: React.FC = () => {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {analyses.map((item) => (
-          <div
-            key={item.analysisId}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "14px",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "10px",
-              padding: "14px 18px",
-              cursor: "pointer",
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "var(--border)";
-            }}
-          >
+        {analyses.map((item) => {
+          const statusStyle = getStatusColor(item.status);
+          return (
             <div
+              key={item.analysisId}
               style={{
-                width: "36px",
-                height: "36px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                fontSize: "16px",
-                flexShrink: 0,
+                gap: "14px",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "14px 18px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--border)";
+              }}
+              onClick={() => {
+                // Navigate to analysis (you can implement this)
+                console.log('Navigate to analysis:', item.analysisId);
               }}
             >
-              📁
-            </div>
-            <div style={{ flex: 1 }}>
               <div
                 style={{
-                  fontSize: "13.5px",
-                  fontWeight: "600",
-                  marginBottom: "2px",
+                  width: "36px",
+                  height: "36px",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "16px",
+                  flexShrink: 0,
                 }}
               >
-                {getRepoName(item)}
+                📁
               </div>
-              <div style={{ fontSize: "11.5px", color: "var(--text3)" }}>
-                {item.status} · {formatDate(item.createdAt)}
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: "13.5px",
+                    fontWeight: "600",
+                    marginBottom: "2px",
+                  }}
+                >
+                  {getRepoName(item)}
+                </div>
+                <div style={{ fontSize: "11.5px", color: "var(--text3)" }}>
+                  {formatDate(item.createdAt)}
+                </div>
+              </div>
+              <div
+                style={{
+                  fontSize: "11px",
+                  fontWeight: "500",
+                  color: statusStyle.color,
+                  background: statusStyle.bg,
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  textTransform: 'capitalize'
+                }}
+              >
+                {item.status}
               </div>
             </div>
-            <div
-              style={{
-                fontSize: "11px",
-                fontWeight: "500",
-                color: item.status === 'completed' ? '#27AE60' : '#E67E22',
-                background: item.status === 'completed' ? '#E8F8F0' : '#FEF3DC',
-                padding: '4px 10px',
-                borderRadius: '6px',
-              }}
-            >
-              {item.status}
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {analyses.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text3)', fontSize: '13px' }}>
             No analyses yet. Start by analyzing a repository.
