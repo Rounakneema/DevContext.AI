@@ -1,6 +1,11 @@
 import React, { useState } from "react";
 
-const InterviewTab: React.FC = () => {
+interface InterviewTabProps {
+  analysisData: any;
+  analysisId: string;
+}
+
+const InterviewTab: React.FC<InterviewTabProps> = ({ analysisData, analysisId }) => {
   const [isLiveSession, setIsLiveSession] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [answer, setAnswer] = useState("");

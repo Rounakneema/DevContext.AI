@@ -51,10 +51,11 @@ const LoadingPage: React.FC = () => {
         
         if (!isMounted) return;
         
-        setAnalysisId(result.analysisId);
+        const currentAnalysisId = result.analysisId;
+        setAnalysisId(currentAnalysisId);
 
         // Poll for completion
-        await api.pollAnalysis(result.analysisId, (status) => {
+        await api.pollAnalysis(currentAnalysisId, (status) => {
           if (!isMounted) return;
 
           // Update stages based on completedStages
@@ -88,7 +89,7 @@ const LoadingPage: React.FC = () => {
 
         // Analysis complete - navigate to dashboard
         if (isMounted) {
-          navigate(`/dashboard?analysisId=${result.analysisId}`);
+          navigate(`/dashboard?analysisId=${currentAnalysisId}`);
         }
 
       } catch (err: any) {

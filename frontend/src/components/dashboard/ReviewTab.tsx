@@ -1,6 +1,10 @@
 import React from "react";
 
-const ReviewTab: React.FC = () => {
+interface ReviewTabProps {
+  analysisData: any;
+}
+
+const ReviewTab: React.FC<ReviewTabProps> = ({ analysisData }) => {
   return (
     <>
       <div className="view-title">Project Review</div>

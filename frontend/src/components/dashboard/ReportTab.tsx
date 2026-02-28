@@ -1,6 +1,10 @@
 import React from "react";
 
-const ReportTab: React.FC = () => {
+interface ReportTabProps {
+  analysisData: any;
+}
+
+const ReportTab: React.FC<ReportTabProps> = ({ analysisData }) => {
   return (
     <>
       <div className="view-title">Intelligence Report</div>

@@ -1,6 +1,10 @@
 import React from "react";
 
-const OverviewTab: React.FC = () => {
+interface OverviewTabProps {
+  analysisData: any;
+}
+
+const OverviewTab: React.FC<OverviewTabProps> = ({ analysisData }) => {
   return (
     <>
       <div
