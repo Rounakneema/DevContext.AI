@@ -177,8 +177,9 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* File Explorer - Show only for Analysis tabs */}
-      {!practiceTabIds.includes(activeTab) && (
+      {!practiceTabIds.includes(activeTab) && analysisId && (
         <FileExplorer
+          analysisId={analysisId}
           onSelectionChange={(files) => {
             console.log("Selected files for analysis:", files);
           }}
@@ -188,13 +189,13 @@ const DashboardPage: React.FC = () => {
       {/* Dash Main Content */}
       <div className="dash-main">
         <div className={`tab-view ${activeTab === "overview" ? "active" : ""}`}>
-          <OverviewTab />
+          {analysisId ? <OverviewTab analysisId={analysisId} /> : <div>No analysis selected</div>}
         </div>
         <div className={`tab-view ${activeTab === "review" ? "active" : ""}`}>
-          <ReviewTab />
+          {analysisId ? <ReviewTab analysisId={analysisId} /> : <div>No analysis selected</div>}
         </div>
         <div className={`tab-view ${activeTab === "report" ? "active" : ""}`}>
-          <ReportTab />
+          {analysisId ? <ReportTab analysisId={analysisId} /> : <div>No analysis selected</div>}
         </div>
         <div
           className={`tab-view ${activeTab === "interview" ? "active" : ""}`}
