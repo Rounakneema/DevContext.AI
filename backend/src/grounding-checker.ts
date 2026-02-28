@@ -321,3 +321,33 @@ export class GroundingChecker {
     return lines.join('\n');
   }
 }
+
+  /**
+   * Validate Intelligence Report grounding
+   */
+  validateIntelligenceReport(
+    report: any,
+    userCodeFiles: string[]
+  ): GroundingResult {
+    const allReferences: string[] = [];
+
+    // Collect file references from design decisions
+    if (report.designDecisions) {
+      for (const decision of report.designDecisions) {
+        if (decision.fileReferences) {
+          allReferences.push(...decision.fileReferences);
+        }
+      }
+    }
+
+    // Collect file references from scalability bottlenecks
+    if (report.scalabilityAnalysis?.bottlenecks) {
+      for (const bottleneck of report.scalabilityAnalysis.bottlenecks) {
+        if (bottleneck.fileReferences) {
+          allReferences.push(...bottleneck.fileReferences);
+        }
+      }
+    }
+
+    return this.validateFileReferences(allReferences, userCodeFiles);
+  }

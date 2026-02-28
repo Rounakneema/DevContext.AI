@@ -10,6 +10,7 @@ export interface AnalysisRecord {
   updatedAt: string;
   completedStages: string[];
   projectReview?: ProjectReview;
+  intelligenceReport?: IntelligenceReport;
   interviewSimulation?: InterviewSimulation;
   errorMessage?: string;
   ttl: number;
@@ -93,4 +94,44 @@ export interface AnswerEvaluation {
   exampleAnswer: string;
   keyTerms: string[];
   feedback: string;
+}
+
+export interface IntelligenceReport {
+  architectureOverview: {
+    description: string;
+    components: string[];
+    dataFlow: string;
+    patterns: string[];
+  };
+  designDecisions: DesignDecision[];
+  technicalTradeoffs: TechnicalTradeoff[];
+  scalabilityAnalysis: ScalabilityAnalysis;
+  resumeBullets: string[];
+}
+
+export interface DesignDecision {
+  decision: string;
+  rationale: string;
+  implications: string;
+  fileReferences: string[];
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface TechnicalTradeoff {
+  tradeoff: string;
+  chosenApproach: string;
+  pros: string[];
+  cons: string[];
+  impact: string;
+}
+
+export interface ScalabilityAnalysis {
+  currentLimitations: string[];
+  bottlenecks: Array<{
+    area: string;
+    description: string;
+    severity: 'high' | 'medium' | 'low';
+    fileReferences: string[];
+  }>;
+  recommendations: string[];
 }

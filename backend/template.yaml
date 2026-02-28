@@ -154,6 +154,7 @@ Resources:
         Variables:
           REPO_PROCESSOR_FUNCTION: !Ref RepoProcessorFunction
           STAGE1_FUNCTION: !Ref Stage1Function
+          STAGE2_FUNCTION: !Ref Stage2Function
           STAGE3_FUNCTION: !Ref Stage3Function
       Policies:
         - DynamoDBCrudPolicy:
@@ -212,6 +213,23 @@ Resources:
       CodeUri: dist/
       Handler: stage1-review.handler
       Timeout: 120
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnalysesTable
+        - S3ReadPolicy:
+            BucketName: !Ref CacheBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+
+  Stage2Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: stage2-intelligence.handler
+      Timeout: 180
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AnalysesTable

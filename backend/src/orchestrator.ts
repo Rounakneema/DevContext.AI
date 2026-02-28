@@ -11,6 +11,7 @@ const lambdaClient = new LambdaClient({});
 const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
 const REPO_PROCESSOR_FUNCTION = process.env.REPO_PROCESSOR_FUNCTION!;
 const STAGE1_FUNCTION = process.env.STAGE1_FUNCTION!;
+const STAGE2_FUNCTION = process.env.STAGE2_FUNCTION!;
 const STAGE3_FUNCTION = process.env.STAGE3_FUNCTION!;
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -113,7 +114,7 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
     
     console.log('Repository processed. Token budget:', repoResult.budgetStats);
     
-    // Step 2: Stage 1 (Project Review) and Stage 3 (Interview) in parallel
+    // Step 2: Stage 1 (Project Review), Stage 2 (Intelligence Report), and Stage 3 (Interview) in parallel
     const stage1Promise = invokeAsync(STAGE1_FUNCTION, {
       analysisId,
       projectContextMap: repoResult.projectContextMap,
@@ -123,6 +124,16 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
       console.log('Stage 1 completed');
       await updateStageCompletion(analysisId, 'project_review');
       return stage1Result;
+    });
+    
+    const stage2Promise = invokeAsync(STAGE2_FUNCTION, {
+      analysisId,
+      projectContextMap: repoResult.projectContextMap,
+      s3Key: repoResult.s3Key
+    }).then(async (stage2Result) => {
+      console.log('Stage 2 completed');
+      await updateStageCompletion(analysisId, 'intelligence_report');
+      return stage2Result;
     });
     
     const stage3Promise = invokeAsync(STAGE3_FUNCTION, {
@@ -135,7 +146,7 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
       return stage3Result;
     });
     
-    await Promise.all([stage1Promise, stage3Promise]);
+    await Promise.all([stage1Promise, stage2Promise, stage3Promise]);
     
     // Update final status
     await dynamoClient.send(new PutCommand({
