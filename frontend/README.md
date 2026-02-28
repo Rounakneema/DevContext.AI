@@ -1,46 +1,110 @@
-# Getting Started with Create React App
+# DevContext Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React-based frontend for the DevContext AI code analysis platform.
+
+## Quick Start
+
+```bash
+npm install
+npm start
+```
+
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
 ## Available Scripts
 
-In the project directory, you can run:
+- `npm start` - Runs the app in development mode
+- `npm test` - Launches the test runner
+- `npm run build` - Builds the app for production
+- `npm run eject` - Ejects from Create React App (one-way operation)
 
-### `npm start`
+## Configuration
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+Copy `.env.example` to `.env` and configure:
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+```bash
+REACT_APP_API_URL=https://your-api-gateway-url.amazonaws.com/prod
+REACT_APP_COGNITO_USER_POOL_ID=your-user-pool-id
+REACT_APP_COGNITO_CLIENT_ID=your-client-id
+REACT_APP_COGNITO_REGION=ap-southeast-1
+```
 
-### `npm test`
+## Authentication
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+The frontend uses AWS Cognito for authentication. See `SETUP.md` for detailed setup instructions.
 
-### `npm run build`
+### Common Issues
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+#### "Failed to fetch" Error
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+This error occurs when the backend API requires authentication but no valid token is provided.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+**Solutions:**
 
-### `npm run eject`
+1. **Test Backend Directly** (Recommended for development):
+```bash
+cd backend
+node test-api.js
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+2. **Get a Cognito Token**:
+```bash
+cd backend
+node set-password.js  # Set password for your user
+node get-token.js     # Get ID token
+```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+3. **Temporarily Disable Auth** (Development only):
+   - Comment out the `Auth` section in `backend/template.yaml`
+   - Use `api-no-auth.ts` in the frontend
+   - Redeploy: `cd backend && npm run build && sam deploy`
+   - **Remember to re-enable auth after testing!**
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+## Project Structure
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+```
+frontend/
+├── public/          # Static files
+├── src/
+│   ├── components/  # Reusable components
+│   │   └── dashboard/  # Dashboard tabs
+│   ├── contexts/    # React contexts (Auth)
+│   ├── pages/       # Page components
+│   ├── services/    # API services
+│   └── App.tsx      # Main app component
+```
+
+## Testing
+
+### Backend Testing (No Frontend Required)
+
+```bash
+cd backend
+node test-api.js           # Test full API
+node check-dynamodb.js     # Check analysis status
+node view-results.js       # View detailed results
+```
+
+### Frontend UI Testing
+
+Use mock data in `src/mock-api-responses.json` for UI testing without backend calls.
+
+## API Integration
+
+The frontend communicates with the backend API using these endpoints:
+
+- `POST /analyze` - Start new analysis
+- `GET /analysis/{id}` - Get full analysis results
+- `GET /analysis/{id}/status` - Get analysis status
+- `GET /analyses` - List user's analyses
+- `GET /analysis/{id}/events` - Get analysis events
+- `GET /analysis/{id}/cost` - Get cost breakdown
+- `DELETE /analysis/{id}` - Delete analysis
+
+All requests require `Authorization: Bearer <token>` header.
 
 ## Learn More
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+- [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started)
+- [React documentation](https://reactjs.org/)
+- [AWS Cognito documentation](https://docs.aws.amazon.com/cognito/)

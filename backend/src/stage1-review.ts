@@ -1,16 +1,14 @@
 import { Handler } from 'aws-lambda';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import { ProjectReview, ProjectContextMap } from './types';
+import { ProjectContextMap } from './types';
 import { GroundingChecker } from './grounding-checker';
+import * as DB from './db-utils';
+import { v4 as uuidv4 } from 'uuid';
 
 const bedrockClient = new BedrockRuntimeClient({ region: 'ap-southeast-1' });
-const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3Client = new S3Client({});
 
-const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
 // Using Amazon Nova 2 Lite (Global) - verified working, no payment required
 const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
@@ -25,7 +23,7 @@ interface Stage1Event {
 interface Stage1Response {
   success: boolean;
   analysisId: string;
-  projectReview?: ProjectReview;
+  projectReview?: any;
   error?: string;
 }
 
@@ -54,8 +52,8 @@ export const handler: Handler<Stage1Event, Stage1Response> = async (event) => {
       // Log but continue - we'll improve this in self-correction loop
     }
     
-    // Save to DynamoDB
-    await saveProjectReview(analysisId, projectReview);
+    // Save to DynamoDB using db-utils
+    await DB.saveProjectReview(analysisId, projectReview);
     
     console.log(`Stage 1 completed for: ${analysisId}`);
     
@@ -110,9 +108,9 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
     }
   }
   
-  // If no files were loaded, return a minimal context
+  // CRITICAL: Fail if no code was loaded
   if (fileContents.length === 0) {
-    return `Project has ${contextMap.totalFiles} files. Frameworks: ${contextMap.frameworks.join(', ') || 'None'}`;
+    throw new Error('Failed to load any code files from S3. Repository processing may have failed.');
   }
   
   return fileContents.join('\n\n');
@@ -121,7 +119,7 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
 async function generateProjectReview(
   contextMap: ProjectContextMap,
   codeContext: string
-): Promise<ProjectReview> {
+): Promise<any> {
   const prompt = `You are an expert code reviewer evaluating a GitHub repository for hiring purposes.
 
 Repository Context:
@@ -144,40 +142,78 @@ Task: Generate a comprehensive project review covering:
 Be direct and honest. If code quality is poor (below 40), explain specific issues.
 Reference specific files for all claims.
 
-Respond in JSON format:
+Respond in JSON format matching this schema:
 {
   "codeQuality": {
-    "score": 75,
+    "overall": 75,
     "readability": 80,
     "maintainability": 70,
-    "bestPractices": 75,
+    "testCoverage": 0,
+    "documentation": 60,
+    "errorHandling": 50,
+    "security": 70,
+    "performance": 75,
     "justification": "Clear variable names and consistent formatting..."
   },
-  "employabilitySignal": {
+  "architectureClarity": {
     "score": 70,
-    "justification": "Demonstrates solid fundamentals...",
-    "productionReadiness": "Needs error handling and tests..."
+    "componentOrganization": "Well-organized module structure",
+    "separationOfConcerns": "Good separation between layers",
+    "designPatterns": ["MVC", "Repository"],
+    "antiPatterns": []
+  },
+  "employabilitySignal": {
+    "overall": 70,
+    "productionReadiness": 65,
+    "professionalStandards": 75,
+    "complexity": "moderate",
+    "companyTierMatch": {
+      "bigTech": 60,
+      "productCompanies": 75,
+      "startups": 80,
+      "serviceCompanies": 70
+    },
+    "justification": "Demonstrates solid fundamentals..."
   },
   "strengths": [
     {
+      "strengthId": "uuid",
       "pattern": "Clean separation of concerns",
       "description": "Well-organized module structure",
-      "fileReferences": ["src/main.py", "src/utils.py"]
+      "impact": "high",
+      "fileReferences": [{"file": "src/main.py"}],
+      "groundingConfidence": "verified"
     }
   ],
-  "improvementAreas": [
+  "weaknesses": [
     {
+      "weaknessId": "uuid",
       "issue": "Missing error handling",
-      "priority": "high",
-      "actionableSuggestion": "Add try-catch blocks in API calls",
-      "codeExample": "try { await api.call() } catch (err) { handleError(err) }"
+      "severity": "high",
+      "impact": "Could cause crashes in production",
+      "fileReferences": [{"file": "src/api.py"}]
     }
   ],
+  "criticalIssues": [],
   "projectAuthenticity": {
     "score": 75,
-    "commitDiversity": "Moderate - appears to be genuine development",
-    "warning": null
-  }
+    "confidence": "medium",
+    "signals": {
+      "commitDiversity": 70,
+      "timeSpread": 60,
+      "messageQuality": 80,
+      "codeEvolution": 75
+    },
+    "warnings": []
+  },
+  "modelMetadata": {
+    "modelId": "${MODEL_ID}",
+    "tokensIn": 0,
+    "tokensOut": 0,
+    "inferenceTimeMs": 0,
+    "temperature": 0.3
+  },
+  "generatedAt": "${new Date().toISOString()}"
 }`;
 
   const requestBody = {
@@ -204,7 +240,9 @@ Respond in JSON format:
     body: JSON.stringify(requestBody)
   });
   
+  const startTime = Date.now();
   const response = await bedrockClient.send(command);
+  const inferenceTimeMs = Date.now() - startTime;
   const responseBody = JSON.parse(new TextDecoder().decode(response.body));
   
   // Extract JSON from response (Amazon Nova format)
@@ -215,21 +253,40 @@ Respond in JSON format:
     throw new Error('Failed to parse JSON from Bedrock response');
   }
   
-  return JSON.parse(jsonMatch[0]);
-}
-
-async function saveProjectReview(analysisId: string, projectReview: ProjectReview): Promise<void> {
-  const command = new UpdateCommand({
-    TableName: ANALYSES_TABLE,
-    Key: { analysisId },
-    UpdateExpression: 'SET projectReview = :review, completedStages = list_append(if_not_exists(completedStages, :empty), :stage), updatedAt = :now',
-    ExpressionAttributeValues: {
-      ':review': projectReview,
-      ':stage': ['project_review'],
-      ':empty': [],
-      ':now': new Date().toISOString()
-    }
-  });
+  const parsed = JSON.parse(jsonMatch[0]);
   
-  await dynamoClient.send(command);
+  // Add UUIDs to strengths and weaknesses if missing
+  if (parsed.strengths) {
+    parsed.strengths = parsed.strengths.map((s: any) => ({
+      ...s,
+      strengthId: s.strengthId || uuidv4()
+    }));
+  }
+  
+  if (parsed.weaknesses) {
+    parsed.weaknesses = parsed.weaknesses.map((w: any) => ({
+      ...w,
+      weaknessId: w.weaknessId || uuidv4()
+    }));
+  }
+  
+  if (parsed.criticalIssues) {
+    parsed.criticalIssues = parsed.criticalIssues.map((c: any) => ({
+      ...c,
+      issueId: c.issueId || uuidv4()
+    }));
+  }
+  
+  // Add metadata
+  parsed.modelMetadata = {
+    modelId: MODEL_ID,
+    tokensIn: requestBody.inferenceConfig.max_new_tokens,
+    tokensOut: content.length / 4, // Rough estimate
+    inferenceTimeMs,
+    temperature: requestBody.inferenceConfig.temperature
+  };
+  
+  parsed.generatedAt = new Date().toISOString();
+  
+  return parsed;
 }

@@ -1,13 +1,9 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
-import { AnswerEvaluation, AnalysisRecord } from './types';
+import * as DB from './db-utils';
+import { v4 as uuidv4 } from 'uuid';
 
 const bedrockClient = new BedrockRuntimeClient({ region: 'ap-southeast-1' });
-const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-
-const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
 // Using Amazon Nova 2 Lite (Global) - verified working
 const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
 
@@ -25,16 +21,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
     
-    // Get analysis from DynamoDB
-    const getCommand = new GetCommand({
-      TableName: ANALYSES_TABLE,
-      Key: { analysisId }
-    });
+    // Get analysis from DynamoDB using db-utils
+    const fullAnalysis = await DB.getFullAnalysis(analysisId);
     
-    const result = await dynamoClient.send(getCommand);
-    const analysis = result.Item as AnalysisRecord;
-    
-    if (!analysis || !analysis.interviewSimulation) {
+    if (!fullAnalysis || !fullAnalysis.interviewSimulation) {
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -43,7 +33,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
     
     // Find the question
-    const question = analysis.interviewSimulation.questions.find(q => q.questionId === questionId);
+    const question = fullAnalysis.interviewSimulation.questions.find((q: any) => q.questionId === questionId);
     
     if (!question) {
       return {
@@ -54,7 +44,25 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
     
     // Evaluate answer
-    const evaluation = await evaluateAnswer(question.question, question.expectedTopics, answer);
+    const evaluation = await evaluateAnswer(question.question, question.expectedAnswer?.keyPoints || [], answer);
+    
+    // Note: This endpoint is deprecated - use POST /interview/sessions/{sessionId}/answer instead
+    // For backward compatibility, we'll create a temporary session
+    console.warn('Using deprecated answer evaluation endpoint. Use /interview/sessions/{sessionId}/answer instead.');
+    
+    // Save question attempt using db-utils (requires proper session)
+    // TODO: Remove this endpoint and require clients to use session-based evaluation
+    const tempSessionId = `temp-${analysisId}-${Date.now()}`;
+    await DB.saveQuestionAttempt(tempSessionId, {
+      attemptId: uuidv4(),
+      sessionId: tempSessionId,
+      questionId,
+      attemptNumber: 1,
+      userAnswer: answer,
+      submittedAt: new Date().toISOString(),
+      evaluation,
+      timeSpentSeconds: 0
+    });
     
     return {
       statusCode: 200,
@@ -80,7 +88,7 @@ async function evaluateAnswer(
   question: string,
   expectedTopics: string[],
   userAnswer: string
-): Promise<AnswerEvaluation> {
+): Promise<any> {
   const prompt = `You are an expert technical interviewer evaluating a candidate's answer.
 
 Question: ${question}
@@ -89,30 +97,37 @@ Expected Topics: ${expectedTopics.join(', ')}
 Candidate Answer: ${userAnswer}
 
 Task: Evaluate the answer and provide:
-1. Score (0-100): Based on technical accuracy, completeness, clarity
-2. Strengths: Specific points the candidate explained well
-3. Weaknesses: Missing concepts or incorrect statements
-4. Missing Points: Key topics not addressed
-5. Example Answer: Strong reference answer for comparison
-6. Key Terms: Technical terms the candidate should have mentioned
-7. Actionable Feedback: Specific suggestions for improvement
-
-Be constructive but honest. Highlight both strengths and areas for growth.
+1. Overall Score (0-100): Based on technical accuracy, completeness, clarity
+2. Criteria Scores: Technical accuracy, completeness, clarity, depth
+3. Strengths: Specific points the candidate explained well
+4. Weaknesses: Missing concepts or incorrect statements
+5. Missing Points: Key topics not addressed
+6. Comparison: Weak vs strong answer examples
+7. Feedback: Specific suggestions for improvement
 
 Respond in JSON format:
 {
-  "score": 75,
-  "criteriaBreakdown": {
+  "overallScore": 75,
+  "criteriaScores": {
     "technicalAccuracy": 80,
     "completeness": 70,
-    "clarity": 75
+    "clarity": 75,
+    "depthOfUnderstanding": 70
   },
   "strengths": ["Mentioned key concept X", "Explained Y clearly"],
-  "weaknesses": ["Missed important aspect Z", "Incorrect statement about W"],
-  "missingPoints": ["Should have discussed A", "Didn't mention B"],
-  "exampleAnswer": "A strong answer would explain...",
-  "keyTerms": ["term1", "term2", "term3"],
-  "feedback": "Your answer shows good understanding of... However, consider..."
+  "weaknesses": ["Missed important aspect Z"],
+  "missingKeyPoints": ["Should have discussed A", "Didn't mention B"],
+  "comparison": {
+    "weakAnswer": "A weak answer would just say...",
+    "strongAnswer": "A strong answer would explain...",
+    "yourAnswerCategory": "acceptable"
+  },
+  "feedback": "Your answer shows good understanding of... However, consider...",
+  "improvementSuggestions": ["Study X", "Practice Y"],
+  "modelId": "${MODEL_ID}",
+  "tokensIn": 0,
+  "tokensOut": 0,
+  "inferenceTimeMs": 0
 }`;
 
   const requestBody = {
@@ -139,7 +154,9 @@ Respond in JSON format:
     body: JSON.stringify(requestBody)
   });
   
+  const startTime = Date.now();
   const response = await bedrockClient.send(command);
+  const inferenceTimeMs = Date.now() - startTime;
   const responseBody = JSON.parse(new TextDecoder().decode(response.body));
   
   const content = responseBody.output?.message?.content?.[0]?.text || '';
@@ -151,8 +168,11 @@ Respond in JSON format:
   
   const evaluation = JSON.parse(jsonMatch[0]);
   
-  return {
-    questionId: '', // Will be set by caller
-    ...evaluation
-  };
+  // Add metadata
+  evaluation.modelId = MODEL_ID;
+  evaluation.tokensIn = requestBody.inferenceConfig.max_new_tokens;
+  evaluation.tokensOut = content.length / 4;
+  evaluation.inferenceTimeMs = inferenceTimeMs;
+  
+  return evaluation;
 }

@@ -1,19 +1,31 @@
 import { Handler } from 'aws-lambda';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import { IntelligenceReport, ProjectContextMap, DesignDecision, TechnicalTradeoff, ScalabilityAnalysis } from './types';
+import { ProjectContextMap } from './types';
 import { GroundingChecker } from './grounding-checker';
+import * as DB from './db-utils';
+import { v4 as uuidv4 } from 'uuid';
 
 const bedrockClient = new BedrockRuntimeClient({ region: 'ap-southeast-1' });
-const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3Client = new S3Client({});
 
-const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
-// Using Amazon Nova 2 Lite for complex reasoning (best available without payment)
+// Using Amazon Nova 2 Lite (Global) - cost-effective for deep reasoning
 const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
+
+/**
+ * Utility: Ensure all items in array have IDs
+ */
+function ensureIdsInArray<T extends Record<string, any>>(
+  array: T[] | undefined,
+  idField: keyof T
+): T[] {
+  if (!array) return [];
+  return array.map(item => ({
+    ...item,
+    [idField]: item[idField] || uuidv4()
+  }));
+}
 
 interface Stage2Event {
   analysisId: string;
@@ -24,7 +36,7 @@ interface Stage2Event {
 interface Stage2Response {
   success: boolean;
   analysisId: string;
-  intelligenceReport?: IntelligenceReport;
+  intelligenceReport?: any;
   error?: string;
 }
 
@@ -56,8 +68,8 @@ export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
       console.warn('⚠️ Insufficient grounding detected in intelligence report');
     }
     
-    // Save to DynamoDB
-    await saveIntelligenceReport(analysisId, intelligenceReport);
+    // Save to DynamoDB using db-utils
+    await DB.saveIntelligenceReport(analysisId, intelligenceReport);
     
     console.log(`Stage 2 completed for: ${analysisId}`);
     
@@ -110,8 +122,9 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
     }
   }
   
+  // CRITICAL: Fail if no code was loaded
   if (fileContents.length === 0) {
-    return `Project has ${contextMap.totalFiles} files. Frameworks: ${contextMap.frameworks.join(', ') || 'None'}`;
+    throw new Error('Failed to load any code files from S3 for Stage 2. Cannot generate intelligence report without code.');
   }
   
   return fileContents.join('\n\n');
@@ -120,7 +133,7 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
 async function generateIntelligenceReport(
   contextMap: ProjectContextMap,
   codeContext: string
-): Promise<IntelligenceReport> {
+): Promise<any> {
   const prompt = `You are a senior software architect analyzing a codebase for an engineering intelligence report.
 
 Repository Context:
@@ -161,47 +174,135 @@ Task: Perform a deep architectural analysis using Chain-of-Thought reasoning.
 
 Respond in JSON format:
 {
-  "architectureOverview": {
-    "description": "High-level architecture description...",
-    "components": ["Component1", "Component2"],
-    "dataFlow": "Description of how data flows through the system...",
-    "patterns": ["Pattern1", "Pattern2"]
+  "systemArchitecture": {
+    "overview": "High-level architecture description...",
+    "layers": [
+      {
+        "name": "Frontend",
+        "components": ["Component1"],
+        "responsibilities": ["Handle UI"],
+        "fileReferences": [{"file": "src/app.js"}]
+      }
+    ],
+    "componentDiagram": "",
+    "dataFlowDiagram": "",
+    "architecturalPatterns": [
+      {
+        "name": "MVC",
+        "description": "Model-View-Controller pattern",
+        "implementation": "Separates concerns",
+        "fileReferences": [{"file": "src/controllers/"}]
+      }
+    ],
+    "technologyStack": {
+      "languages": {"JavaScript": 80, "Python": 20},
+      "frameworks": ["React", "Express"],
+      "databases": ["PostgreSQL"],
+      "libraries": {"express": "4.18.2"},
+      "devTools": ["webpack"]
+    }
   },
   "designDecisions": [
     {
-      "decision": "Used microservices architecture",
-      "rationale": "To enable independent scaling and deployment",
-      "implications": "Increased complexity but better scalability",
-      "fileReferences": ["src/services/api.ts", "src/services/auth.ts"],
-      "confidence": "high"
+      "decisionId": "uuid",
+      "title": "Used microservices architecture",
+      "context": "Need for scalability",
+      "decision": "Split into microservices",
+      "rationale": "To enable independent scaling",
+      "consequences": {
+        "positive": ["Better scalability"],
+        "negative": ["Increased complexity"],
+        "mitigations": ["Use service mesh"]
+      },
+      "alternativesConsidered": [],
+      "fileReferences": [{"file": "src/services/api.ts"}],
+      "confidence": "high",
+      "groundingEvidence": []
     }
   ],
   "technicalTradeoffs": [
     {
-      "tradeoff": "REST API vs GraphQL",
+      "tradeoffId": "uuid",
+      "aspect": "REST API vs GraphQL",
       "chosenApproach": "REST API",
-      "pros": ["Simpler to implement", "Better caching"],
-      "cons": ["Over-fetching data", "Multiple endpoints"],
-      "impact": "Moderate - affects API design and client complexity"
+      "tradeoffRationale": "Simpler to implement",
+      "pros": ["Simpler", "Better caching"],
+      "cons": ["Over-fetching"],
+      "impact": {
+        "performance": "neutral",
+        "maintainability": "positive",
+        "scalability": "neutral",
+        "cost": "positive"
+      },
+      "fileReferences": [{"file": "src/api/"}]
     }
   ],
   "scalabilityAnalysis": {
-    "currentLimitations": ["Single database instance", "Synchronous processing"],
+    "currentCapacity": {
+      "estimatedUsers": 1000,
+      "estimatedRPS": 100,
+      "dataVolumeGB": 10
+    },
     "bottlenecks": [
       {
+        "bottleneckId": "uuid",
         "area": "Database queries",
-        "description": "N+1 query problem in user data fetching",
+        "description": "N+1 query problem",
         "severity": "high",
-        "fileReferences": ["src/models/user.ts"]
+        "estimatedImpact": "50% performance degradation",
+        "fileReferences": [{"file": "src/models/user.ts"}]
       }
     ],
-    "recommendations": ["Implement caching layer", "Add database read replicas"]
+    "scalabilityLimitations": ["Single database"],
+    "recommendedImprovements": [
+      {
+        "improvementId": "uuid",
+        "recommendation": "Add caching",
+        "impact": "high",
+        "effort": "medium",
+        "priority": 1,
+        "implementation": "Use Redis",
+        "estimatedGain": "2x performance"
+      }
+    ],
+    "architecturalConstraints": []
+  },
+  "securityPosture": {
+    "overallScore": 70,
+    "vulnerabilities": [],
+    "bestPractices": {
+      "followed": ["Input validation"],
+      "missing": ["Rate limiting"]
+    },
+    "sensitiveDataHandling": "Encrypted at rest",
+    "authenticationMechanism": "JWT",
+    "authorizationPattern": "RBAC"
   },
   "resumeBullets": [
-    "Built scalable REST API handling 10K+ requests/day using Node.js and Express",
-    "Implemented JWT authentication with role-based access control",
-    "Designed microservices architecture enabling independent team deployment"
-  ]
+    {
+      "bulletId": "uuid",
+      "text": "Built scalable REST API handling 10K+ requests/day",
+      "category": "technical",
+      "keywords": ["REST", "API", "scalable"],
+      "verified": true
+    }
+  ],
+  "groundingReport": {
+    "totalClaims": 10,
+    "verifiedClaims": 8,
+    "inferredClaims": 2,
+    "ungroundedClaims": 0,
+    "overallConfidence": "high",
+    "flaggedClaims": []
+  },
+  "modelMetadata": {
+    "modelId": "${MODEL_ID}",
+    "tokensIn": 0,
+    "tokensOut": 0,
+    "inferenceTimeMs": 0,
+    "temperature": 0.4
+  },
+  "generatedAt": "${new Date().toISOString()}"
 }`;
 
   const requestBody = {
@@ -228,7 +329,9 @@ Respond in JSON format:
     body: JSON.stringify(requestBody)
   });
   
+  const startTime = Date.now();
   const response = await bedrockClient.send(command);
+  const inferenceTimeMs = Date.now() - startTime;
   const responseBody = JSON.parse(new TextDecoder().decode(response.body));
   
   const content = responseBody.output?.message?.content?.[0]?.text || '';
@@ -238,24 +341,37 @@ Respond in JSON format:
     throw new Error('Failed to parse JSON from Bedrock response');
   }
   
-  return JSON.parse(jsonMatch[0]);
-}
-
-async function saveIntelligenceReport(
-  analysisId: string,
-  intelligenceReport: IntelligenceReport
-): Promise<void> {
-  const command = new UpdateCommand({
-    TableName: ANALYSES_TABLE,
-    Key: { analysisId },
-    UpdateExpression: 'SET intelligenceReport = :report, completedStages = list_append(if_not_exists(completedStages, :empty), :stage), updatedAt = :now',
-    ExpressionAttributeValues: {
-      ':report': intelligenceReport,
-      ':stage': ['intelligence_report'],
-      ':empty': [],
-      ':now': new Date().toISOString()
-    }
-  });
+  const parsed = JSON.parse(jsonMatch[0]);
   
-  await dynamoClient.send(command);
+  // Add UUIDs where missing using utility function
+  parsed.designDecisions = ensureIdsInArray(parsed.designDecisions, 'decisionId');
+  parsed.technicalTradeoffs = ensureIdsInArray(parsed.technicalTradeoffs, 'tradeoffId');
+  parsed.resumeBullets = ensureIdsInArray(parsed.resumeBullets, 'bulletId');
+  
+  if (parsed.scalabilityAnalysis?.bottlenecks) {
+    parsed.scalabilityAnalysis.bottlenecks = ensureIdsInArray(
+      parsed.scalabilityAnalysis.bottlenecks,
+      'bottleneckId'
+    );
+  }
+  
+  if (parsed.scalabilityAnalysis?.recommendedImprovements) {
+    parsed.scalabilityAnalysis.recommendedImprovements = ensureIdsInArray(
+      parsed.scalabilityAnalysis.recommendedImprovements,
+      'improvementId'
+    );
+  }
+  
+  // Add metadata
+  parsed.modelMetadata = {
+    modelId: MODEL_ID,
+    tokensIn: requestBody.inferenceConfig.max_new_tokens,
+    tokensOut: content.length / 4,
+    inferenceTimeMs,
+    temperature: requestBody.inferenceConfig.temperature
+  };
+  
+  parsed.generatedAt = new Date().toISOString();
+  
+  return parsed;
 }

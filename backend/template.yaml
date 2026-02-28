@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: DevContext AI Backend
+Description: DevContext AI Backend - Production-Grade Normalized Schema
 
 Parameters:
   CognitoUserPoolId:
@@ -19,137 +19,169 @@ Globals:
     Runtime: nodejs18.x
     Environment:
       Variables:
-        ANALYSES_TABLE: !Ref AnalysesTable
-        INTERVIEW_SESSIONS_TABLE: !Ref InterviewSessionsTable
-        USER_PROGRESS_TABLE: !Ref UserProgressTable
-        CACHE_TABLE: !Ref CacheTable
+        MAIN_TABLE: !Ref MainTable
         CACHE_BUCKET: !Ref CacheBucket
         BEDROCK_REGION: ap-southeast-1
         COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
         COGNITO_CLIENT_ID: !Ref CognitoClientId
 
 Resources:
-  # DynamoDB Tables
-  AnalysesTable:
+  # ============================================================================
+  # SINGLE TABLE DESIGN (Normalized with Composite Keys)
+  # ============================================================================
+  
+  MainTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: devcontext-analyses
+      TableName: devcontext-main
       BillingMode: PAY_PER_REQUEST
+      
+      # Primary Key: PK (partition) + SK (sort)
       AttributeDefinitions:
-        - AttributeName: analysisId
+        - AttributeName: PK
           AttributeType: S
-        - AttributeName: userId
+        - AttributeName: SK
           AttributeType: S
-        - AttributeName: createdAt
+        - AttributeName: GSI1PK
           AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+      
       KeySchema:
-        - AttributeName: analysisId
+        - AttributeName: PK
           KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: userId-createdAt-index
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: createdAt
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
-
-  InterviewSessionsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: devcontext-interview-sessions
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: sessionId
-          AttributeType: S
-        - AttributeName: analysisId
-          AttributeType: S
-        - AttributeName: createdAt
-          AttributeType: S
-      KeySchema:
-        - AttributeName: sessionId
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: analysisId-createdAt-index
-          KeySchema:
-            - AttributeName: analysisId
-              KeyType: HASH
-            - AttributeName: createdAt
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-
-  UserProgressTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: devcontext-user-progress
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: userId
-          AttributeType: S
-        - AttributeName: analysisId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: userId
-          KeyType: HASH
-        - AttributeName: analysisId
+        - AttributeName: SK
           KeyType: RANGE
+      
+      # GSI1: User lookups (email, user's analyses, user's sessions)
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        
+        # GSI2: Repository deduplication/caching
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      
+      # TTL for automatic data expiration
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
+      
+      # Point-in-time recovery for production
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      
+      # Server-side encryption
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+      
+      Tags:
+        - Key: Environment
+          Value: Production
+        - Key: Application
+          Value: DevContext-AI
 
-  CacheTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: devcontext-cache
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: repositoryUrl
-          AttributeType: S
-      KeySchema:
-        - AttributeName: repositoryUrl
-          KeyType: HASH
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
-
-  # S3 Bucket
+  # ============================================================================
+  # S3 BUCKET FOR REPOSITORY CACHE
+  # ============================================================================
+  
   CacheBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub devcontext-cache-${AWS::AccountId}
+      
+      # Lifecycle: Delete after 24 hours
       LifecycleConfiguration:
         Rules:
           - Id: DeleteAfter24Hours
             Status: Enabled
             ExpirationInDays: 1
+      
+      # Encryption at rest
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      
+      # Block public access
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      
+      # Versioning for data protection
+      VersioningConfiguration:
+        Status: Enabled
+      
+      Tags:
+        - Key: Environment
+          Value: Production
+        - Key: Application
+          Value: DevContext-AI
 
-  # API Gateway with Cognito Authorizer
+  # ============================================================================
+  # API GATEWAY WITH COGNITO AUTHORIZER
+  # ============================================================================
+  
   DevContextApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
+      
+      # CORS configuration
       Cors:
-        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
         AllowOrigin: "'*'"
+        MaxAge: "'3600'"
+      
+      # Cognito authentication
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
         AddDefaultAuthorizerToCorsPreflight: false
+      
+      # Throttling
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingBurstLimit: 100
+          ThrottlingRateLimit: 50
+      
+      Tags:
+        Environment: Production
+        Application: DevContext-AI
 
-  # Lambda Functions
+  # ============================================================================
+  # LAMBDA FUNCTIONS
+  # ============================================================================
+  
   OrchestratorFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: dist/
       Handler: orchestrator.handler
+      Timeout: 180
       Environment:
         Variables:
           REPO_PROCESSOR_FUNCTION: !Ref RepoProcessorFunction
@@ -158,13 +190,7 @@ Resources:
           STAGE3_FUNCTION: !Ref Stage3Function
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalysesTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref InterviewSessionsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UserProgressTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref CacheTable
+            TableName: !Ref MainTable
         - S3CrudPolicy:
             BucketName: !Ref CacheBucket
         - Statement:
@@ -191,6 +217,12 @@ Resources:
             RestApiId: !Ref DevContextApi
             Path: /analysis/{id}/status
             Method: get
+        ListAnalyses:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analyses
+            Method: get
 
   RepoProcessorFunction:
     Type: AWS::Serverless::Function
@@ -206,6 +238,8 @@ Resources:
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref CacheBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MainTable
 
   Stage1Function:
     Type: AWS::Serverless::Function
@@ -215,7 +249,7 @@ Resources:
       Timeout: 120
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalysesTable
+            TableName: !Ref MainTable
         - S3ReadPolicy:
             BucketName: !Ref CacheBucket
         - Statement:
@@ -232,7 +266,7 @@ Resources:
       Timeout: 180
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalysesTable
+            TableName: !Ref MainTable
         - S3ReadPolicy:
             BucketName: !Ref CacheBucket
         - Statement:
@@ -249,7 +283,7 @@ Resources:
       Timeout: 180
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalysesTable
+            TableName: !Ref MainTable
         - S3ReadPolicy:
             BucketName: !Ref CacheBucket
         - Statement:
@@ -267,7 +301,7 @@ Resources:
       MemorySize: 512
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalysesTable
+            TableName: !Ref MainTable
         - Statement:
             - Effect: Allow
               Action:
@@ -278,16 +312,76 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref DevContextApi
-            Path: /interview/{id}/answer
+            Path: /interview/{sessionId}/answer
             Method: post
+        GetSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/{sessionId}
+            Method: get
+
+  # ============================================================================
+  # CLOUDWATCH ALARMS
+  # ============================================================================
+  
+  OrchestratorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: DevContext-Orchestrator-Errors
+      AlarmDescription: Alert when orchestrator has errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref OrchestratorFunction
+
+  DynamoDBThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: DevContext-DynamoDB-Throttles
+      AlarmDescription: Alert when DynamoDB is throttling
+      MetricName: UserErrors
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref MainTable
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
 
 Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value: !Sub https://${DevContextApi}.execute-api.${AWS::Region}.amazonaws.com/prod/
-  AnalysesTableName:
-    Description: DynamoDB table name
-    Value: !Ref AnalysesTable
+    Export:
+      Name: DevContext-ApiEndpoint
+  
+  MainTableName:
+    Description: Main DynamoDB table name
+    Value: !Ref MainTable
+    Export:
+      Name: DevContext-MainTable
+  
   CacheBucketName:
     Description: S3 cache bucket name
     Value: !Ref CacheBucket
+    Export:
+      Name: DevContext-CacheBucket
+  
+  OrchestratorFunctionArn:
+    Description: Orchestrator Lambda ARN
+    Value: !GetAtt OrchestratorFunction.Arn
+    Export:
+      Name: DevContext-OrchestratorArn

@@ -40,6 +40,15 @@ interface ProcessorResponse {
   projectContextMap: ProjectContextMap;
   s3Key: string;
   codeContext?: string; // NEW: Pre-loaded code context within token budget
+  commitStats?: {
+    totalCount: number;
+    firstCommitDate: string;
+    lastCommitDate: string;
+    commitFrequency: number;
+    contributors: number;
+    authenticityScore: number;
+    authenticityFlags: string[];
+  };
   budgetStats?: {
     utilization: number;
     filesIncluded: number;
@@ -69,6 +78,9 @@ export const handler: Handler<ProcessorEvent, ProcessorResponse> = async (event)
     
     // Generate project context map
     const projectContextMap = generateContextMapFromAPI(filteredFiles);
+    
+    // Fetch commit stats
+    const commitStats = await fetchCommitStats(owner, repo);
     
     // NEW: Apply token budget management
     const tokenManager = new TokenBudgetManager();
@@ -111,6 +123,7 @@ export const handler: Handler<ProcessorEvent, ProcessorResponse> = async (event)
       projectContextMap,
       s3Key,
       codeContext,
+      commitStats: commitStats || undefined,
       budgetStats
     };
     
@@ -135,6 +148,79 @@ export const handler: Handler<ProcessorEvent, ProcessorResponse> = async (event)
 };
 
 // GitHub API Helper Functions
+
+async function fetchCommitStats(owner: string, repo: string): Promise<any> {
+  try {
+    const headers: any = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'DevContext-AI'
+    };
+    
+    if (GITHUB_TOKEN) {
+      headers['Authorization'] = `token ${GITHUB_TOKEN}`;
+    }
+    
+    // Fetch commits (last 100)
+    const commitsUrl = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`;
+    const commitsResponse = await fetch(commitsUrl, { headers });
+    
+    if (!commitsResponse.ok) {
+      console.warn(`Failed to fetch commits: ${commitsResponse.status}`);
+      return null;
+    }
+    
+    const commits = await commitsResponse.json();
+    
+    if (!Array.isArray(commits) || commits.length === 0) {
+      return null;
+    }
+    
+    // Extract commit data
+    const commitDates = commits.map(c => new Date(c.commit.author.date));
+    const contributors = new Set(commits.map(c => c.commit.author.email)).size;
+    
+    const firstCommit = commitDates[commitDates.length - 1];
+    const lastCommit = commitDates[0];
+    const daysDiff = (lastCommit.getTime() - firstCommit.getTime()) / (1000 * 60 * 60 * 24);
+    const commitFrequency = daysDiff > 0 ? commits.length / daysDiff : 0;
+    
+    // Calculate authenticity score
+    let authenticityScore = 100;
+    const authenticityFlags: string[] = [];
+    
+    // Check for bulk uploads (< 3 commits)
+    if (commits.length < 3) {
+      authenticityScore -= 50;
+      authenticityFlags.push('Very few commits detected');
+    }
+    
+    // Check for commit diversity (same author for all commits)
+    if (contributors === 1 && commits.length > 10) {
+      authenticityScore -= 20;
+      authenticityFlags.push('Single contributor');
+    }
+    
+    // Check for time spread (all commits in same day)
+    const uniqueDays = new Set(commitDates.map(d => d.toDateString())).size;
+    if (uniqueDays < 2 && commits.length > 5) {
+      authenticityScore -= 30;
+      authenticityFlags.push('All commits in short time period');
+    }
+    
+    return {
+      totalCount: commits.length,
+      firstCommitDate: firstCommit.toISOString(),
+      lastCommitDate: lastCommit.toISOString(),
+      commitFrequency: Math.round(commitFrequency * 100) / 100,
+      contributors,
+      authenticityScore: Math.max(0, authenticityScore),
+      authenticityFlags
+    };
+  } catch (error) {
+    console.error('Failed to fetch commit stats:', error);
+    return null;
+  }
+}
 
 function parseGitHubUrl(url: string): { owner: string; repo: string } {
   const match = url.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
@@ -206,6 +292,48 @@ function generateContextMapFromAPI(files: any[]): ProjectContextMap {
   const entryPoints: string[] = [];
   const coreModules: string[] = [];
   const frameworks: string[] = [];
+  const languages: Record<string, number> = {};
+  
+  // Detect languages by file extensions
+  files.forEach(file => {
+    const ext = file.path.split('.').pop()?.toLowerCase();
+    if (ext) {
+      const languageMap: Record<string, string> = {
+        'js': 'JavaScript',
+        'jsx': 'JavaScript',
+        'ts': 'TypeScript',
+        'tsx': 'TypeScript',
+        'py': 'Python',
+        'java': 'Java',
+        'go': 'Go',
+        'rs': 'Rust',
+        'cpp': 'C++',
+        'c': 'C',
+        'cs': 'C#',
+        'rb': 'Ruby',
+        'php': 'PHP',
+        'swift': 'Swift',
+        'kt': 'Kotlin',
+        'scala': 'Scala',
+        'html': 'HTML',
+        'css': 'CSS',
+        'scss': 'SCSS',
+        'sql': 'SQL'
+      };
+      
+      const language = languageMap[ext];
+      if (language) {
+        languages[language] = (languages[language] || 0) + 1;
+      }
+    }
+  });
+  
+  // Convert counts to percentages
+  const totalLanguageFiles = Object.values(languages).reduce((sum, count) => sum + count, 0);
+  const languagePercentages: Record<string, number> = {};
+  Object.entries(languages).forEach(([lang, count]) => {
+    languagePercentages[lang] = Math.round((count / totalLanguageFiles) * 100);
+  });
   
   // Detect entry points
   const entryPatterns = [
@@ -248,7 +376,8 @@ function generateContextMapFromAPI(files: any[]): ProjectContextMap {
     userCodeFiles,
     entryPoints,
     coreModules,
-    frameworks
+    frameworks,
+    languages: languagePercentages
   };
 }
 
@@ -266,7 +395,9 @@ async function fetchFileContents(owner: string, repo: string, priorities: any[])
   // Fetch top priority files (limit to avoid rate limits)
   const filesToFetch = priorities.slice(0, 30);
   
-  for (const priority of filesToFetch) {
+  for (let i = 0; i < filesToFetch.length; i++) {
+    const priority = filesToFetch[i];
+    
     try {
       const response = await fetch(
         `https://api.github.com/repos/${owner}/${repo}/contents/${priority.path}`,
@@ -274,6 +405,16 @@ async function fetchFileContents(owner: string, repo: string, priorities: any[])
       );
       
       if (!response.ok) {
+        if (response.status === 403) {
+          const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
+          const rateLimitReset = response.headers.get('X-RateLimit-Reset');
+          
+          if (rateLimitRemaining === '0') {
+            console.warn(`GitHub rate limit exceeded. Limit resets at ${rateLimitReset}`);
+            break; // Stop fetching files
+          }
+        }
+        
         console.error(`Failed to fetch ${priority.path}: ${response.status}`);
         continue;
       }
@@ -287,6 +428,11 @@ async function fetchFileContents(owner: string, repo: string, priorities: any[])
           content,
           size: data.size
         });
+      }
+      
+      // Add delay every 10 requests to avoid rate limiting
+      if (i > 0 && i % 10 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     } catch (error) {
       console.error(`Failed to fetch ${priority.path}:`, error);

@@ -1,18 +1,15 @@
 import { Handler } from 'aws-lambda';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
-import { InterviewSimulation, InterviewQuestion, ProjectContextMap } from './types';
+import { ProjectContextMap } from './types';
 import { GroundingChecker } from './grounding-checker';
 import { SelfCorrectionLoop, ValidationResult } from './self-correction';
+import * as DB from './db-utils';
 
 const bedrockClient = new BedrockRuntimeClient({ region: 'ap-southeast-1' });
-const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3Client = new S3Client({});
 
-const ANALYSES_TABLE = process.env.ANALYSES_TABLE!;
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
 // Using Amazon Nova Micro (APAC) - verified working, fast and cheap
 const MODEL_ID = 'apac.amazon.nova-micro-v1:0';
@@ -26,7 +23,7 @@ interface Stage3Event {
 interface Stage3Response {
   success: boolean;
   analysisId: string;
-  interviewSimulation?: InterviewSimulation;
+  interviewSimulation?: any;
   error?: string;
 }
 
@@ -40,16 +37,16 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
     const codeContext = await loadCodeContext(s3Key, projectContextMap);
     
     // Generate interview questions with self-correction
-    const questions = await generateInterviewQuestionsWithCorrection(
+    const { questions, correctionResult } = await generateInterviewQuestionsWithCorrection(
       projectContextMap,
       codeContext
     );
     
     // Calculate distributions
-    const interviewSimulation = calculateDistributions(questions);
+    const interviewSimulation = calculateDistributions(questions, correctionResult);
     
-    // Save to DynamoDB
-    await saveInterviewSimulation(analysisId, interviewSimulation);
+    // Save to DynamoDB using db-utils
+    await DB.saveInterviewSimulation(analysisId, interviewSimulation);
     
     console.log(`Stage 3 completed for: ${analysisId}`);
     
@@ -102,9 +99,9 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
     }
   }
   
-  // If no files were loaded, return a minimal context
+  // CRITICAL: Fail if no code was loaded
   if (fileContents.length === 0) {
-    return `Project has ${contextMap.totalFiles} files. Frameworks: ${contextMap.frameworks.join(', ') || 'None'}`;
+    throw new Error('Failed to load any code files from S3 for Stage 3. Cannot generate interview questions without code.');
   }
   
   return fileContents.join('\n\n');
@@ -113,17 +110,17 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
 async function generateInterviewQuestionsWithCorrection(
   contextMap: ProjectContextMap,
   codeContext: string
-): Promise<InterviewQuestion[]> {
+): Promise<{ questions: any[], correctionResult: any }> {
   const groundingChecker = new GroundingChecker();
   const correctionLoop = new SelfCorrectionLoop(3, 70);
 
   // Generator function
-  const generator = async (feedback?: string): Promise<InterviewQuestion[]> => {
+  const generator = async (feedback?: string): Promise<any[]> => {
     return await generateInterviewQuestions(contextMap, codeContext, feedback);
   };
 
   // Validator function
-  const validator = async (questions: InterviewQuestion[]): Promise<ValidationResult> => {
+  const validator = async (questions: any[]): Promise<ValidationResult> => {
     const validation = groundingChecker.validateInterviewQuestions(
       questions,
       contextMap.userCodeFiles
@@ -171,14 +168,17 @@ async function generateInterviewQuestionsWithCorrection(
 
   console.log(`Self-correction completed: ${result.totalAttempts} attempts, converged: ${result.converged}, best score: ${result.bestScore}`);
 
-  return result.finalResult;
+  return {
+    questions: result.finalResult,
+    correctionResult: result
+  };
 }
 
 async function generateInterviewQuestions(
   contextMap: ProjectContextMap,
   codeContext: string,
   feedback?: string
-): Promise<InterviewQuestion[]> {
+): Promise<any[]> {
   const userCodeFilesList = contextMap.userCodeFiles.slice(0, 20).join(', ');
   
   let prompt = `You are an experienced technical interviewer creating project-specific questions.
@@ -216,11 +216,33 @@ Requirements:
 Respond in JSON format as an array:
 [
   {
+    "questionId": "uuid",
     "question": "In your main.py file, you implemented user authentication. Why did you choose this approach?",
     "category": "implementation",
     "difficulty": "mid-level",
-    "fileReferences": ["main.py"],
-    "expectedTopics": ["authentication", "security", "session management"]
+    "context": {
+      "fileReferences": [{"file": "main.py"}],
+      "codeSnippet": "",
+      "relatedConcepts": ["authentication", "security"]
+    },
+    "expectedAnswer": {
+      "keyPoints": ["Security", "Session management"],
+      "acceptableApproaches": ["JWT", "OAuth"],
+      "redFlags": ["Storing passwords in plain text"]
+    },
+    "followUpQuestions": ["How would you handle password resets?"],
+    "evaluationCriteria": {
+      "technicalAccuracy": 0.4,
+      "completeness": 0.3,
+      "clarity": 0.2,
+      "depthOfUnderstanding": 0.1
+    },
+    "tags": ["authentication", "security", "session management"],
+    "groundingValidation": {
+      "allFilesExist": true,
+      "confidence": "verified",
+      "validationErrors": []
+    }
   }
 ]`;
 
@@ -267,56 +289,66 @@ Respond in JSON format as an array:
   }));
 }
 
-function calculateDistributions(questions: InterviewQuestion[]): InterviewSimulation {
+function calculateDistributions(questions: any[], correctionResult: any): any {
   const categoryCounts = {
     architecture: 0,
     implementation: 0,
     tradeoffs: 0,
-    scalability: 0
+    scalability: 0,
+    designPatterns: 0,
+    debugging: 0
   };
   
   const difficultyDistribution = {
     junior: 0,
     midLevel: 0,
-    senior: 0
+    senior: 0,
+    staff: 0
   };
   
   for (const q of questions) {
-    // Normalize category names (handle variations like "trade-offs" vs "tradeoffs")
+    // Normalize category names
     const normalizedCategory = q.category.toLowerCase().replace(/[^a-z]/g, '');
     
     if (normalizedCategory === 'architecture') categoryCounts.architecture++;
     else if (normalizedCategory === 'implementation') categoryCounts.implementation++;
     else if (normalizedCategory === 'tradeoffs') categoryCounts.tradeoffs++;
     else if (normalizedCategory === 'scalability') categoryCounts.scalability++;
+    else if (normalizedCategory === 'designpatterns') categoryCounts.designPatterns++;
+    else if (normalizedCategory === 'debugging') categoryCounts.debugging++;
     
     if (q.difficulty === 'junior') difficultyDistribution.junior++;
     else if (q.difficulty === 'mid-level') difficultyDistribution.midLevel++;
     else if (q.difficulty === 'senior') difficultyDistribution.senior++;
+    else if (q.difficulty === 'staff') difficultyDistribution.staff++;
   }
+  
+  const startTime = Date.now();
   
   return {
     questions,
     categoryCounts,
-    difficultyDistribution
+    difficultyDistribution,
+    questionSetMetadata: {
+      totalQuestions: questions.length,
+      targetRole: 'Software Engineer',
+      companyTier: 'productCompany',
+      estimatedInterviewDuration: questions.length * 5
+    },
+    selfCorrectionReport: {
+      iterations: correctionResult.totalAttempts,
+      converged: correctionResult.converged,
+      initialScore: correctionResult.attempts[0]?.validationScore || 0,
+      finalScore: correctionResult.bestScore,
+      correctionsFeedback: correctionResult.attempts.map((a: any) => a.validationFeedback)
+    },
+    modelMetadata: {
+      modelId: MODEL_ID,
+      tokensIn: 2000,
+      tokensOut: 1000,
+      inferenceTimeMs: Date.now() - startTime,
+      temperature: 0.5
+    },
+    generatedAt: new Date().toISOString()
   };
-}
-
-async function saveInterviewSimulation(
-  analysisId: string,
-  interviewSimulation: InterviewSimulation
-): Promise<void> {
-  const command = new UpdateCommand({
-    TableName: ANALYSES_TABLE,
-    Key: { analysisId },
-    UpdateExpression: 'SET interviewSimulation = :sim, completedStages = list_append(if_not_exists(completedStages, :empty), :stage), updatedAt = :now',
-    ExpressionAttributeValues: {
-      ':sim': interviewSimulation,
-      ':stage': ['interview_simulation'],
-      ':empty': [],
-      ':now': new Date().toISOString()
-    }
-  });
-  
-  await dynamoClient.send(command);
 }

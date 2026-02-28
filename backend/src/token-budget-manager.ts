@@ -1,6 +1,17 @@
 /**
  * Token Budget Manager
  * 
+ * ⚠️ CURRENTLY UNUSED - This module was designed for local filesystem operations
+ * but Lambda functions load code from S3 (via repo-processor.ts).
+ * 
+ * STATUS: Kept for future enhancement when local file processing is needed.
+ * The prioritization logic in repo-processor.ts (lines 148-160) currently
+ * handles token budgeting for S3-based file loading.
+ * 
+ * TO USE THIS MODULE: Refactor to work with S3 GetObjectCommand instead of fs.readFileSync
+ * 
+ * ---
+ * 
  * Manages token allocation for Bedrock API calls to stay within 50K token limit.
  * Implements intelligent file prioritization and truncation.
  * 

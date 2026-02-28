@@ -11,7 +11,7 @@
  * - Calculate grounding confidence scores
  */
 
-import { ProjectContextMap, ProjectReview, InterviewQuestion } from './types';
+import { ProjectContextMap } from './types';
 
 export interface GroundingResult {
   isValid: boolean;
@@ -87,7 +87,7 @@ export class GroundingChecker {
    * Validate ProjectReview grounding
    */
   validateProjectReview(
-    review: ProjectReview,
+    review: any,
     contextMap: ProjectContextMap
   ): GroundingResult {
     const allReferences: string[] = [];
@@ -96,18 +96,24 @@ export class GroundingChecker {
     if (review.strengths) {
       for (const strength of review.strengths) {
         if (strength.fileReferences) {
-          allReferences.push(...strength.fileReferences);
+          // Handle both string arrays and FileReference objects
+          const refs = strength.fileReferences.map((ref: any) => 
+            typeof ref === 'string' ? ref : ref.file
+          );
+          allReferences.push(...refs);
         }
       }
     }
 
-    // Collect file references from improvement areas
-    if (review.improvementAreas) {
-      for (const improvement of review.improvementAreas) {
-        // Improvement areas might not have explicit file references
-        // but we can check if they mention files in the description
-        const mentionedFiles = this.extractFileReferences(improvement.issue);
-        allReferences.push(...mentionedFiles);
+    // Collect file references from weaknesses
+    if (review.weaknesses) {
+      for (const weakness of review.weaknesses) {
+        if (weakness.fileReferences) {
+          const refs = weakness.fileReferences.map((ref: any) => 
+            typeof ref === 'string' ? ref : ref.file
+          );
+          allReferences.push(...refs);
+        }
       }
     }
 
@@ -129,10 +135,12 @@ export class GroundingChecker {
    * Validate InterviewQuestion grounding
    */
   validateInterviewQuestion(
-    question: InterviewQuestion,
+    question: any,
     userCodeFiles: string[]
   ): GroundingResult {
-    const references = question.fileReferences || [];
+    const references = question.context?.fileReferences?.map((ref: any) => 
+      typeof ref === 'string' ? ref : ref.file
+    ) || [];
     
     // Also check if question text mentions files
     const mentionedFiles = this.extractFileReferences(question.question);
@@ -145,15 +153,15 @@ export class GroundingChecker {
    * Validate multiple interview questions
    */
   validateInterviewQuestions(
-    questions: InterviewQuestion[],
+    questions: any[],
     userCodeFiles: string[]
   ): {
-    validQuestions: InterviewQuestion[];
-    invalidQuestions: InterviewQuestion[];
+    validQuestions: any[];
+    invalidQuestions: any[];
     overallResult: GroundingResult;
   } {
-    const validQuestions: InterviewQuestion[] = [];
-    const invalidQuestions: InterviewQuestion[] = [];
+    const validQuestions: any[] = [];
+    const invalidQuestions: any[] = [];
     const allReferences: string[] = [];
     const allInvalidRefs: string[] = [];
 
@@ -197,8 +205,8 @@ export class GroundingChecker {
       references.push(...matches);
     }
 
-    // Pattern 2: Quoted file paths
-    const quotedPattern = /["']([^"']+\.(py|js|ts|tsx|jsx|java|go|rs|cs|cpp|c|h|rb|php))["']/gi;
+    // Pattern 2: Quoted file paths (handles ", ', and `)
+    const quotedPattern = /["`']([^"`']+\.(py|js|ts|tsx|jsx|java|go|rs|cs|cpp|c|h|rb|php))["`']/gi;
     const quotedMatches = text.matchAll(quotedPattern);
     
     for (const match of quotedMatches) {
@@ -320,7 +328,6 @@ export class GroundingChecker {
     
     return lines.join('\n');
   }
-}
 
   /**
    * Validate Intelligence Report grounding
@@ -351,3 +358,4 @@ export class GroundingChecker {
 
     return this.validateFileReferences(allReferences, userCodeFiles);
   }
+}

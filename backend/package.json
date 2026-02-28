@@ -6,7 +6,9 @@
   "scripts": {
     "build": "tsc",
     "test": "jest",
-    "deploy": "sam deploy"
+    "deploy": "sam deploy",
+    "mock": "ts-node mock-backend.ts",
+    "test:mock": "node test-progressive-workflow.js"
   },
   "keywords": [
     "aws",
@@ -33,7 +35,10 @@
     "@types/aws-lambda": "^8.10.145",
     "@types/node": "^22.10.2",
     "@types/uuid": "^10.0.0",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "ts-node": "^10.9.2"
   }
 }
