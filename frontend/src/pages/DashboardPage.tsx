@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import api from "../services/api";
 import OverviewTab from "../components/dashboard/OverviewTab";
 import ReviewTab from "../components/dashboard/ReviewTab";
 import ReportTab from "../components/dashboard/ReportTab";
@@ -14,6 +15,56 @@ const DashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(
     (searchParams.get("tab") as Tab) || "overview",
   );
+  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const analysisId = searchParams.get("analysisId");
+
+  useEffect(() => {
+    async function loadAnalysis() {
+      if (!analysisId) {
+        setError("No analysis ID provided");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await api.getAnalysis(analysisId);
+        setAnalysisData(data);
+        setLoading(false);
+      } catch (err: any) {
+        console.error("Error loading analysis:", err);
+        setError(err.message || "Failed to load analysis");
+        setLoading(false);
+      }
+    }
+
+    loadAnalysis();
+  }, [analysisId]);
+
+  if (loading) {
+    return (
+      <div className="dashboard-page">
+        <div className="dash-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div>Loading analysis...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !analysisData) {
+    return (
+      <div className="dashboard-page">
+        <div className="dash-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ color: '#ef4444' }}>{error || "Analysis not found"}</div>
+          <button className="btn-ghost" onClick={() => navigate("/")}>
+            ← Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const tabs = [
     {
@@ -121,7 +172,7 @@ const DashboardPage: React.FC = () => {
             >
               <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
             </svg>
-            my-fullstack-app
+            {analysisData.repositoryName || 'Repository'}
           </div>
         </div>
 
@@ -177,18 +228,18 @@ const DashboardPage: React.FC = () => {
       {/* Dash Main Content */}
       <div className="dash-main">
         <div className={`tab-view ${activeTab === "overview" ? "active" : ""}`}>
-          <OverviewTab />
+          <OverviewTab analysisData={analysisData} />
         </div>
         <div className={`tab-view ${activeTab === "review" ? "active" : ""}`}>
-          <ReviewTab />
+          <ReviewTab analysisData={analysisData} />
         </div>
         <div className={`tab-view ${activeTab === "report" ? "active" : ""}`}>
-          <ReportTab />
+          <ReportTab analysisData={analysisData} />
         </div>
         <div
           className={`tab-view ${activeTab === "interview" ? "active" : ""}`}
         >
-          <InterviewTab />
+          <InterviewTab analysisData={analysisData} analysisId={analysisId!} />
         </div>
         <div className={`tab-view ${activeTab === "history" ? "active" : ""}`}>
           <HistoryTab />

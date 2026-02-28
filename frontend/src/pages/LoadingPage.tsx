@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import api from "../services/api";
 
 interface Stage {
   name: string;
@@ -16,60 +17,116 @@ const LoadingPage: React.FC = () => {
   const [stages, setStages] = useState<Stage[]>([
     {
       name: "Repository cloning & processing",
-      detail: "47 user files · 12,340 tokens extracted",
-      status: "done",
-    },
-    {
-      name: "Stage 1 — Project Review",
-      detail: "Scoring code quality · Claude 3.5 Haiku",
+      detail: "Fetching files from GitHub API",
       status: "running",
     },
     {
-      name: "Stage 2 — Intelligence Report",
-      detail: "Architecture reconstruction · Claude 3.5 Sonnet",
+      name: "Stage 1 — Project Review",
+      detail: "Scoring code quality · Amazon Nova 2 Lite",
       status: "pending",
     },
     {
       name: "Stage 3 — Interview Simulation",
-      detail: "Generating project-specific questions",
+      detail: "Generating project-specific questions · Amazon Nova Micro",
       status: "pending",
     },
   ]);
 
+  const [error, setError] = useState<string | null>(null);
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+
   useEffect(() => {
-    // Simulate stage progression
-    const timer1 = setTimeout(() => {
-      setStages((prev) =>
-        prev.map((stage, idx) => {
-          if (idx === 1) return { ...stage, status: "done" as const };
-          if (idx === 2) return { ...stage, status: "running" as const };
-          return stage;
-        }),
-      );
-    }, 2000);
+    let isMounted = true;
 
-    const timer2 = setTimeout(() => {
-      setStages((prev) =>
-        prev.map((stage, idx) => {
-          if (idx === 2) return { ...stage, status: "done" as const };
-          if (idx === 3) return { ...stage, status: "running" as const };
-          return stage;
-        }),
-      );
-    }, 4000);
+    async function startAnalysis() {
+      try {
+        // Extract GitHub URL from query
+        const githubUrlMatch = queryUrl.match(/github\.com\/[\w-]+\/[\w-]+/);
+        const repositoryUrl = githubUrlMatch 
+          ? `https://${githubUrlMatch[0]}` 
+          : queryUrl;
 
-    const timer3 = setTimeout(() => {
-      navigate("/dashboard");
-    }, 6000);
+        // Start analysis
+        const result = await api.startAnalysis(repositoryUrl);
+        
+        if (!isMounted) return;
+        
+        setAnalysisId(result.analysisId);
+
+        // Poll for completion
+        await api.pollAnalysis(result.analysisId, (status) => {
+          if (!isMounted) return;
+
+          // Update stages based on completedStages
+          setStages((prev) => {
+            const newStages = [...prev];
+            
+            // Repository processing is always done if we got here
+            newStages[0].status = "done";
+            newStages[0].detail = `Processing complete`;
+
+            // Check completed stages
+            const completed = status.completedStages || [];
+            
+            if (completed.includes('project_review')) {
+              newStages[1].status = "done";
+              newStages[1].detail = "Code quality analysis complete";
+            } else if (status.status === 'processing') {
+              newStages[1].status = "running";
+            }
+
+            if (completed.includes('interview_simulation')) {
+              newStages[2].status = "done";
+              newStages[2].detail = "Interview questions generated";
+            } else if (completed.includes('project_review')) {
+              newStages[2].status = "running";
+            }
+
+            return newStages;
+          });
+        });
+
+        // Analysis complete - navigate to dashboard
+        if (isMounted) {
+          navigate(`/dashboard?analysisId=${result.analysisId}`);
+        }
+
+      } catch (err: any) {
+        if (isMounted) {
+          console.error('Analysis error:', err);
+          setError(err.message || 'Failed to analyze repository');
+        }
+      }
+    }
+
+    startAnalysis();
 
     return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
+      isMounted = false;
     };
-  }, [navigate]);
+  }, [navigate, queryUrl]);
 
   const displayUrl = queryUrl.replace(/^https?:\/\//, "");
+
+  if (error) {
+    return (
+      <div className="main page active loading-page">
+        <div className="loading-inner">
+          <div className="loading-chip error">
+            <div className="loading-chip-dot"></div>
+            <span>Error</span>
+          </div>
+          <div className="loading-title">Analysis Failed</div>
+          <div className="loading-sub" style={{ color: '#ef4444' }}>
+            {error}
+          </div>
+          <button className="btn-ghost" onClick={() => navigate("/")}>
+            ← Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="main page active loading-page">
