@@ -1,18 +1,57 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import api from "../../services/api";
 import EmployabilitySignalPanel from "./EmployabilitySignalPanel";
 import ExportDropdown from "./ExportDropdown";
 
-const OverviewTab: React.FC = () => {
-  // Mock data - will be replaced with API data when analysis is loaded
-  const employabilitySignal = {
-    overall: 72,
-    companyTierMatch: {
-      bigTech: 45,
-      productCompanies: 68,
-      startups: 82,
-      serviceCompanies: 75,
-    },
+interface OverviewTabProps {
+  analysisId: string;
+}
+
+const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
+  const [analysis, setAnalysis] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadAnalysis();
+  }, [analysisId]);
+
+  const loadAnalysis = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getAnalysis(analysisId);
+      setAnalysis(data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load analysis:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load analysis');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+        <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+        <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Loading analysis...</div>
+      </div>
+    );
+  }
+
+  if (error || !analysis) {
+    return (
+      <div style={{ background: '#FEF4F4', border: '1px solid #FACACA', borderRadius: '8px', padding: '12px 16px', color: '#C0392B', fontSize: '13px' }}>
+        {error || 'Analysis not found'}
+      </div>
+    );
+  }
+
+  const { projectReview, repository } = analysis;
+  const employabilitySignal = projectReview?.employabilitySignal || { overall: 0, companyTierMatch: {} };
+  const codeQuality = projectReview?.codeQuality || { overall: 0 };
+  const authenticity = projectReview?.projectAuthenticity || { score: 0 };
+  
   return (
     <>
       <div
@@ -24,45 +63,52 @@ const OverviewTab: React.FC = () => {
         }}
       >
         <div>
-          <div className="view-title">my-fullstack-app</div>
+          <div className="view-title">{repository?.repositoryName || 'Repository'}</div>
           <div className="view-sub">
-            React + Express.js · 47 files · 6 commits · Analysed 2 min ago
+            {repository?.frameworks?.join(' + ') || 'Unknown'} · {repository?.totalFiles || 0} files · Analysed {new Date(analysis.analysis.createdAt).toLocaleString()}
           </div>
         </div>
-        <ExportDropdown analysisId="mock-analysis-id" />
+        <ExportDropdown analysisId={analysisId} />
       </div>
 
-      <div className="warn-strip">
-        ⚠{" "}
-        <span>
-          <strong>Low commit diversity</strong> — 3 of 6 commits are bulk
-          uploads. This may impact recruiter perception.
-        </span>
-      </div>
+      {authenticity.warnings && authenticity.warnings.length > 0 && (
+        <div className="warn-strip">
+          ⚠{" "}
+          <span>
+            <strong>{authenticity.warnings[0]}</strong>
+          </span>
+        </div>
+      )}
 
       <div className="score-row">
         <div className="score-card">
           <div className="sc-label">Employability Signal</div>
-          <div className="sc-num green">72</div>
-          <div className="sc-sub">Good foundation, room to grow</div>
+          <div className={`sc-num ${employabilitySignal.overall >= 70 ? 'green' : employabilitySignal.overall >= 50 ? 'amber' : 'red'}`}>
+            {employabilitySignal.overall}
+          </div>
+          <div className="sc-sub">{employabilitySignal.justification?.substring(0, 50) || 'Analysis complete'}</div>
           <div className="sc-bar">
-            <div className="sc-bar-fill green" style={{ width: "72%" }}></div>
+            <div className={`sc-bar-fill ${employabilitySignal.overall >= 70 ? 'green' : employabilitySignal.overall >= 50 ? 'amber' : 'red'}`} style={{ width: `${employabilitySignal.overall}%` }}></div>
           </div>
         </div>
         <div className="score-card">
           <div className="sc-label">Code Quality</div>
-          <div className="sc-num amber">61</div>
-          <div className="sc-sub">Moderate — missing error handling</div>
+          <div className={`sc-num ${codeQuality.overall >= 70 ? 'green' : codeQuality.overall >= 50 ? 'amber' : 'red'}`}>
+            {codeQuality.overall}
+          </div>
+          <div className="sc-sub">{codeQuality.justification?.substring(0, 50) || 'Quality assessed'}</div>
           <div className="sc-bar">
-            <div className="sc-bar-fill amber" style={{ width: "61%" }}></div>
+            <div className={`sc-bar-fill ${codeQuality.overall >= 70 ? 'green' : codeQuality.overall >= 50 ? 'amber' : 'red'}`} style={{ width: `${codeQuality.overall}%` }}></div>
           </div>
         </div>
         <div className="score-card">
           <div className="sc-label">Authenticity Score</div>
-          <div className="sc-num green">68</div>
-          <div className="sc-sub">Organic development detected</div>
+          <div className={`sc-num ${authenticity.score >= 70 ? 'green' : authenticity.score >= 50 ? 'amber' : 'red'}`}>
+            {authenticity.score}
+          </div>
+          <div className="sc-sub">{authenticity.confidence} confidence</div>
           <div className="sc-bar">
-            <div className="sc-bar-fill green" style={{ width: "68%" }}></div>
+            <div className={`sc-bar-fill ${authenticity.score >= 70 ? 'green' : authenticity.score >= 50 ? 'amber' : 'red'}`} style={{ width: `${authenticity.score}%` }}></div>
           </div>
         </div>
       </div>
@@ -76,13 +122,9 @@ const OverviewTab: React.FC = () => {
         </div>
         <div className="panel-body">
           <div className="tag-row">
-            <span className="tag acc">React 18</span>
-            <span className="tag tech">Node.js</span>
-            <span className="tag tech">Express.js</span>
-            <span className="tag tech">MongoDB</span>
-            <span className="tag tech">JWT Auth</span>
-            <span className="tag tech">REST API</span>
-            <span className="tag tech">Tailwind CSS</span>
+            {repository?.frameworks?.map((fw: string) => (
+              <span key={fw} className="tag tech">{fw}</span>
+            ))}
           </div>
           <div
             style={{
@@ -91,81 +133,65 @@ const OverviewTab: React.FC = () => {
               color: "var(--text3)",
             }}
           >
-            JavaScript <strong style={{ color: "var(--text)" }}>82%</strong> ·
-            CSS 12% · HTML 6%
+            {Object.entries(repository?.languages || {}).map(([lang, pct]: [string, any], idx) => (
+              <span key={lang}>
+                {idx > 0 && ' · '}
+                {lang} <strong style={{ color: "var(--text)" }}>{pct}%</strong>
+              </span>
+            ))}
           </div>
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-head">
-          <div className="panel-title">Strengths</div>
-          <div className="chip green">3 found</div>
-        </div>
-        <div className="panel-body">
-          <div className="insight-list">
-            <div className="insight-item">
-              <div className="i-dot pos">✓</div>
-              <div className="i-text">
-                <strong>Clean component architecture</strong> — React components
-                well-decomposed with clear separation in{" "}
-                <code>src/components/</code>.
-              </div>
-            </div>
-            <div className="insight-item">
-              <div className="i-dot pos">✓</div>
-              <div className="i-text">
-                <strong>JWT authentication</strong> — Token-based auth correctly
-                applied in <code>middleware/auth.js</code>, demonstrating
-                security awareness.
-              </div>
-            </div>
-            <div className="insight-item">
-              <div className="i-dot pos">✓</div>
-              <div className="i-text">
-                <strong>Environment variable separation</strong> — Sensitive
-                config properly externalized via <code>.env</code> with example
-                file committed.
-              </div>
+      {projectReview?.strengths && projectReview.strengths.length > 0 && (
+        <div className="panel">
+          <div className="panel-head">
+            <div className="panel-title">Strengths</div>
+            <div className="chip green">{projectReview.strengths.length} found</div>
+          </div>
+          <div className="panel-body">
+            <div className="insight-list">
+              {projectReview.strengths.slice(0, 3).map((strength: any) => (
+                <div key={strength.strengthId} className="insight-item">
+                  <div className="i-dot pos">✓</div>
+                  <div className="i-text">
+                    <strong>{strength.pattern}</strong> — {strength.description}
+                    {strength.fileReferences && strength.fileReferences.length > 0 && (
+                      <> in <code>{strength.fileReferences[0].file}</code></>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="panel">
-        <div className="panel-head">
-          <div className="panel-title">Improvements Needed</div>
-          <div className="chip amber">3 items</div>
-        </div>
-        <div className="panel-body">
-          <div className="insight-list">
-            <div className="insight-item">
-              <div className="i-dot neg">!</div>
-              <div className="i-text">
-                <strong>Missing global error handling</strong> — Express routes
-                in <code>routes/api.js:L24-L87</code> lack try/catch. Production
-                APIs should never expose stack traces.
-              </div>
-            </div>
-            <div className="insight-item">
-              <div className="i-dot neg">!</div>
-              <div className="i-text">
-                <strong>No input validation</strong> — Requests passed directly
-                to MongoDB in <code>controllers/user.js:L15</code>. Vulnerable
-                to NoSQL injection.
-              </div>
-            </div>
-            <div className="insight-item">
-              <div className="i-dot warn">~</div>
-              <div className="i-text">
-                <strong>Zero test coverage</strong> — No test files detected.
-                Product companies (Flipkart, Razorpay) increasingly evaluate
-                testing discipline.
-              </div>
+      {projectReview?.weaknesses && projectReview.weaknesses.length > 0 && (
+        <div className="panel">
+          <div className="panel-head">
+            <div className="panel-title">Improvements Needed</div>
+            <div className="chip amber">{projectReview.weaknesses.length} items</div>
+          </div>
+          <div className="panel-body">
+            <div className="insight-list">
+              {projectReview.weaknesses.slice(0, 3).map((weakness: any) => (
+                <div key={weakness.weaknessId} className="insight-item">
+                  <div className={`i-dot ${weakness.severity === 'high' ? 'neg' : 'warn'}`}>
+                    {weakness.severity === 'high' ? '!' : '~'}
+                  </div>
+                  <div className="i-text">
+                    <strong>{weakness.issue}</strong> — {weakness.impact}
+                    {weakness.fileReferences && weakness.fileReferences.length > 0 && (
+                      <> in <code>{weakness.fileReferences[0].file}</code></>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
 };

@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import api from "../../services/api";
 
 interface FileNode {
   name: string;
@@ -11,10 +12,56 @@ interface FileNode {
 }
 
 interface FileExplorerProps {
+  analysisId: string;
   onSelectionChange?: (selectedFiles: string[]) => void;
 }
 
-// Mock repository structure - will be replaced with actual data from API
+// Build file tree from flat file list
+const buildFileTree = (files: any[]): FileNode[] => {
+  const root: FileNode[] = [];
+  const folderMap = new Map<string, FileNode>();
+
+  files.forEach((file) => {
+    const parts = file.path.split('/');
+    const fileName = parts[parts.length - 1];
+    const extension = fileName.includes('.') ? fileName.split('.').pop() : '';
+
+    let currentLevel = root;
+    let currentPath = '';
+
+    // Create folder structure
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+      
+      if (!folderMap.has(currentPath)) {
+        const folder: FileNode = {
+          name: parts[i],
+          path: currentPath,
+          type: 'folder',
+          children: []
+        };
+        folderMap.set(currentPath, folder);
+        currentLevel.push(folder);
+        currentLevel = folder.children!;
+      } else {
+        currentLevel = folderMap.get(currentPath)!.children!;
+      }
+    }
+
+    // Add file
+    currentLevel.push({
+      name: fileName,
+      path: file.path,
+      type: 'file',
+      extension,
+      selected: file.selected,
+      priority: file.rank
+    });
+  });
+
+  return root;
+};
+
 const mockFileTree: FileNode[] = [
   {
     name: "src",
@@ -268,13 +315,36 @@ const getFileIcon = (extension?: string) => {
   return iconMap[extension || ""] || { color: "var(--text3)", icon: "📄" };
 };
 
-const FileExplorer: React.FC<FileExplorerProps> = ({ onSelectionChange }) => {
+const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChange }) => {
   const [fileTree, setFileTree] = useState<FileNode[]>(mockFileTree);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(["src", "src/components", "server", "server/controllers"]),
   );
   const [draggedFile, setDraggedFile] = useState<string | null>(null);
   const [dragOverFile, setDragOverFile] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load files from API
+  useEffect(() => {
+    loadFiles();
+  }, [analysisId]);
+
+  const loadFiles = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getAnalysisFiles(analysisId);
+      const tree = buildFileTree(data.files);
+      setFileTree(tree);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load files:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load files');
+      // Keep mock data on error
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Get all selected files sorted by priority
   const getSelectedFiles = useCallback((nodes: FileNode[]): FileNode[] => {
@@ -308,7 +378,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ onSelectionChange }) => {
     });
   };
 
-  const toggleFileSelection = (path: string) => {
+  const toggleFileSelection = async (path: string) => {
     const updateNodes = (nodes: FileNode[]): FileNode[] => {
       return nodes.map((node) => {
         if (node.path === path && node.type === "file") {
@@ -325,7 +395,32 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ onSelectionChange }) => {
         return node;
       });
     };
-    setFileTree(updateNodes(fileTree));
+    
+    const updatedTree = updateNodes(fileTree);
+    setFileTree(updatedTree);
+
+    // Update backend
+    try {
+      const file = findFileInTree(updatedTree, path);
+      if (file) {
+        await api.updateFileSelection(analysisId, {
+          [file.selected ? 'selectedFiles' : 'deselectedFiles']: [path]
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update selection:', err);
+    }
+  };
+
+  const findFileInTree = (nodes: FileNode[], path: string): FileNode | null => {
+    for (const node of nodes) {
+      if (node.path === path) return node;
+      if (node.children) {
+        const found = findFileInTree(node.children, path);
+        if (found) return found;
+      }
+    }
+    return null;
   };
 
   // Drag and drop handlers
@@ -345,7 +440,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ onSelectionChange }) => {
     setDragOverFile(null);
   };
 
-  const handleDrop = (e: React.DragEvent, targetPath: string) => {
+  const handleDrop = async (e: React.DragEvent, targetPath: string) => {
     e.preventDefault();
     if (!draggedFile || draggedFile === targetPath) {
       setDraggedFile(null);
@@ -389,8 +484,14 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ onSelectionChange }) => {
     setDraggedFile(null);
     setDragOverFile(null);
 
-    if (onSelectionChange) {
-      onSelectionChange(newOrder.slice(0, 30).map((f) => f.path));
+    // Update backend
+    try {
+      await api.reorderFiles(analysisId, newOrder.map((f) => f.path));
+      if (onSelectionChange) {
+        onSelectionChange(newOrder.slice(0, 30).map((f) => f.path));
+      }
+    } catch (err) {
+      console.error('Failed to reorder files:', err);
     }
   };
 
@@ -487,6 +588,25 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ onSelectionChange }) => {
       );
     });
   };
+
+  if (loading) {
+    return (
+      <div className="file-explorer" style={{ textAlign: 'center', padding: '40px 20px' }}>
+        <div className="spinner" style={{ margin: '0 auto 12px' }}></div>
+        <div style={{ fontSize: '13px', color: 'var(--text2)' }}>Loading files...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="file-explorer">
+        <div style={{ background: '#FEF4F4', border: '1px solid #FACACA', borderRadius: '8px', padding: '12px 16px', color: '#C0392B', fontSize: '13px' }}>
+          {error}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="file-explorer">
