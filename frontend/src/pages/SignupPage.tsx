@@ -53,7 +53,7 @@ const SignupPage: React.FC = () => {
       await confirmSignup(email, verificationCode);
       // Auto-login after confirmation
       await login(email, password);
-      navigate("/");
+      navigate("/setup");
     } catch (err: any) {
       setError(err.message || "Failed to confirm signup");
     } finally {

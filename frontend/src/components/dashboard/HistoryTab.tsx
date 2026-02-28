@@ -1,32 +1,86 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { getAnalyses, getUserProgress, UserProgress } from "../../services/api";
+import SkillProgressionPanel from "./SkillProgressionPanel";
+
+interface AnalysisItem {
+  analysisId: string;
+  repositoryUrl: string;
+  repositoryName?: string;
+  status: string;
+  createdAt: string;
+}
 
 const HistoryTab: React.FC = () => {
-  const historyItems = [
-    {
-      name: "my-fullstack-app",
-      meta: "React + Express · 47 files · 2 hours ago · 3 interviews",
-      score: 72,
-      icon: "📁",
-    },
-    {
-      name: "django-blog-api",
-      meta: "Python + Django · 32 files · 3 days ago · 1 interview",
-      score: 81,
-      icon: "📁",
-    },
-    {
-      name: "spring-inventory-mgr",
-      meta: "Java + Spring Boot · 88 files · 1 week ago",
-      score: 55,
-      icon: "📁",
-    },
-    {
-      name: "ecommerce-react-app",
-      meta: "React + Firebase · 61 files · 2 weeks ago · 2 interviews",
-      score: 77,
-      icon: "📁",
-    },
-  ];
+  const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
+  const [progress, setProgress] = useState<UserProgress | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [analysesRes, progressRes] = await Promise.all([
+          getAnalyses(),
+          getUserProgress(),
+        ]);
+        // Handle both array and paginated responses
+        const items = Array.isArray(analysesRes)
+          ? analysesRes
+          : (analysesRes as any).items || [];
+        setAnalyses(items);
+        setProgress(progressRes);
+      } catch (err) {
+        console.error('Failed to load history:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const getRepoName = (item: AnalysisItem) => {
+    if (item.repositoryName) return item.repositoryName;
+    const parts = item.repositoryUrl.split('/');
+    return parts[parts.length - 1] || item.repositoryUrl;
+  };
+
+  if (loading) {
+    return (
+      <>
+        <div className="view-title">Analysis History</div>
+        <div className="view-sub">Loading...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: '10px',
+                padding: '14px 18px',
+                height: '60px',
+              }}
+              className="skeleton"
+            />
+          ))}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -36,9 +90,9 @@ const HistoryTab: React.FC = () => {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {historyItems.map((item, index) => (
+        {analyses.map((item) => (
           <div
-            key={index}
+            key={item.analysisId}
             style={{
               display: "flex",
               alignItems: "center",
@@ -71,7 +125,7 @@ const HistoryTab: React.FC = () => {
                 flexShrink: 0,
               }}
             >
-              {item.icon}
+              📁
             </div>
             <div style={{ flex: 1 }}>
               <div
@@ -81,87 +135,42 @@ const HistoryTab: React.FC = () => {
                   marginBottom: "2px",
                 }}
               >
-                {item.name}
+                {getRepoName(item)}
               </div>
               <div style={{ fontSize: "11.5px", color: "var(--text3)" }}>
-                {item.meta}
+                {item.status} · {formatDate(item.createdAt)}
               </div>
             </div>
             <div
               style={{
-                fontSize: "20px",
-                fontWeight: "700",
-                letterSpacing: "-0.5px",
-                color: item.score >= 70 ? "#27AE60" : "#E67E22",
+                fontSize: "11px",
+                fontWeight: "500",
+                color: item.status === 'completed' ? '#27AE60' : '#E67E22',
+                background: item.status === 'completed' ? '#E8F8F0' : '#FEF3DC',
+                padding: '4px 10px',
+                borderRadius: '6px',
               }}
             >
-              {item.score}
+              {item.status}
             </div>
           </div>
         ))}
+        {analyses.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text3)', fontSize: '13px' }}>
+            No analyses yet. Start by analyzing a repository.
+          </div>
+        )}
       </div>
 
-      <div className="panel" style={{ marginTop: "14px" }}>
-        <div className="panel-head">
-          <div className="panel-title">Skill Progression</div>
-          <div className="chip green">Improving</div>
+      {/* Skill Progression */}
+      {progress && (
+        <div style={{ marginTop: '14px' }}>
+          <SkillProgressionPanel progress={progress} />
         </div>
-        <div className="panel-body">
-          <p
-            style={{
-              fontSize: "13px",
-              color: "var(--text2)",
-              lineHeight: "1.7",
-            }}
-          >
-            Employability Signal risen from{" "}
-            <strong style={{ color: "#E67E22" }}>55</strong> →{" "}
-            <strong style={{ color: "#27AE60" }}>72</strong> across 4 analyses.
-            Consistent improvement in{" "}
-            <span
-              style={{
-                background: "var(--accent-light)",
-                color: "var(--accent)",
-                padding: "2px 7px",
-                borderRadius: "4px",
-                fontSize: "11.5px",
-                fontWeight: "500",
-              }}
-            >
-              error handling
-            </span>{" "}
-            and{" "}
-            <span
-              style={{
-                background: "#E0EAFF",
-                color: "#3B5BDB",
-                padding: "2px 7px",
-                borderRadius: "4px",
-                fontSize: "11.5px",
-                fontWeight: "500",
-              }}
-            >
-              architecture clarity
-            </span>
-            . Focus area:{" "}
-            <span
-              style={{
-                background: "#FDECEC",
-                color: "#C0392B",
-                padding: "2px 7px",
-                borderRadius: "4px",
-                fontSize: "11.5px",
-                fontWeight: "500",
-              }}
-            >
-              test coverage
-            </span>{" "}
-            still at 0% across all projects.
-          </p>
-        </div>
-      </div>
+      )}
     </>
   );
 };
 
 export default HistoryTab;
+

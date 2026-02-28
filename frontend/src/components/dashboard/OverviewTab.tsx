@@ -1,6 +1,18 @@
 import React from "react";
+import EmployabilitySignalPanel from "./EmployabilitySignalPanel";
+import ExportDropdown from "./ExportDropdown";
 
 const OverviewTab: React.FC = () => {
+  // Mock data - will be replaced with API data when analysis is loaded
+  const employabilitySignal = {
+    overall: 72,
+    companyTierMatch: {
+      bigTech: 45,
+      productCompanies: 68,
+      startups: 82,
+      serviceCompanies: 75,
+    },
+  };
   return (
     <>
       <div
@@ -17,30 +29,7 @@ const OverviewTab: React.FC = () => {
             React + Express.js · 47 files · 6 commits · Analysed 2 min ago
           </div>
         </div>
-        <button
-          className="btn-ghost"
-          style={{
-            marginTop: 0,
-            width: "auto",
-            fontSize: "12px",
-            padding: "7px 14px",
-          }}
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          Export PDF
-        </button>
+        <ExportDropdown analysisId="mock-analysis-id" />
       </div>
 
       <div className="warn-strip">
@@ -77,6 +66,8 @@ const OverviewTab: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <EmployabilitySignalPanel employabilitySignal={employabilitySignal} />
 
       <div className="panel">
         <div className="panel-head">
