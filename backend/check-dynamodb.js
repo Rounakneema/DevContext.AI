@@ -3,7 +3,7 @@ const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: 'ap-southeast-1' }));
 
-const ANALYSIS_ID = '62c77ab4-c210-4ffd-ad58-dba217997b4d';
+const ANALYSIS_ID = 'dafe7cfb-f4bb-4ccb-8d0a-6b638ad096bc';
 const TABLE_NAME = 'devcontext-analyses';
 
 async function checkAnalysis() {

@@ -44,10 +44,23 @@ export class GroundingChecker {
     const validReferences: string[] = [];
     const warnings: string[] = [];
 
+    // Safety check: ensure userCodeFiles contains only strings
+    const safeUserCodeFiles = userCodeFiles.filter(f => typeof f === 'string');
+    
+    if (safeUserCodeFiles.length !== userCodeFiles.length) {
+      console.warn(`⚠️ Filtered out ${userCodeFiles.length - safeUserCodeFiles.length} non-string entries from userCodeFiles`);
+    }
+
     // Normalize file paths for comparison
-    const normalizedUserFiles = userCodeFiles.map(f => this.normalizePath(f));
+    const normalizedUserFiles = safeUserCodeFiles.map(f => this.normalizePath(f));
 
     for (const ref of references) {
+      // Safety check: ensure ref is a string
+      if (typeof ref !== 'string') {
+        console.warn(`⚠️ Skipping non-string reference:`, ref);
+        continue;
+      }
+      
       const normalizedRef = this.normalizePath(ref);
       
       // Check if file exists in user code

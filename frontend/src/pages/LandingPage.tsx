@@ -6,6 +6,19 @@ const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [githubUrl, setGithubUrl] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+      // Force page refresh to clear any cached state
+      window.location.reload();
+    } catch (err) {
+      console.error("Logout error:", err);
+      setLoggingOut(false);
+    }
+  };
 
   const handleGithubSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,17 +51,28 @@ const LandingPage: React.FC = () => {
 
           <div className="landing-nav-links">
             {user ? (
-              <button className="btn-ghost" onClick={() => { logout(); }}>
-                Log Out
-              </button>
+              <>
+                <button 
+                  className="btn-ghost" 
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                >
+                  {loggingOut ? "Logging out..." : "Log Out"}
+                </button>
+                <button className="btn-accent btn-sm" onClick={() => navigate("/app")}>
+                  Dashboard
+                </button>
+              </>
             ) : (
-              <button className="btn-ghost" onClick={() => navigate("/login")}>
-                Sign In
-              </button>
+              <>
+                <button className="btn-ghost" onClick={() => navigate("/login")}>
+                  Sign In
+                </button>
+                <button className="btn-accent btn-sm" onClick={() => navigate("/signup")}>
+                  Get Started
+                </button>
+              </>
             )}
-            <button className="btn-accent btn-sm" onClick={() => navigate(user ? "/app/" : "/signup")}>
-              {user ? "Dashboard" : "Get Started"}
-            </button>
           </div>
         </div>
       </nav>

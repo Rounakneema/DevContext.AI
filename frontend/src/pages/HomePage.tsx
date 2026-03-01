@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import UserStatsPanel from '../components/UserStatsPanel';
-import { getUserStats, UserStats } from '../services/api';
+import api, { getUserStats, UserStats } from '../services/api';
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [inputValue, setInputValue] = useState('');
+  const [inProgressAnalysis, setInProgressAnalysis] = useState<any>(null);
+  const [checkingInProgress, setCheckingInProgress] = useState(true);
   const charCount = inputValue.length;
   const maxChars = 1000;
+
+  // Check if repo URL was passed from landing page
+  useEffect(() => {
+    const repoParam = searchParams.get('repo');
+    if (repoParam) {
+      setInputValue(repoParam);
+    }
+  }, [searchParams]);
+  
   const [stats, setStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -23,6 +35,30 @@ const HomePage: React.FC = () => {
       }
     };
     fetchStats();
+  }, []);
+
+  // Check for in-progress analysis on mount
+  useEffect(() => {
+    const checkInProgressAnalysis = async () => {
+      try {
+        const response = await api.getAnalyses();
+        const inProgress = response.items.find((a: any) => 
+          a.status === 'in_progress' || 
+          a.status === 'processing' ||
+          a.status === 'pending'
+        );
+        
+        if (inProgress) {
+          setInProgressAnalysis(inProgress);
+        }
+      } catch (err) {
+        console.error('Failed to check in-progress analysis:', err);
+      } finally {
+        setCheckingInProgress(false);
+      }
+    };
+    
+    checkInProgressAnalysis();
   }, []);
 
   const promptSuggestions = [
@@ -68,9 +104,23 @@ const HomePage: React.FC = () => {
     setInputValue(text);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (inputValue.trim()) {
-      navigate('/app/loading', { state: { query: inputValue } });
+      try {
+        // Start the analysis
+        const result = await api.startAnalysis(inputValue.trim());
+        
+        // Navigate to loading page with the real analysis ID
+        navigate('/app/loading', { 
+          state: { 
+            query: inputValue.trim(),
+            analysisId: result.analysisId 
+          } 
+        });
+      } catch (error) {
+        console.error('Failed to start analysis:', error);
+        alert('Failed to start analysis. Please try again.');
+      }
     }
   };
 
@@ -89,10 +139,112 @@ const HomePage: React.FC = () => {
   return (
     <div className="main page active home-page">
       <div className="home-inner">
+        {/* In-Progress Analysis Banner */}
+        {inProgressAnalysis && !checkingInProgress && (
+          <div style={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
+              <div>
+                <div style={{ color: 'white', fontWeight: '600', fontSize: '14px', marginBottom: '4px' }}>
+                  Analysis in Progress
+                </div>
+                <div style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '12px' }}>
+                  {inProgressAnalysis.repositoryUrl || 'Repository analysis'}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={async () => {
+                  try {
+                    await api.deleteAnalysis(inProgressAnalysis.analysisId);
+                    setInProgressAnalysis(null);
+                    alert('Analysis cancelled successfully');
+                  } catch (err) {
+                    console.error('Failed to cancel analysis:', err);
+                    alert('Failed to cancel analysis. Please try again.');
+                  }
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '8px',
+                  padding: '10px 16px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => navigate('/app/loading', { 
+                  state: { 
+                    analysisId: inProgressAnalysis.analysisId,
+                    query: inProgressAnalysis.repositoryUrl 
+                  } 
+                })}
+                style={{
+                  background: 'white',
+                  color: '#667eea',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '10px 20px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'transform 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                Resume Analysis
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="12 5 19 12 12 19" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* User Stats */}
         {(statsLoading || stats) && (
           <UserStatsPanel
-            stats={stats || { totalAnalyses: 0, averageCodeQuality: 0, totalInterviewSessions: 0, averageInterviewScore: 0, lastAnalysisDate: null, lastInterviewDate: null }}
+            stats={stats || { totalAnalyses: 0, completedAnalyses: 0, averageCodeQuality: 0, totalInterviewSessions: 0, averageInterviewScore: 0, lastAnalysisDate: null, lastInterviewDate: null }}
             loading={statsLoading}
           />
         )}

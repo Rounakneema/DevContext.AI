@@ -6,9 +6,26 @@ import * as DB from './db-utils';
  * Allows users to view, filter, and customize which files to analyze
  */
 
+// CORS headers for all responses
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+  'Content-Type': 'application/json'
+};
+
 export const handler: APIGatewayProxyHandler = async (event) => {
   const path = event.path;
   const method = event.httpMethod;
+  
+  // Handle OPTIONS requests for CORS preflight
+  if (method === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: ''
+    };
+  }
   
   try {
     // GET /analysis/{analysisId}/files - Get all fetched files with priorities
@@ -33,7 +50,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Not found' })
     };
     
@@ -42,7 +59,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ 
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -61,7 +78,7 @@ async function handleGetFiles(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -72,7 +89,7 @@ async function handleGetFiles(event: any) {
   if (!repoMetadata) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Repository metadata not found' })
     };
   }
@@ -85,7 +102,7 @@ async function handleGetFiles(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       totalFiles: allFiles.length,
@@ -113,7 +130,7 @@ async function handleUpdateFileSelection(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -160,7 +177,7 @@ async function handleUpdateFileSelection(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       selectedFiles: fileSelection.selectedFiles.length,
@@ -182,7 +199,7 @@ async function handleReorderFiles(event: any) {
   if (!analysisId || !customOrder || !Array.isArray(customOrder)) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId and customOrder array are required' })
     };
   }
@@ -209,7 +226,7 @@ async function handleReorderFiles(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       customOrder: fileSelection.customOrder.length,
@@ -228,7 +245,7 @@ async function handleReprocess(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -239,7 +256,7 @@ async function handleReprocess(event: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -248,7 +265,7 @@ async function handleReprocess(event: any) {
   if (analysis.status === 'processing') {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis is currently processing' })
     };
   }
@@ -259,7 +276,7 @@ async function handleReprocess(event: any) {
   if (!fileSelection || fileSelection.selectedFiles.length === 0) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'No files selected for reprocessing' })
     };
   }
@@ -276,7 +293,7 @@ async function handleReprocess(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       status: 'processing',
@@ -352,7 +369,7 @@ function buildFileListWithPriorities(
         const orderB = orderMap.get(b.path);
         
         if (orderA !== undefined && orderB !== undefined) {
-          return orderA - orderB;
+          return (orderA as number) - (orderB as number);
         }
         if (orderA !== undefined) return -1;
         if (orderB !== undefined) return 1;
@@ -401,3 +418,4 @@ function estimateFileSizeFromPath(path: string): string {
   if (path.includes('index') || path.includes('main')) return 'Medium';
   return 'Medium';
 }
+

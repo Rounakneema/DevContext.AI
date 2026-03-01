@@ -16,7 +16,7 @@ npm install express cors uuid @types/express @types/cors @types/uuid
 npx ts-node mock-backend.ts
 ```
 
-Server will run on `http://localhost:3001`
+Server will run on `http://localhost:3000`
 
 ---
 

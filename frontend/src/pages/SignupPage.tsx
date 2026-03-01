@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -10,9 +10,17 @@ const SignupPage: React.FC = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
 
-  const { signup, confirmSignup, login } = useAuth();
+  const { signup, confirmSignup, login, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate("/app", { replace: true });
+    }
+  }, [user, authLoading, navigate]);
 
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -36,6 +44,9 @@ const SignupPage: React.FC = () => {
     } catch (err: any) {
       if (err.message === "CONFIRMATION_REQUIRED") {
         setNeedsConfirmation(true);
+      } else if (err.name === 'UsernameExistsException' || err.message.includes('already exists')) {
+        // User exists but may not be verified - show error and suggest login
+        setError("An account with this email already exists. Please login or use a different email.");
       } else {
         setError(err.message || "Failed to sign up");
       }
@@ -58,6 +69,19 @@ const SignupPage: React.FC = () => {
       setError(err.message || "Failed to confirm signup");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setResendMessage("");
+    setError("");
+    try {
+      // Resend by calling signup again
+      await signup(email, password);
+      setResendMessage("Verification code resent! Check your email.");
+      setTimeout(() => setResendMessage(""), 5000);
+    } catch (err: any) {
+      setError("Failed to resend code. Please try again.");
     }
   };
 
@@ -139,6 +163,22 @@ const SignupPage: React.FC = () => {
             </div>
           )}
 
+          {resendMessage && (
+            <div
+              style={{
+                background: "#D4EDDA",
+                border: "1px solid #C3E6CB",
+                borderRadius: "7px",
+                padding: "10px 12px",
+                fontSize: "12.5px",
+                color: "#155724",
+                marginBottom: "12px",
+              }}
+            >
+              {resendMessage}
+            </div>
+          )}
+
           <form onSubmit={handleConfirmation}>
             <div style={{ marginBottom: "12px" }}>
               <label
@@ -176,6 +216,27 @@ const SignupPage: React.FC = () => {
               {loading ? "Verifying..." : "Verify Email →"}
             </button>
           </form>
+
+          <div
+            style={{
+              textAlign: "center",
+              fontSize: "12px",
+              color: "var(--text3)",
+              marginTop: "16px",
+            }}
+          >
+            Didn't receive the code?{" "}
+            <span
+              onClick={handleResendCode}
+              style={{
+                color: "var(--accent)",
+                cursor: "pointer",
+                fontWeight: "500",
+              }}
+            >
+              Resend
+            </span>
+          </div>
         </div>
       </div>
     );
@@ -325,6 +386,7 @@ const SignupPage: React.FC = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Create a password"
+              autoComplete="new-password"
               required
               style={inputStyle}
             />
@@ -347,6 +409,7 @@ const SignupPage: React.FC = () => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Confirm your password"
+              autoComplete="new-password"
               required
               style={inputStyle}
             />

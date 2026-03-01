@@ -55,7 +55,7 @@ export interface Analysis {
   version: number;         // Optimistic locking
   
   // User approval workflow state (separate from technical status)
-  workflowState: 'stage1_pending' | 'stage1_complete_awaiting_approval' | 'stage2_pending' | 'stage2_complete_awaiting_approval' | 'stage3_pending' | 'all_complete';
+  workflowState: 'stage1_pending' | 'stage1_complete_awaiting_approval' | 'stage2_pending' | 'stage2_complete_awaiting_approval' | 'stage3_pending' | 'all_complete' | 'reprocessing';
   
   // Stage tracking (denormalized for quick status checks)
   stages: StageTracking;
@@ -115,6 +115,7 @@ export interface RepositoryMetadata {
   frameworks: string[];
   entryPoints: string[];
   coreModules: string[];
+  userCodeFilesS3Key?: string; // S3 key to JSON file containing userCodeFiles array
   
   // Commit analysis
   commits: CommitAnalysis;

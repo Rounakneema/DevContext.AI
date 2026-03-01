@@ -1,6 +1,15 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: DevContext AI Backend - Production-Grade Normalized Schema
+Description: DevContext AI Backend - Production v2.1.0 (March 2026)
+
+Metadata:
+  Version: 2.1.0
+  LastUpdated: 2026-03-01
+  Changes:
+    - Fixed stage result saving to DynamoDB
+    - Added cost tracking API
+    - Improved export functionality
+    - Enhanced CORS headers
 
 Parameters:
   CognitoUserPoolId:
@@ -16,14 +25,18 @@ Globals:
   Function:
     Timeout: 180
     MemorySize: 1024
-    Runtime: nodejs18.x
+    Runtime: nodejs20.x
+    Architectures:
+      - x86_64
+    Tracing: Active
     Environment:
       Variables:
         MAIN_TABLE: !Ref MainTable
         CACHE_BUCKET: !Ref CacheBucket
-        BEDROCK_REGION: ap-southeast-1
+        BEDROCK_REGION: us-west-2
         COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
         COGNITO_CLIENT_ID: !Ref CognitoClientId
+        NODE_ENV: production
 
 Resources:
   # ============================================================================
@@ -223,6 +236,120 @@ Resources:
             RestApiId: !Ref DevContextApi
             Path: /analyses
             Method: get
+        GetEvents:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/events
+            Method: get
+        GetCost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/cost
+            Method: get
+        DeleteAnalysis:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}
+            Method: delete
+        ContinueStage2:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/continue-stage2
+            Method: post
+        ContinueStage3:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/continue-stage3
+            Method: post
+        GetUserProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /user/profile
+            Method: get
+        CreateUserProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /user/profile
+            Method: post
+        UpdatePreferences:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /user/preferences
+            Method: patch
+        GetUserStats:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /user/stats
+            Method: get
+        GetUserProgress:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /user/progress
+            Method: get
+        GetFiles:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/files
+            Method: get
+        UpdateFileSelection:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/files/selection
+            Method: put
+        ReorderFiles:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/files/reorder
+            Method: post
+        Reprocess:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/reprocess
+            Method: post
+        ExportAnalysis:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/export
+            Method: post
+        CreateInterviewSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/sessions
+            Method: post
+        GetInterviewSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/sessions/{sessionId}
+            Method: get
+        SubmitAnswer:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/sessions/{sessionId}/answer
+            Method: post
+        CompleteSession:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/sessions/{sessionId}/complete
+            Method: post
 
   RepoProcessorFunction:
     Type: AWS::Serverless::Function
@@ -319,6 +446,66 @@ Resources:
           Properties:
             RestApiId: !Ref DevContextApi
             Path: /interview/{sessionId}
+            Method: get
+
+  CostApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: cost-api.handler
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MainTable
+      Events:
+        GetRealtime:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /cost/realtime
+            Method: get
+        GetAnalysisCost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /cost/analysis/{analysisId}
+            Method: get
+        GetDaily:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /cost/daily/{date}
+            Method: get
+        GetRange:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /cost/range
+            Method: get
+        GetProjection:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /cost/projection
+            Method: get
+        GetModels:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /cost/models
+            Method: get
+        ExportCost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /cost/export
+            Method: get
+        GetPricing:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /cost/pricing
             Method: get
 
   # ============================================================================

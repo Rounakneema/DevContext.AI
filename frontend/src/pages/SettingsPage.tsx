@@ -46,7 +46,7 @@ const SettingsPage: React.FC = () => {
     try {
       await updateUserPreferences({
         targetRole: profile.targetRole,
-        preferredLanguage: profile.language as any,
+        language: profile.language as any,
         emailNotifications: profile.notifications,
         emailDigest: profile.emailDigest,
       });

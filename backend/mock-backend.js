@@ -4,7 +4,7 @@
  *
  * Usage:
  *   npx tsx mock-backend.ts
- *   Server runs on http://localhost:3001
+ *   Server runs on http://localhost:3000
  */
 
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -15,7 +15,7 @@ const { v4: uuidv4 } = require("uuid");
 
 
 const app = express();
-const PORT = 3001;
+const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());

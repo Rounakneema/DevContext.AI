@@ -69,22 +69,30 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
           
           {architectureClarity.designPatterns && architectureClarity.designPatterns.length > 0 && (
             <div className="tag-row" style={{ marginBottom: "14px" }}>
-              {architectureClarity.designPatterns.map((pattern: string) => (
-                <span key={pattern} className="tag tech">{pattern}</span>
-              ))}
+              {architectureClarity.designPatterns.map((pattern: any, idx: number) => {
+                const patternName = typeof pattern === 'string' ? pattern : (pattern?.name || JSON.stringify(pattern));
+                return (
+                  <span key={idx} className="tag tech">
+                    {patternName}
+                  </span>
+                );
+              })}
             </div>
           )}
 
           {architectureClarity.antiPatterns && architectureClarity.antiPatterns.length > 0 && (
             <div className="insight-list">
-              {architectureClarity.antiPatterns.map((antiPattern: string, idx: number) => (
-                <div key={idx} className="insight-item">
-                  <div className="i-dot warn">!</div>
-                  <div className="i-text">
-                    <strong>Anti-pattern detected:</strong> {antiPattern}
+              {architectureClarity.antiPatterns.map((antiPattern: any, idx: number) => {
+                const antiPatternText = typeof antiPattern === 'string' ? antiPattern : (antiPattern?.name || JSON.stringify(antiPattern));
+                return (
+                  <div key={idx} className="insight-item">
+                    <div className="i-dot warn">!</div>
+                    <div className="i-text">
+                      <strong>Anti-pattern detected:</strong> {antiPatternText}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -13,6 +13,7 @@ import AccountPage from "./pages/AccountPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import ProfileSetupPage from "./pages/ProfileSetupPage";
+import AdminCostDashboard from "./pages/AdminCostDashboard";
 import "./styles.css";
 
 function App() {
@@ -21,16 +22,26 @@ function App() {
       <AuthProvider>
         <Router>
           <Routes>
-            {/* Public Routes */}
+            {/* Public Routes - Only Landing, Login, Signup */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
 
-            {/* Profile Setup - Protected but no sidebar */}
+            {/* Admin Route - Cognito Protected */}
+            <Route
+              path="/admin/cost-analytics"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <AdminCostDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Profile Setup - Protected but no onboarding check */}
             <Route
               path="/setup"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requireOnboarding={false}>
                   <ProfileSetupPage />
                 </ProtectedRoute>
               }
@@ -56,6 +67,9 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+            {/* Catch all - redirect to login */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </Router>
       </AuthProvider>

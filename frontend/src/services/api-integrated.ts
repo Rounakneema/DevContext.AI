@@ -308,9 +308,8 @@ async function apiCall<T>(
   options: RequestInit = {},
   requiresAuth: boolean = true
 ): Promise<T> {
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
   };
 
   // Add authorization header if required

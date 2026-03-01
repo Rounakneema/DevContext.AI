@@ -1,17 +1,24 @@
 import { Handler } from 'aws-lambda';
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { ProjectContextMap } from './types';
 import { GroundingChecker } from './grounding-checker';
 import * as DB from './db-utils';
 import { v4 as uuidv4 } from 'uuid';
 
-const bedrockClient = new BedrockRuntimeClient({ region: 'ap-southeast-1' });
+const bedrockClient = new BedrockRuntimeClient({ region: 'us-west-2' });
 const s3Client = new S3Client({});
 
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
-// Using Amazon Nova 2 Lite (Global) - cost-effective for deep reasoning
-const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
+// 🏆 OPTIMAL MODEL: Meta Llama 3.3 70B Instruct (Inference Profile)
+// Cost: ~$0.38 per report | Context: 128K tokens | Quality: ⭐⭐⭐⭐⭐
+// Why: Complex system architecture reconstruction requires deep reasoning
+//      - Design pattern identification with nuance
+//      - Scalability analysis and bottleneck detection
+//      - Trade-off reasoning at Staff Engineer level
+//      - Resume bullet generation (ATS-optimized)
+// Uses AWS Credits: ✅ Yes
+const MODEL_ID = 'us.meta.llama3-3-70b-instruct-v1:0';
 
 /**
  * Utility: Ensure all items in array have IDs
@@ -55,21 +62,29 @@ export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
       codeContext
     );
     
-    // Validate grounding
-    const groundingChecker = new GroundingChecker();
-    const groundingResult = groundingChecker.validateIntelligenceReport(
-      intelligenceReport,
-      projectContextMap.userCodeFiles
-    );
-    
-    console.log('Grounding validation:', groundingResult);
-    
-    if (groundingResult.confidence === 'insufficient') {
-      console.warn('⚠️ Insufficient grounding detected in intelligence report');
+    // Validate grounding (only if userCodeFiles available)
+    if (projectContextMap.userCodeFiles && projectContextMap.userCodeFiles.length > 0) {
+      const groundingChecker = new GroundingChecker();
+      const groundingResult = groundingChecker.validateIntelligenceReport(
+        intelligenceReport,
+        projectContextMap.userCodeFiles
+      );
+      
+      console.log('Grounding validation:', groundingResult);
+      
+      if (groundingResult.confidence === 'insufficient') {
+        console.warn('⚠️ Insufficient grounding detected in intelligence report');
+      }
+    } else {
+      console.warn('⚠️ No userCodeFiles available - skipping grounding validation (old analysis or S3 load failed)');
     }
+    
+    console.log('💾 Saving intelligence report to DynamoDB');
     
     // Save to DynamoDB using db-utils
     await DB.saveIntelligenceReport(analysisId, intelligenceReport);
+    
+    console.log('✅ Intelligence report saved to DynamoDB');
     
     console.log(`Stage 2 completed for: ${analysisId}`);
     
@@ -141,7 +156,7 @@ Repository Context:
 - User Code Files: ${contextMap.userCodeFiles.length}
 - Entry Points: ${contextMap.entryPoints.join(', ') || 'None'}
 - Frameworks: ${contextMap.frameworks.join(', ') || 'None'}
-- Core Modules: ${contextMap.coreModules.slice(0, 10).join(', ')}
+- Core Modules: ${contextMap.coreModules.slice(0, 10).join(', ') || 'None'}
 
 Code Sample:
 ${codeContext}
@@ -305,7 +320,8 @@ Respond in JSON format:
   "generatedAt": "${new Date().toISOString()}"
 }`;
 
-  const requestBody = {
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
     messages: [
       {
         role: 'user',
@@ -317,24 +333,16 @@ Respond in JSON format:
       }
     ],
     inferenceConfig: {
-      max_new_tokens: 4000,
+      maxTokens: 4000,
       temperature: 0.4
     }
-  };
-  
-  const command = new InvokeModelCommand({
-    modelId: MODEL_ID,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body: JSON.stringify(requestBody)
   });
   
   const startTime = Date.now();
   const response = await bedrockClient.send(command);
   const inferenceTimeMs = Date.now() - startTime;
-  const responseBody = JSON.parse(new TextDecoder().decode(response.body));
   
-  const content = responseBody.output?.message?.content?.[0]?.text || '';
+  const content = response.output?.message?.content?.[0]?.text || '';
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   
   if (!jsonMatch) {
@@ -365,10 +373,10 @@ Respond in JSON format:
   // Add metadata
   parsed.modelMetadata = {
     modelId: MODEL_ID,
-    tokensIn: requestBody.inferenceConfig.max_new_tokens,
-    tokensOut: content.length / 4,
+    tokensIn: response.usage?.inputTokens || 0,
+    tokensOut: response.usage?.outputTokens || 0,
     inferenceTimeMs,
-    temperature: requestBody.inferenceConfig.temperature
+    temperature: 0.4
   };
   
   parsed.generatedAt = new Date().toISOString();

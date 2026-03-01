@@ -11,16 +11,22 @@ import {
 interface User {
   email: string;
   userId: string;
+  groups?: string[];
+  emailVerified?: boolean;
+  onboardingComplete?: boolean;
+  profileComplete?: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   confirmSignup: (email: string, code: string) => Promise<void>;
   getAuthToken: () => Promise<string | null>;
+  checkProfileCompletion: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,6 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Check if user is already logged in on mount
   useEffect(() => {
@@ -39,15 +46,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const checkUser = async () => {
     try {
       const currentUser = await getCurrentUser();
+      const session = await fetchAuthSession();
+      
+      // Extract groups from JWT token
+      const groups = (session.tokens?.accessToken?.payload['cognito:groups'] as string[]) || [];
+      const adminStatus = groups.includes('Admins');
+      
+      // Check email verification
+      const emailVerified = session.tokens?.idToken?.payload['email_verified'] === true;
+      
       setUser({
         email: currentUser.signInDetails?.loginId || "",
         userId: currentUser.userId,
+        groups: groups,
+        emailVerified: emailVerified,
+        onboardingComplete: false, // Will be checked separately
+        profileComplete: false, // Will be checked separately
       });
+      setIsAdmin(adminStatus);
+      
+      // Check profile completion after setting user
+      await checkProfileCompletionInternal();
     } catch (error) {
       setUser(null);
+      setIsAdmin(false);
     } finally {
       setLoading(false);
     }
+  };
+
+  const checkProfileCompletionInternal = async () => {
+    try {
+      // Import getUserProfile dynamically to avoid circular dependency
+      const { getUserProfile } = await import('../services/api');
+      const profile = await getUserProfile();
+      
+      // Check if profile is complete
+      const isComplete = !!(
+        profile.displayName &&
+        profile.targetRole &&
+        profile.language
+      );
+      
+      setUser(prev => prev ? {
+        ...prev,
+        profileComplete: isComplete,
+        onboardingComplete: isComplete,
+      } : null);
+    } catch (error) {
+      // Profile doesn't exist yet
+      setUser(prev => prev ? {
+        ...prev,
+        profileComplete: false,
+        onboardingComplete: false,
+      } : null);
+    }
+  };
+
+  const checkProfileCompletion = async () => {
+    await checkProfileCompletionInternal();
   };
 
   const login = async (email: string, password: string) => {
@@ -104,6 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       await signOut();
       setUser(null);
+      setIsAdmin(false);
     } catch (error) {
       console.error("Logout error:", error);
     }
@@ -124,11 +182,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         user,
         loading,
+        isAdmin,
         login,
         signup,
         logout,
         confirmSignup,
         getAuthToken,
+        checkProfileCompletion,
       }}
     >
       {children}

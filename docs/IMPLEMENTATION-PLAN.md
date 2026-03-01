@@ -48,7 +48,7 @@ PROTECTED ROUTES (require auth)
 └── /app/account         → AccountPage ⬜
 ```
 
-### Backend API Endpoints (Mock Server: localhost:3001)
+### Backend API Endpoints (Mock Server: localhost:3000)
 
 | Category      | Endpoint                               | Status   |
 | ------------- | -------------------------------------- | -------- |
@@ -273,7 +273,7 @@ interface SkillProgressionProps {
 Create `src/services/api.ts`:
 
 ```typescript
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3001";
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3000";
 
 // Analysis
 export const startAnalysis = (repositoryUrl: string) =>

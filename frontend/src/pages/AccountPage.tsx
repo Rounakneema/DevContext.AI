@@ -22,6 +22,7 @@ const AccountPage: React.FC = () => {
   const [account, setAccount] = useState<AccountData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const fetchAccount = async () => {
@@ -46,6 +47,17 @@ const AccountPage: React.FC = () => {
     };
     fetchAccount();
   }, []);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate('/', { replace: true });
+    } catch (err) {
+      console.error("Logout error:", err);
+      setLoggingOut(false);
+    }
+  };
 
   const handleChangePassword = () => {
     // In real app, this would trigger Cognito change password flow
@@ -154,13 +166,17 @@ const AccountPage: React.FC = () => {
               </svg>
               Change Password
             </button>
-            <button className="btn-outline-settings" onClick={() => { logout(); navigate('/'); }}>
+            <button 
+              className="btn-outline-settings" 
+              onClick={handleLogout}
+              disabled={loggingOut}
+            >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
-              Sign Out
+              {loggingOut ? "Signing out..." : "Sign Out"}
             </button>
           </div>
         </div>

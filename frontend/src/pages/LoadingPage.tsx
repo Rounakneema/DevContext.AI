@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { getAnalysisStatus, continueToStage2, continueToStage3, exportAnalysis } from '../services/api';
 
 type WorkflowState =
   | 'stage1_pending'
@@ -10,44 +11,29 @@ type WorkflowState =
   | 'all_complete'
   | 'failed';
 
-interface StageStatus {
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  progress: number;
-  startedAt?: string;
-  completedAt?: string;
-}
-
-interface AnalysisStatus {
-  analysisId: string;
-  status: 'initiated' | 'processing' | 'completed' | 'failed';
-  workflowState: WorkflowState;
-  progress: number;
-  stages: {
-    project_review: StageStatus;
-    intelligence_report: StageStatus;
-    interview_simulation: StageStatus;
-  };
-  estimatedTimeRemaining: number;
-  nextAction?: string;
-}
-
 interface Stage {
   name: string;
   detail: string;
   status: 'done' | 'running' | 'pending' | 'awaiting';
 }
 
-const API_BASE = 'http://localhost:3001';
-
 const LoadingPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryUrl = (location.state as any)?.query || 'github.com/username/project';
-  const analysisId = (location.state as any)?.analysisId || 'mock-analysis-id';
+  const analysisId = (location.state as any)?.analysisId;
 
   const [workflowState, setWorkflowState] = useState<WorkflowState>('stage1_pending');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Redirect if no analysisId
+  React.useEffect(() => {
+    if (!analysisId) {
+      console.error('No analysisId provided');
+      navigate('/app');
+    }
+  }, [analysisId, navigate]);
 
   const [stages, setStages] = useState<Stage[]>([
     {
@@ -120,12 +106,9 @@ const LoadingPage: React.FC = () => {
 
     const pollStatus = async () => {
       try {
-        const response = await fetch(`${API_BASE}/analysis/${analysisId}/status`);
-        if (!response.ok) throw new Error('Failed to fetch status');
-        
-        const data: AnalysisStatus = await response.json();
-        setWorkflowState(data.workflowState);
-        updateStagesFromWorkflow(data.workflowState);
+        const data = await getAnalysisStatus(analysisId);
+        setWorkflowState(data.workflowState as WorkflowState);
+        updateStagesFromWorkflow(data.workflowState as WorkflowState);
 
         // Stop polling at decision points or completion
         if (
@@ -139,7 +122,7 @@ const LoadingPage: React.FC = () => {
         // Auto-redirect when all complete
         if (data.workflowState === 'all_complete') {
           setTimeout(() => {
-            navigate('/app/dashboard', { state: { analysisId, activeTab: 'interview' } });
+            navigate(`/app/dashboard?id=${analysisId}&tab=interview`);
           }, 1500);
         }
       } catch (err) {
@@ -161,25 +144,23 @@ const LoadingPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API_BASE}/analysis/${analysisId}/continue-stage2`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      
-      if (!response.ok) throw new Error('Failed to continue to Stage 2');
+      await continueToStage2(analysisId);
       
       setWorkflowState('stage2_pending');
       updateStagesFromWorkflow('stage2_pending');
       
       // Resume polling
       const pollInterval = setInterval(async () => {
-        const statusRes = await fetch(`${API_BASE}/analysis/${analysisId}/status`);
-        const data = await statusRes.json();
-        setWorkflowState(data.workflowState);
-        updateStagesFromWorkflow(data.workflowState);
-        
-        if (data.workflowState === 'stage2_complete_awaiting_approval') {
-          clearInterval(pollInterval);
+        try {
+          const data = await getAnalysisStatus(analysisId);
+          setWorkflowState(data.workflowState as WorkflowState);
+          updateStagesFromWorkflow(data.workflowState as WorkflowState);
+          
+          if (data.workflowState === 'stage2_complete_awaiting_approval') {
+            clearInterval(pollInterval);
+          }
+        } catch (err) {
+          console.error('Polling error:', err);
         }
       }, 3000);
     } catch (err: any) {
@@ -194,28 +175,26 @@ const LoadingPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API_BASE}/analysis/${analysisId}/continue-stage3`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      
-      if (!response.ok) throw new Error('Failed to continue to Stage 3');
+      await continueToStage3(analysisId);
       
       setWorkflowState('stage3_pending');
       updateStagesFromWorkflow('stage3_pending');
       
       // Resume polling
       const pollInterval = setInterval(async () => {
-        const statusRes = await fetch(`${API_BASE}/analysis/${analysisId}/status`);
-        const data = await statusRes.json();
-        setWorkflowState(data.workflowState);
-        updateStagesFromWorkflow(data.workflowState);
-        
-        if (data.workflowState === 'all_complete') {
-          clearInterval(pollInterval);
-          setTimeout(() => {
-            navigate('/app/dashboard', { state: { analysisId, activeTab: 'interview' } });
-          }, 1500);
+        try {
+          const data = await getAnalysisStatus(analysisId);
+          setWorkflowState(data.workflowState as WorkflowState);
+          updateStagesFromWorkflow(data.workflowState as WorkflowState);
+          
+          if (data.workflowState === 'all_complete') {
+            clearInterval(pollInterval);
+            setTimeout(() => {
+              navigate(`/app/dashboard?id=${analysisId}&tab=interview`);
+            }, 1500);
+          }
+        } catch (err) {
+          console.error('Polling error:', err);
         }
       }, 3000);
     } catch (err: any) {
@@ -228,16 +207,7 @@ const LoadingPage: React.FC = () => {
   // Download report
   const handleDownloadReport = async () => {
     try {
-      const response = await fetch(`${API_BASE}/analysis/${analysisId}/export`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format: 'pdf' }),
-      });
-      
-      if (!response.ok) throw new Error('Failed to generate report');
-      
-      const data = await response.json();
-      // In real implementation, poll for export completion then download
+      const data = await exportAnalysis(analysisId, 'pdf');
       console.log('Export initiated:', data);
       alert('Report download started! Check your downloads folder.');
     } catch (err: any) {
@@ -247,7 +217,7 @@ const LoadingPage: React.FC = () => {
 
   // Go to dashboard
   const handleGoToDashboard = () => {
-    navigate('/app/dashboard', { state: { analysisId } });
+    navigate(`/app/dashboard?id=${analysisId}`);
   };
 
   // Go home

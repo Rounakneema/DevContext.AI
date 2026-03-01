@@ -4,7 +4,7 @@
  *
  * Usage:
  *   ts-node backend/mock-backend.ts
- *   Server runs on http://localhost:3001
+ *   Server runs on http://localhost:3000
  */
 
 import express, { Request, Response } from "express";
@@ -12,7 +12,7 @@ import cors from "cors";
 import { v4 as uuidv4 } from "uuid";
 
 const app = express();
-const PORT = 3001;
+const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());

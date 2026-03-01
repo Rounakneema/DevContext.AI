@@ -30,11 +30,12 @@ const AnswerEvaluationPanel: React.FC<AnswerEvaluationPanelProps> = ({
     return '#FACACA';
   };
 
-  const getCategoryLabel = (category: 'weak' | 'acceptable' | 'strong') => {
+  const getCategoryLabel = (category: 'weak' | 'acceptable' | 'strong' | 'excellent') => {
     const labels = {
       weak: { text: 'Needs Improvement', color: '#E74C3C', bg: '#FEF4F4' },
       acceptable: { text: 'Acceptable', color: '#E67E22', bg: '#FEF8F0' },
       strong: { text: 'Strong Answer', color: '#27AE60', bg: '#F4FCF8' },
+      excellent: { text: 'Excellent Answer', color: '#2ECC71', bg: '#F0FDF4' },
     };
     return labels[category];
   };

@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { createUserProfile } from "../services/api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface ProfileData {
   displayName: string;
@@ -10,6 +12,7 @@ interface ProfileData {
 
 const ProfileSetupPage: React.FC = () => {
   const navigate = useNavigate();
+  const { checkProfileCompletion } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState<ProfileData>({
@@ -63,27 +66,15 @@ const ProfileSetupPage: React.FC = () => {
     setLoading(true);
 
     try {
-      // POST /user/profile
-      const response = await fetch("http://localhost:3001/user/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to save profile");
-      }
-
+      await createUserProfile(formData);
+      // Update auth context to reflect profile completion
+      await checkProfileCompletion();
       navigate("/app");
     } catch (err: any) {
       setError(err.message || "Failed to save profile");
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSkip = () => {
-    navigate("/app");
   };
 
   return (
@@ -255,9 +246,9 @@ const ProfileSetupPage: React.FC = () => {
                 <polyline points="12 5 19 12 12 19" />
               </svg>
             </button>
-            <button type="button" onClick={handleSkip} className="btn-skip">
-              Skip for now
-            </button>
+            <p className="form-hint" style={{ textAlign: 'center', marginTop: '12px', color: 'var(--text3)' }}>
+              Complete your profile to access the platform
+            </p>
           </div>
         </form>
       </div>

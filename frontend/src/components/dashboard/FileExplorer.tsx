@@ -21,6 +21,11 @@ const buildFileTree = (files: any[]): FileNode[] => {
   const root: FileNode[] = [];
   const folderMap = new Map<string, FileNode>();
 
+  // Handle empty or undefined files array
+  if (!files || !Array.isArray(files) || files.length === 0) {
+    return root;
+  }
+
   files.forEach((file) => {
     const parts = file.path.split('/');
     const fileName = parts[parts.length - 1];
@@ -328,6 +333,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
   // Load files from API
   useEffect(() => {
     loadFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisId]);
 
   const loadFiles = async () => {

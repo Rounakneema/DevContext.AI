@@ -1,21 +1,43 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
+import { evaluateAnswerComprehensive } from './answer-eval';
+
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import * as DB from './db-utils';
 
 const lambdaClient = new LambdaClient({});
+const s3Client = new S3Client({});
 
 const REPO_PROCESSOR_FUNCTION = process.env.REPO_PROCESSOR_FUNCTION;
 const STAGE1_FUNCTION = process.env.STAGE1_FUNCTION;
 const STAGE2_FUNCTION = process.env.STAGE2_FUNCTION;
 const STAGE3_FUNCTION = process.env.STAGE3_FUNCTION;
+const CACHE_BUCKET = process.env.CACHE_BUCKET;
 
-if (!REPO_PROCESSOR_FUNCTION || !STAGE1_FUNCTION || !STAGE2_FUNCTION || !STAGE3_FUNCTION) {
+if (!REPO_PROCESSOR_FUNCTION || !STAGE1_FUNCTION || !STAGE2_FUNCTION || !STAGE3_FUNCTION || !CACHE_BUCKET) {
   throw new Error('Missing required Lambda function environment variables');
 }
+
+// CORS headers for all responses
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+  'Content-Type': 'application/json'
+};
 
 export const handler: APIGatewayProxyHandler = async (event, context) => {
   const path = event.path;
   const method = event.httpMethod;
+  
+  // Handle OPTIONS requests for CORS preflight
+  if (method === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: ''
+    };
+  }
   
   try {
     // Log event for audit
@@ -96,6 +118,11 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
       return await handleReprocess(event);
     }
     
+    // Export endpoint
+    if (path.endsWith('/export') && method === 'POST') {
+      return await handleExportAnalysis(event);
+    }
+    
     // Interview session endpoints
     if (path === '/interview/sessions' && method === 'POST') {
       return await handleCreateInterviewSession(event, context);
@@ -115,7 +142,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
     
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Not found' })
     };
     
@@ -124,7 +151,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
     
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ 
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -140,7 +167,7 @@ async function handleAnalyze(event: any, context: any) {
   if (!repositoryUrl) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'repositoryUrl is required' })
     };
   }
@@ -154,7 +181,7 @@ async function handleAnalyze(event: any, context: any) {
   if (!userProfile) {
     return {
       statusCode: 401,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'User profile not found' })
     };
   }
@@ -163,7 +190,7 @@ async function handleAnalyze(event: any, context: any) {
   if (userProfile.subscription.analysisUsed >= userProfile.subscription.analysisQuota) {
     return {
       statusCode: 429,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({
         error: 'Analysis quota exceeded',
         quota: userProfile.subscription.analysisQuota,
@@ -180,7 +207,7 @@ async function handleAnalyze(event: any, context: any) {
   if (hasActiveAnalysis) {
     return {
       statusCode: 429,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({
         error: 'You already have an analysis in progress. Please wait for it to complete.'
       })
@@ -202,12 +229,16 @@ async function handleAnalyze(event: any, context: any) {
     repositoryName
   }, context);
   
-  // Background processing
-  processAnalysisPipeline(analysis.analysisId, repositoryUrl, context);
+  // Background processing - invoke async to avoid Lambda timeout
+  // Don't await - let it run in background
+  processAnalysisPipeline(analysis.analysisId, repositoryUrl, context).catch(error => {
+    console.error('Pipeline error (caught):', error);
+    // Error is already logged in processAnalysisPipeline
+  });
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId: analysis.analysisId,
       status: 'initiated',
@@ -222,13 +253,15 @@ async function handleAnalyze(event: any, context: any) {
 // PROGRESSIVE WORKFLOW: Only run Stage 1 automatically
 async function processAnalysisPipeline(analysisId: string, repositoryUrl: string, context: any) {
   try {
-    console.log(`Starting pipeline for analysis: ${analysisId}`);
+    console.log(`🚀 Starting pipeline for analysis: ${analysisId}`);
+    console.log(`Repository: ${repositoryUrl}`);
     
     // Update status to processing
     await DB.updateAnalysisStatus(analysisId, 'processing');
     await DB.logAnalysisEvent(analysisId, 'pipeline_started', {}, context);
     
     // Step 1: Repository Processing
+    console.log(`📦 Step 1: Repository Processing`);
     await DB.logAnalysisEvent(analysisId, 'repo_processing_started', {}, context);
     const repoResult = await invokeAsync(REPO_PROCESSOR_FUNCTION!, {
       analysisId,
@@ -239,10 +272,25 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
       throw new Error(repoResult.error || 'Repository processing failed');
     }
     
-    console.log('Repository processed. Token budget:', repoResult.budgetStats);
+    console.log('✅ Repository processed. Token budget:', repoResult.budgetStats);
     await DB.logAnalysisEvent(analysisId, 'repo_processing_completed', {
       budgetStats: repoResult.budgetStats
     }, context);
+    
+    // Save userCodeFiles list to S3 (separate from repo cache)
+    const userCodeFilesKey = `${repoResult.s3Key}_userCodeFiles.json`;
+    await s3Client.send(new PutObjectCommand({
+      Bucket: CACHE_BUCKET,
+      Key: userCodeFilesKey,
+      Body: JSON.stringify({
+        userCodeFiles: repoResult.projectContextMap.userCodeFiles,
+        totalFiles: repoResult.projectContextMap.totalFiles,
+        savedAt: new Date().toISOString()
+      }),
+      ContentType: 'application/json'
+    }));
+    
+    console.log(`✅ Saved ${repoResult.projectContextMap.userCodeFiles.length} userCodeFiles to S3: ${userCodeFilesKey}`);
     
     // Save repository metadata
     await DB.saveRepositoryMetadata(analysisId, {
@@ -252,6 +300,7 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
       frameworks: repoResult.projectContextMap.frameworks,
       entryPoints: repoResult.projectContextMap.entryPoints,
       coreModules: repoResult.projectContextMap.coreModules,
+      userCodeFilesS3Key: userCodeFilesKey, // Store S3 reference instead of full array
       commits: repoResult.commitStats || {
         totalCount: 0,
         firstCommitDate: '',
@@ -274,6 +323,7 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
     });
     
     // ONLY RUN STAGE 1 - User decides if they want Stage 2/3
+    console.log(`🎯 Step 2: Stage 1 - Project Review`);
     const startTime = Date.now();
     
     await DB.updateStageStatus(analysisId, 'project_review', {
@@ -281,6 +331,7 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
       startedAt: new Date().toISOString()
     });
     
+    console.log(`Invoking Stage 1 Lambda: ${STAGE1_FUNCTION}`);
     const stage1Result = await invokeAsync(STAGE1_FUNCTION!, {
       analysisId,
       projectContextMap: repoResult.projectContextMap,
@@ -289,8 +340,13 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
     });
     
     const duration = Date.now() - startTime;
-    console.log('Stage 1 completed');
+    console.log(`✅ Stage 1 completed in ${duration}ms`);
     
+    if (!stage1Result.success) {
+      throw new Error(stage1Result.error || 'Stage 1 failed');
+    }
+    
+    console.log(`💾 Saving Stage 1 results to DynamoDB`);
     await DB.updateStageStatus(analysisId, 'project_review', {
       status: 'completed',
       completedAt: new Date().toISOString(),
@@ -306,10 +362,11 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
     await DB.updateWorkflowState(analysisId, 'stage1_complete_awaiting_approval');
     await DB.logAnalysisEvent(analysisId, 'stage1_complete_awaiting_user', {}, context);
     
-    console.log(`Stage 1 complete for ${analysisId}. Awaiting user decision.`);
+    console.log(`✅ Stage 1 complete for ${analysisId}. Awaiting user decision.`);
     
   } catch (error) {
-    console.error('Pipeline failed:', error);
+    console.error('❌ Pipeline failed:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
     
     // Mark as failed
     await DB.updateAnalysisStatus(
@@ -321,6 +378,9 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
       error: error instanceof Error ? error.message : 'Unknown error',
       errorStack: error instanceof Error ? error.stack : undefined
     }, context);
+    
+    // Re-throw to ensure it's logged
+    throw error;
   }
 }
 
@@ -337,7 +397,7 @@ async function handleListAnalyses(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(result)
   };
 }
@@ -348,7 +408,7 @@ async function handleGetAnalysis(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -358,14 +418,14 @@ async function handleGetAnalysis(event: any) {
   if (!result) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(result)
   };
 }
@@ -376,7 +436,7 @@ async function handleGetStatus(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -386,7 +446,7 @@ async function handleGetStatus(event: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -398,7 +458,7 @@ async function handleGetStatus(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId: analysis.analysisId,
       status: analysis.status,
@@ -438,7 +498,7 @@ async function handleGetEvents(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -447,7 +507,7 @@ async function handleGetEvents(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({ events })
   };
 }
@@ -458,7 +518,7 @@ async function handleGetCost(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -468,14 +528,14 @@ async function handleGetCost(event: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(analysis.cost)
   };
 }
@@ -486,7 +546,7 @@ async function handleDeleteAnalysis(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -496,7 +556,7 @@ async function handleDeleteAnalysis(event: any) {
     
     return {
       statusCode: 204,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: ''
     };
   } catch (error) {
@@ -504,7 +564,7 @@ async function handleDeleteAnalysis(event: any) {
     
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ 
         error: 'Failed to delete analysis',
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -553,7 +613,7 @@ async function handleContinueStage2(event: any, context: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -563,7 +623,7 @@ async function handleContinueStage2(event: any, context: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -572,7 +632,7 @@ async function handleContinueStage2(event: any, context: any) {
   if (analysis.stages.project_review.status !== 'completed') {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Stage 1 must be completed first' })
     };
   }
@@ -581,7 +641,7 @@ async function handleContinueStage2(event: any, context: any) {
   if (analysis.stages.intelligence_report.status === 'completed') {
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ 
         message: 'Stage 2 already completed',
         status: 'completed'
@@ -597,7 +657,7 @@ async function handleContinueStage2(event: any, context: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       message: 'Stage 2 (Intelligence Report) started',
@@ -617,7 +677,7 @@ async function handleContinueStage3(event: any, context: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -627,7 +687,7 @@ async function handleContinueStage3(event: any, context: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -636,7 +696,7 @@ async function handleContinueStage3(event: any, context: any) {
   if (analysis.stages.intelligence_report.status !== 'completed') {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Stage 2 must be completed first' })
     };
   }
@@ -645,7 +705,7 @@ async function handleContinueStage3(event: any, context: any) {
   if (analysis.stages.interview_simulation.status === 'completed') {
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ 
         message: 'Stage 3 already completed',
         status: 'completed'
@@ -661,7 +721,7 @@ async function handleContinueStage3(event: any, context: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       message: 'Stage 3 (Interview Questions) started',
@@ -685,6 +745,25 @@ async function processStage2(analysisId: string, context: any) {
     // Get repository metadata for Stage 2
     const repoMetadata = await DB.getRepositoryMetadata(analysisId);
     
+    // Load userCodeFiles from S3 if available
+    let userCodeFiles: string[] = [];
+    if (repoMetadata.userCodeFilesS3Key) {
+      try {
+        const s3Response = await s3Client.send(new GetObjectCommand({
+          Bucket: CACHE_BUCKET,
+          Key: repoMetadata.userCodeFilesS3Key
+        }));
+        const s3Data = await s3Response.Body?.transformToString();
+        if (s3Data) {
+          const parsed = JSON.parse(s3Data);
+          userCodeFiles = parsed.userCodeFiles || [];
+          console.log(`✅ Loaded ${userCodeFiles.length} userCodeFiles from S3`);
+        }
+      } catch (s3Error) {
+        console.warn('⚠️ Failed to load userCodeFiles from S3:', s3Error);
+      }
+    }
+    
     const startTime = Date.now();
     
     const stage2Result = await invokeAsync(STAGE2_FUNCTION!, {
@@ -693,7 +772,9 @@ async function processStage2(analysisId: string, context: any) {
         totalFiles: repoMetadata.totalFiles,
         frameworks: repoMetadata.frameworks,
         entryPoints: repoMetadata.entryPoints,
-        coreModules: repoMetadata.coreModules
+        coreModules: repoMetadata.coreModules,
+        userCodeFiles: userCodeFiles, // Now properly loaded from S3
+        languages: repoMetadata.languages
       },
       s3Key: repoMetadata.s3Key
     });
@@ -743,6 +824,25 @@ async function processStage3(analysisId: string, context: any) {
     // Get repository metadata for Stage 3
     const repoMetadata = await DB.getRepositoryMetadata(analysisId);
     
+    // Load userCodeFiles from S3 if available
+    let userCodeFiles: string[] = [];
+    if (repoMetadata.userCodeFilesS3Key) {
+      try {
+        const s3Response = await s3Client.send(new GetObjectCommand({
+          Bucket: CACHE_BUCKET,
+          Key: repoMetadata.userCodeFilesS3Key
+        }));
+        const s3Data = await s3Response.Body?.transformToString();
+        if (s3Data) {
+          const parsed = JSON.parse(s3Data);
+          userCodeFiles = parsed.userCodeFiles || [];
+          console.log(`✅ Loaded ${userCodeFiles.length} userCodeFiles from S3`);
+        }
+      } catch (s3Error) {
+        console.warn('⚠️ Failed to load userCodeFiles from S3:', s3Error);
+      }
+    }
+    
     const startTime = Date.now();
     
     const stage3Result = await invokeAsync(STAGE3_FUNCTION!, {
@@ -751,7 +851,9 @@ async function processStage3(analysisId: string, context: any) {
         totalFiles: repoMetadata.totalFiles,
         frameworks: repoMetadata.frameworks,
         entryPoints: repoMetadata.entryPoints,
-        coreModules: repoMetadata.coreModules
+        coreModules: repoMetadata.coreModules,
+        userCodeFiles: userCodeFiles, // Now properly loaded from S3
+        languages: repoMetadata.languages
       },
       s3Key: repoMetadata.s3Key
     });
@@ -803,14 +905,14 @@ async function handleGetUserProfile(event: any) {
   if (!profile) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'User profile not found' })
     };
   }
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(profile)
   };
 }
@@ -836,7 +938,7 @@ async function handleCreateUserProfile(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(profile)
   };
 }
@@ -852,7 +954,7 @@ async function handleUpdatePreferences(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(updated)
   };
 }
@@ -867,7 +969,7 @@ async function handleGetUserStats(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(stats)
   };
 }
@@ -882,7 +984,7 @@ async function handleGetUserProgress(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(progress)
   };
 }
@@ -901,7 +1003,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -914,7 +1016,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   if (!analysis || !analysis.interviewSimulation) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Interview questions not found. Complete Stage 3 first.' })
     };
   }
@@ -937,7 +1039,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(session)
   };
 }
@@ -951,7 +1053,7 @@ async function handleGetInterviewSession(event: any) {
   if (!sessionId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'sessionId is required' })
     };
   }
@@ -961,14 +1063,14 @@ async function handleGetInterviewSession(event: any) {
   if (!session) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Session not found' })
     };
   }
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(session)
   };
 }
@@ -984,7 +1086,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (!sessionId || !questionId || !answer) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'sessionId, questionId, and answer are required' })
     };
   }
@@ -995,7 +1097,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (!session) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Session not found' })
     };
   }
@@ -1004,7 +1106,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (session.status !== 'active') {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({
         error: 'Session is not active',
         status: session.status
@@ -1018,7 +1120,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (!analysis || !analysis.interviewSimulation) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Interview questions not found' })
     };
   }
@@ -1028,7 +1130,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (!question) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Question not found' })
     };
   }
@@ -1068,7 +1170,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       attemptId: attempt.attemptId,
       questionId,
@@ -1087,7 +1189,7 @@ async function handleCompleteSession(event: any, context: any) {
   if (!sessionId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'sessionId is required' })
     };
   }
@@ -1097,7 +1199,7 @@ async function handleCompleteSession(event: any, context: any) {
   if (!session) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Session not found' })
     };
   }
@@ -1130,7 +1232,7 @@ async function handleCompleteSession(event: any, context: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify(completedSession)
   };
 }
@@ -1143,7 +1245,7 @@ async function evaluateAnswer(question: any, answer: string): Promise<any> {
   // Call Bedrock to evaluate answer
   const { BedrockRuntimeClient, InvokeModelCommand } = await import('@aws-sdk/client-bedrock-runtime');
   
-  const bedrockClient = new BedrockRuntimeClient({ region: 'ap-southeast-1' });
+  const bedrockClient = new BedrockRuntimeClient({ region: 'us-west-2' });
   const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
   
   const expectedTopics = question.expectedTopics || [];
@@ -1310,7 +1412,7 @@ async function handleGetFiles(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -1321,7 +1423,7 @@ async function handleGetFiles(event: any) {
   if (!repoMetadata) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Repository metadata not found' })
     };
   }
@@ -1334,7 +1436,7 @@ async function handleGetFiles(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       totalFiles: allFiles.length,
@@ -1362,7 +1464,7 @@ async function handleUpdateFileSelection(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -1409,7 +1511,7 @@ async function handleUpdateFileSelection(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       selectedFiles: fileSelection.selectedFiles.length,
@@ -1431,7 +1533,7 @@ async function handleReorderFiles(event: any) {
   if (!analysisId || !customOrder || !Array.isArray(customOrder)) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId and customOrder array are required' })
     };
   }
@@ -1458,7 +1560,7 @@ async function handleReorderFiles(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       customOrder: fileSelection.customOrder.length,
@@ -1477,7 +1579,7 @@ async function handleReprocess(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -1488,7 +1590,7 @@ async function handleReprocess(event: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -1497,7 +1599,7 @@ async function handleReprocess(event: any) {
   if (analysis.status === 'processing') {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Analysis is currently processing' })
     };
   }
@@ -1508,7 +1610,7 @@ async function handleReprocess(event: any) {
   if (!fileSelection || fileSelection.selectedFiles.length === 0) {
     return {
       statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'No files selected for reprocessing' })
     };
   }
@@ -1525,7 +1627,7 @@ async function handleReprocess(event: any) {
   
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
       status: 'processing',
@@ -1601,7 +1703,7 @@ function buildFileListWithPriorities(
         const orderB = orderMap.get(b.path);
         
         if (orderA !== undefined && orderB !== undefined) {
-          return orderA - orderB;
+          return (orderA as number) - (orderB as number);
         }
         if (orderA !== undefined) return -1;
         if (orderB !== undefined) return 1;
@@ -1650,3 +1752,106 @@ function estimateFileSizeFromPath(path: string): string {
   if (path.includes('index') || path.includes('main')) return 'Medium';
   return 'Medium';
 }
+
+// ============================================================================
+// EXPORT HANDLER
+// ============================================================================
+
+/**
+ * POST /analysis/{analysisId}/export
+ * Export analysis results in various formats
+ */
+async function handleExportAnalysis(event: any) {
+  const analysisId = event.pathParameters?.id;
+  const body = JSON.parse(event.body || '{}');
+  const { format = 'json' } = body;
+
+  if (!analysisId) {
+    return {
+      statusCode: 400,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: 'analysisId is required' })
+    };
+  }
+
+  // Get full analysis
+  const analysis = await DB.getFullAnalysis(analysisId);
+
+  if (!analysis) {
+    return {
+      statusCode: 404,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: 'Analysis not found' })
+    };
+  }
+
+  try {
+    const bucketName = process.env.CACHE_BUCKET;
+    if (!bucketName) {
+      throw new Error('CACHE_BUCKET environment variable not set');
+    }
+
+    // Generate export data
+    const exportData = {
+      analysisId: analysis.analysis.analysisId,
+      repositoryUrl: analysis.analysis.repositoryUrl,
+      repositoryName: analysis.analysis.repositoryName,
+      status: analysis.analysis.status,
+      createdAt: analysis.analysis.createdAt,
+      completedAt: analysis.analysis.completedAt,
+
+      projectReview: analysis.projectReview || null,
+      intelligenceReport: analysis.intelligenceReport || null,
+      interviewQuestions: analysis.interviewSimulation?.questions || [],
+
+      exportedAt: new Date().toISOString(),
+      exportFormat: format
+    };
+
+    // Convert to JSON
+    const fileContent = JSON.stringify(exportData, null, 2);
+    const contentType = 'application/json';
+    const fileExtension = 'json';
+
+    // Upload to S3 (bucket is in ap-southeast-1, S3 client uses same region)
+    const s3Key = `exports/${analysisId}-${Date.now()}.${fileExtension}`;
+    const s3Client = new S3Client({ region: 'ap-southeast-1' }); // S3 bucket region
+
+    await s3Client.send(new PutObjectCommand({
+      Bucket: bucketName,
+      Key: s3Key,
+      Body: fileContent,
+      ContentType: contentType,
+      Metadata: {
+        analysisId,
+        exportFormat: format,
+        exportedAt: new Date().toISOString()
+      }
+    }));
+
+    // Return the data directly for client-side download
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({
+        analysisId,
+        format,
+        message: 'Export generated successfully',
+        data: exportData,
+        fileName: `${analysis.analysis.repositoryName || 'analysis'}-${analysisId.substring(0, 8)}.${fileExtension}`
+      })
+    };
+  } catch (error) {
+    console.error('Export failed:', error);
+
+    return {
+      statusCode: 500,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({
+        error: 'Export failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      })
+    };
+  }
+}
+

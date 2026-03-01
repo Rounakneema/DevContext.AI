@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
 const LoginPage: React.FC = () => {
@@ -11,8 +11,17 @@ const LoginPage: React.FC = () => {
   const [resetEmail, setResetEmail] = useState("");
   const [resetSent, setResetSent] = useState(false);
 
-  const { login, logout, user } = useAuth();
+  const { login, logout, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    if (!authLoading && user) {
+      const redirectTo = searchParams.get('redirect');
+      navigate(redirectTo || "/app", { replace: true });
+    }
+  }, [user, authLoading, navigate, searchParams]);
 
   const handleLogout = async () => {
     setLoading(true);
@@ -33,7 +42,9 @@ const LoginPage: React.FC = () => {
 
     try {
       await login(email, password);
-      navigate("/app");
+      // Check for redirect parameter
+      const redirectTo = searchParams.get('redirect');
+      navigate(redirectTo || "/app");
     } catch (err: any) {
       setError(
         err.message || "Failed to login. Please check your credentials.",
@@ -265,6 +276,7 @@ const LoginPage: React.FC = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Your password"
+              autoComplete="current-password"
               required
               style={{
                 width: "100%",

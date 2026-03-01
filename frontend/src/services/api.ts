@@ -162,6 +162,7 @@ export interface InterviewQuestion {
   questionNumber: number;
   category: string;
   difficulty: string;
+  type?: string;
   question: string;
   expectedTopics: string[];
   groundedIn: Array<{ file: string; reason: string }>;
@@ -217,16 +218,41 @@ export interface UserStats {
   lastInterviewDate: string | null;
 }
 
+export interface UserProgress {
+  improvementTrend: Array<{
+    date: string;
+    metric: string;
+    value: number;
+  }>;
+  identifiedSkillGaps: Array<{
+    skill: string;
+    currentLevel: number;
+    targetLevel: number;
+    priority: 'high' | 'medium' | 'low';
+    learningResources: string[];
+  }>;
+  recommendedTopics: string[];
+  completedTopics: string[];
+  categoryPerformance: {
+    architecture: { averageScore: number; trend: 'improving' | 'stable' | 'declining' };
+    implementation: { averageScore: number; trend: 'improving' | 'stable' | 'declining' };
+    tradeoffs: { averageScore: number; trend: 'improving' | 'stable' | 'declining' };
+    scalability: { averageScore: number; trend: 'improving' | 'stable' | 'declining' };
+  };
+}
+
 export interface InterviewSession {
   sessionId: string;
   userId: string;
   analysisId: string;
   status: 'active' | 'completed' | 'abandoned';
   config: {
-    targetRole: string;
-    difficulty: string;
-    timeLimit: number;
-    feedbackMode: string;
+    targetRole?: string;
+    difficulty?: string;
+    timeLimit?: number;
+    feedbackMode?: string;
+    questionCount?: number;
+    questionTypes?: string[];
   };
   progress: {
     questionsAnswered: number;
@@ -235,8 +261,37 @@ export interface InterviewSession {
     totalTimeSpentSeconds: number;
   };
   totalQuestions: number;
+  currentQuestionIndex: number;
   startedAt: string;
   completedAt?: string;
+  questions: InterviewQuestion[];
+  answers: Array<{
+    questionId: string;
+    answer: string;
+    submittedAt?: string;
+    timeSpentSeconds?: number;
+    evaluation?: AnswerEvaluation;
+  }>;
+  summary?: InterviewSummary;
+}
+
+export interface InterviewSummary {
+  overallScore: number;
+  totalTimeMinutes: number;
+  questionsAnswered: number;
+  categoryPerformance: {
+    technical: number;
+    behavioral: number;
+    'system-design': number;
+  };
+  topStrengths: string[];
+  areasForImprovement: string[];
+  recommendations: string[];
+  comparedToTarget: {
+    role: string;
+    readiness: 'not_ready' | 'needs_work' | 'almost_ready' | 'ready';
+    percentile: number;
+  };
 }
 
 export interface AnswerEvaluation {
@@ -253,7 +308,7 @@ export interface AnswerEvaluation {
   comparison: {
     weakAnswer: string;
     strongAnswer: string;
-    yourAnswerCategory: string;
+    yourAnswerCategory: 'weak' | 'acceptable' | 'strong' | 'excellent';
   };
   feedback: string;
   improvementSuggestions: string[];
@@ -308,9 +363,8 @@ async function apiCall<T>(
   options: RequestInit = {},
   requiresAuth: boolean = true
 ): Promise<T> {
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
   };
 
   // Add authorization header if required
@@ -480,7 +534,7 @@ export const getUserStats = () =>
   apiCall<UserStats>('/user/stats');
 
 export const getUserProgress = () =>
-  apiCall<any>('/user/progress');
+  apiCall<UserProgress>('/user/progress');
 
 // ============================================================================
 // INTERVIEW APIs
@@ -493,6 +547,8 @@ export const createInterviewSession = (data: {
     difficulty?: string;
     timeLimit?: number;
     feedbackMode?: string;
+    questionCount?: number;
+    questionTypes?: string[];
   };
 }) =>
   apiCall<InterviewSession>('/interview/sessions', {
@@ -563,6 +619,99 @@ export async function pollAnalysisStatus(
 }
 
 // ============================================================================
+// EXPORT FUNCTIONALITY
+// ============================================================================
+
+export async function exportAnalysis(
+  analysisId: string,
+  format: 'pdf' | 'json' | 'markdown'
+): Promise<{ downloadUrl: string; filename: string }> {
+  const token = await getAuthToken();
+
+  const response = await fetch(`${API_BASE}/analysis/${analysisId}/export`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ format }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Export failed');
+  }
+
+  return response.json();
+}
+
+// ============================================================================
+// COST TRACKING API
+// ============================================================================
+
+/**
+ * Get real-time cost metrics
+ */
+export const getCostRealtime = () =>
+  apiCall<any>('/cost/realtime', {}, true);
+
+/**
+ * Get cost breakdown for specific analysis
+ */
+export const getCostAnalysis = (analysisId: string) =>
+  apiCall<any>(`/cost/analysis/${analysisId}`, {}, true);
+
+/**
+ * Get daily cost summary
+ */
+export const getCostDaily = (date: string) =>
+  apiCall<any>(`/cost/daily/${date}`, {}, true);
+
+/**
+ * Get cost range between dates
+ */
+export const getCostRange = (startDate: string, endDate: string) =>
+  apiCall<any>(`/cost/range?start=${startDate}&end=${endDate}`, {}, true);
+
+/**
+ * Get monthly cost projection
+ */
+export const getCostProjection = () =>
+  apiCall<any>('/cost/projection', {}, true);
+
+/**
+ * Get cost comparison by model
+ */
+export const getCostModels = (days: number = 7) =>
+  apiCall<any>(`/cost/models?days=${days}`, {}, true);
+
+/**
+ * Export cost data as CSV
+ */
+export async function exportCostData(format: 'csv' | 'json' = 'csv', days: number = 30): Promise<string> {
+  const token = await getAuthToken();
+  const response = await fetch(`${API_BASE}/cost/export?format=${format}&days=${days}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Export failed with status ${response.status}`);
+  }
+  
+  return response.text();
+}
+
+/**
+ * Get current model pricing
+ */
+export const getModelPricing = () =>
+  apiCall<any>('/cost/pricing', {}, true);
+
+// ============================================================================
 // EXPORT DEFAULT API OBJECT
 // ============================================================================
 
@@ -576,6 +725,7 @@ const api = {
   getAnalysisEvents,
   getAnalysisCost,
   pollAnalysisStatus,
+  exportAnalysis,
 
   // Progressive Workflow
   continueToStage2,
@@ -599,6 +749,16 @@ const api = {
   getInterviewSession,
   submitAnswer,
   completeInterviewSession,
+
+  // Cost Analytics (Admin)
+  getCostRealtime,
+  getCostRange,
+  getCostModels,
+  getCostProjection,
+  getCostDaily,
+  getCostAnalysis,
+  exportCostData,
+  getModelPricing,
 };
 
 export default api;

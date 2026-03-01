@@ -15,12 +15,12 @@ id_rsa*
 id_ed25519*
 
 # Test & Development files
-check-status.js
-get-token.js
-set-password.js
-test-*.js
-*.test.ts
-*.test.js
+# check-status.js
+# get-token.js
+# set-password.js
+# test-*.js
+# *.test.ts
+# *.test.js
 
 # Documentation (keep only README.md)
 *.md
