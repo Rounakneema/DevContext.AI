@@ -38,7 +38,7 @@ Globals:
       Variables:
         MAIN_TABLE: !Ref MainTable
         CACHE_BUCKET: !Ref CacheBucket
-        BEDROCK_REGION: us-west-2
+
         COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
         COGNITO_CLIENT_ID: !Ref CognitoClientId
         NODE_ENV: production

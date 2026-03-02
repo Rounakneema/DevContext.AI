@@ -14,7 +14,7 @@ const MAIN_TABLE = process.env.MAIN_TABLE || 'devcontext-main';
 
 export function generateAnalysisKeys(analysisId: string, userId: string, repositoryUrl: string, createdAt: string) {
   const repoHash = createHash('sha256').update(repositoryUrl).digest('hex').substring(0, 16);
-  
+
   return {
     PK: `ANALYSIS#${analysisId}`,
     SK: 'METADATA',
@@ -55,7 +55,7 @@ export async function createAnalysis(params: {
   const analysisId = uuidv4();
   const createdAt = new Date().toISOString();
   const keys = generateAnalysisKeys(analysisId, params.userId, params.repositoryUrl, createdAt);
-  
+
   const analysis: Types.Analysis = {
     ...keys,
     analysisId,
@@ -73,21 +73,21 @@ export async function createAnalysis(params: {
       interview_simulation: { status: 'pending' }
     },
     cost: {
-      bedrockTokensIn: 0,
-      bedrockTokensOut: 0,
-      bedrockCostUsd: 0,
+      aiTokensIn: 0,
+      aiTokensOut: 0,
+      aiCostUsd: 0,
       lambdaCostUsd: 0,
       totalCostUsd: 0
     },
     retryCount: 0,
     ttl: Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60) // 90 days
   };
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: analysis
   }));
-  
+
   return analysis;
 }
 
@@ -99,7 +99,7 @@ export async function getAnalysis(analysisId: string): Promise<Types.Analysis | 
       SK: 'METADATA'
     }
   }));
-  
+
   return result.Item as Types.Analysis || null;
 }
 
@@ -111,17 +111,17 @@ export async function updateAnalysisStatus(
   const updateExpression = errorMessage
     ? 'SET #status = :status, updatedAt = :time, errorMessage = :error, version = version + :inc'
     : 'SET #status = :status, updatedAt = :time, version = version + :inc';
-  
+
   const expressionAttributeValues: any = {
     ':status': status,
     ':time': new Date().toISOString(),
     ':inc': 1
   };
-  
+
   if (errorMessage) {
     expressionAttributeValues[':error'] = errorMessage;
   }
-  
+
   await dynamoClient.send(new UpdateCommand({
     TableName: MAIN_TABLE,
     Key: {
@@ -191,17 +191,17 @@ export async function getFullAnalysis(analysisId: string): Promise<Types.Analysi
       }
     }
   }));
-  
+
   const items = result.Responses?.[MAIN_TABLE] || [];
-  
+
   const analysis = items.find(item => item.SK === 'METADATA') as Types.Analysis;
   if (!analysis) return null;
-  
+
   const repository = items.find(item => item.SK === 'REPO_METADATA') as Types.RepositoryMetadata;
   const projectReview = items.find(item => item.SK === 'PROJECT_REVIEW') as Types.ProjectReview;
   const intelligenceReport = items.find(item => item.SK === 'INTELLIGENCE_REPORT') as Types.IntelligenceReport;
   const interviewSimulation = items.find(item => item.SK === 'INTERVIEW_SIMULATION') as Types.InterviewSimulation;
-  
+
   return {
     analysis: {
       analysisId: analysis.analysisId,
@@ -241,7 +241,7 @@ export async function getUserAnalyses(
     ExclusiveStartKey: lastEvaluatedKey,
     ScanIndexForward: false // Most recent first
   }));
-  
+
   return {
     items: result.Items as Types.Analysis[],
     nextCursor: result.LastEvaluatedKey ? JSON.stringify(result.LastEvaluatedKey) : undefined,
@@ -335,7 +335,7 @@ export async function createInterviewSession(params: {
   const sessionId = uuidv4();
   const createdAt = new Date().toISOString();
   const keys = generateSessionKeys(sessionId, params.userId, createdAt);
-  
+
   const session: Types.InterviewSession = {
     ...keys,
     sessionId,
@@ -354,12 +354,12 @@ export async function createInterviewSession(params: {
     config: params.config,
     ttl: Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60)
   };
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: session
   }));
-  
+
   return session;
 }
 
@@ -371,7 +371,7 @@ export async function getInterviewSession(sessionId: string): Promise<Types.Inte
       SK: 'METADATA'
     }
   }));
-  
+
   return result.Item as Types.InterviewSession || null;
 }
 
@@ -402,7 +402,7 @@ export async function getQuestionAttempts(sessionId: string): Promise<Types.Ques
       ':prefix': 'ATTEMPT#'
     }
   }));
-  
+
   return result.Items as Types.QuestionAttempt[];
 }
 
@@ -418,7 +418,7 @@ export async function logAnalysisEvent(
 ): Promise<void> {
   const eventId = uuidv4();
   const timestamp = new Date().toISOString();
-  
+
   const event: Types.AnalysisEvent = {
     PK: `ANALYSIS#${analysisId}`,
     SK: `EVENT#${timestamp}#${eventId}`,
@@ -430,7 +430,7 @@ export async function logAnalysisEvent(
     lambdaRequestId: lambdaContext?.requestId,
     lambdaFunction: lambdaContext?.functionName
   };
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: event
@@ -446,7 +446,7 @@ export async function getAnalysisEvents(analysisId: string): Promise<Types.Analy
       ':prefix': 'EVENT#'
     }
   }));
-  
+
   return result.Items as Types.AnalysisEvent[];
 }
 
@@ -459,7 +459,7 @@ export async function updateUserProgress(
   updates: Partial<Types.UserProgress>
 ): Promise<void> {
   const current = await getUserProgress(userId);
-  
+
   const progress: Types.UserProgress = {
     PK: `USER#${userId}`,
     SK: 'PROGRESS',
@@ -476,7 +476,7 @@ export async function updateUserProgress(
     completedTopics: updates.completedTopics ?? current?.completedTopics ?? [],
     updatedAt: new Date().toISOString()
   };
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: progress
@@ -491,7 +491,7 @@ export async function getUserProgress(userId: string): Promise<Types.UserProgres
       SK: 'PROGRESS'
     }
   }));
-  
+
   return result.Item as Types.UserProgress || null;
 }
 
@@ -505,17 +505,17 @@ export async function updateAnalysisCost(
 ): Promise<void> {
   const analysis = await getAnalysis(analysisId);
   if (!analysis) return;
-  
+
   const updatedCost: Types.CostTracking = {
-    bedrockTokensIn: (analysis.cost.bedrockTokensIn || 0) + (costUpdate.bedrockTokensIn || 0),
-    bedrockTokensOut: (analysis.cost.bedrockTokensOut || 0) + (costUpdate.bedrockTokensOut || 0),
-    bedrockCostUsd: (analysis.cost.bedrockCostUsd || 0) + (costUpdate.bedrockCostUsd || 0),
+    aiTokensIn: (analysis.cost.aiTokensIn || 0) + (costUpdate.aiTokensIn || 0),
+    aiTokensOut: (analysis.cost.aiTokensOut || 0) + (costUpdate.aiTokensOut || 0),
+    aiCostUsd: (analysis.cost.aiCostUsd || 0) + (costUpdate.aiCostUsd || 0),
     lambdaCostUsd: (analysis.cost.lambdaCostUsd || 0) + (costUpdate.lambdaCostUsd || 0),
     totalCostUsd: 0
   };
-  
-  updatedCost.totalCostUsd = updatedCost.bedrockCostUsd + updatedCost.lambdaCostUsd;
-  
+
+  updatedCost.totalCostUsd = updatedCost.aiCostUsd + updatedCost.lambdaCostUsd;
+
   await dynamoClient.send(new UpdateCommand({
     TableName: MAIN_TABLE,
     Key: {
@@ -543,7 +543,7 @@ export async function getUserProfile(userId: string): Promise<any | null> {
       SK: 'PROFILE'
     }
   }));
-  
+
   return result.Item || null;
 }
 
@@ -556,7 +556,7 @@ export async function createUserProfile(params: {
   githubConnected: boolean;
 }): Promise<any> {
   const now = new Date().toISOString();
-  
+
   const profile = {
     PK: `USER#${params.userId}`,
     SK: 'PROFILE',
@@ -581,22 +581,22 @@ export async function createUserProfile(params: {
     createdAt: now,
     updatedAt: now
   };
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: profile
   }));
-  
+
   return profile;
 }
 
 export async function updateUserPreferences(userId: string, updates: any): Promise<any> {
   const profile = await getUserProfile(userId);
-  
+
   if (!profile) {
     throw new Error('User profile not found');
   }
-  
+
   const updated = {
     ...profile,
     ...updates,
@@ -606,29 +606,29 @@ export async function updateUserPreferences(userId: string, updates: any): Promi
     },
     updatedAt: new Date().toISOString()
   };
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: updated
   }));
-  
+
   return updated;
 }
 
 export async function getUserStats(userId: string): Promise<any> {
   // Get all analyses for user
   const analyses = await getUserAnalyses(userId, 100);
-  
+
   // Get all interview sessions for user
   const sessions = await getUserInterviewSessions(userId);
-  
+
   // Calculate stats
   const completedAnalyses = analyses.items.filter((a: any) => a.status === 'completed');
-  
+
   let totalCodeQuality = 0;
   let totalEmployability = 0;
   let codeQualityCount = 0;
-  
+
   for (const analysis of completedAnalyses) {
     const fullAnalysis = await getFullAnalysis(analysis.analysisId);
     if (fullAnalysis?.projectReview) {
@@ -637,14 +637,14 @@ export async function getUserStats(userId: string): Promise<any> {
       codeQualityCount++;
     }
   }
-  
+
   const completedSessions = sessions.filter((s: any) => s.status === 'completed');
-  const totalInterviewScore = completedSessions.reduce((sum: number, s: any) => 
+  const totalInterviewScore = completedSessions.reduce((sum: number, s: any) =>
     sum + (s.summary?.averageScore || 0), 0);
-  
-  const totalQuestionsAnswered = completedSessions.reduce((sum: number, s: any) => 
+
+  const totalQuestionsAnswered = completedSessions.reduce((sum: number, s: any) =>
     sum + (s.summary?.questionsAnswered || 0), 0);
-  
+
   return {
     totalAnalyses: completedAnalyses.length,
     totalInterviewSessions: completedSessions.length,
@@ -668,7 +668,7 @@ export async function getUserInterviewSessions(userId: string): Promise<any[]> {
     },
     ScanIndexForward: false
   }));
-  
+
   return result.Items || [];
 }
 
@@ -684,7 +684,7 @@ export async function getRepositoryMetadata(analysisId: string): Promise<any | n
       SK: 'REPO_METADATA'
     }
   }));
-  
+
   return result.Item || null;
 }
 
@@ -701,7 +701,7 @@ export async function saveInterviewAttempt(params: {
 }): Promise<any> {
   const attemptId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const now = new Date().toISOString();
-  
+
   const attempt = {
     PK: `SESSION#${params.sessionId}`,
     SK: `ATTEMPT#${attemptId}`,
@@ -713,12 +713,12 @@ export async function saveInterviewAttempt(params: {
     evaluation: params.evaluation,
     submittedAt: now
   };
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: attempt
   }));
-  
+
   return attempt;
 }
 
@@ -731,17 +731,17 @@ export async function getSessionAttempts(sessionId: string): Promise<any[]> {
       ':sk': 'ATTEMPT#'
     }
   }));
-  
+
   return result.Items || [];
 }
 
 export async function updateSessionProgress(sessionId: string, progress: any): Promise<void> {
   const session = await getInterviewSession(sessionId);
-  
+
   if (!session) {
     throw new Error('Session not found');
   }
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: {
@@ -757,23 +757,23 @@ export async function updateSessionProgress(sessionId: string, progress: any): P
 
 export async function completeInterviewSession(sessionId: string, summary: any): Promise<any> {
   const session = await getInterviewSession(sessionId);
-  
+
   if (!session) {
     throw new Error('Session not found');
   }
-  
+
   const completedSession = {
     ...session,
     status: 'completed',
     completedAt: new Date().toISOString(),
     summary
   };
-  
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: completedSession
   }));
-  
+
   return completedSession;
 }
 
@@ -790,16 +790,16 @@ export async function deleteAnalysis(analysisId: string): Promise<void> {
     { PK: `ANALYSIS#${analysisId}`, SK: 'INTELLIGENCE_REPORT' },
     { PK: `ANALYSIS#${analysisId}`, SK: 'INTERVIEW_SIMULATION' }
   ];
-  
+
   // Delete events
   const events = await getAnalysisEvents(analysisId);
   events.forEach(event => {
     itemsToDelete.push({ PK: event.PK, SK: event.SK });
   });
-  
+
   // Delete all items (DynamoDB doesn't have batch delete, so we use individual deletes)
   const { DeleteCommand } = await import('@aws-sdk/lib-dynamodb');
-  
+
   for (const item of itemsToDelete) {
     try {
       await dynamoClient.send(new DeleteCommand({
@@ -810,7 +810,7 @@ export async function deleteAnalysis(analysisId: string): Promise<void> {
       console.error(`Failed to delete item ${item.PK}#${item.SK}:`, error);
     }
   }
-  
+
   console.log(`Deleted analysis ${analysisId} and ${itemsToDelete.length} related items`);
 }
 
@@ -837,13 +837,13 @@ export async function getFileSelection(analysisId: string): Promise<FileSelectio
       SK: 'FILE_SELECTION'
     }
   });
-  
+
   const response = await dynamoClient.send(command);
-  
+
   if (!response.Item) {
     return null;
   }
-  
+
   return {
     analysisId: response.Item.analysisId,
     selectedFiles: response.Item.selectedFiles || [],
@@ -874,6 +874,6 @@ export async function saveFileSelection(
       GSI1SK: `FILE_SELECTION#${selection.updatedAt}`
     }
   });
-  
+
   await dynamoClient.send(command);
 }

@@ -16,11 +16,11 @@ export interface User {
   lastLoginAt: string;
   subscription: UserSubscription;
   preferences: UserPreferences;
-  
+
   // GSI1: email lookup
   GSI1PK: string;          // EMAIL#<email>
   GSI1SK: string;          // USER
-  
+
   ttl?: number;            // Optional: for trial users
 }
 
@@ -53,28 +53,28 @@ export interface Analysis {
   updatedAt: string;
   completedAt?: string;
   version: number;         // Optimistic locking
-  
+
   // User approval workflow state (separate from technical status)
   workflowState: 'stage1_pending' | 'stage1_complete_awaiting_approval' | 'stage2_pending' | 'stage2_complete_awaiting_approval' | 'stage3_pending' | 'all_complete' | 'reprocessing';
-  
+
   // Stage tracking (denormalized for quick status checks)
   stages: StageTracking;
-  
+
   // Cost tracking
   cost: CostTracking;
-  
+
   errorMessage?: string;
   errorCode?: string;
   retryCount: number;
-  
+
   // GSI1: userId + createdAt (user's analysis history)
   GSI1PK: string;          // USER#<userId>
   GSI1SK: string;          // ANALYSIS#<createdAt>
-  
+
   // GSI2: repositoryUrl (caching identical repos)
   GSI2PK: string;          // REPO#<sha256(repositoryUrl)>
   GSI2SK: string;          // ANALYSIS#<createdAt>
-  
+
   ttl: number;             // 90 days from creation
 }
 
@@ -93,9 +93,9 @@ export interface StageStatus {
 }
 
 export interface CostTracking {
-  bedrockTokensIn: number;
-  bedrockTokensOut: number;
-  bedrockCostUsd: number;
+  aiTokensIn: number;
+  aiTokensOut: number;
+  aiCostUsd: number;
   lambdaCostUsd: number;
   totalCostUsd: number;
 }
@@ -107,7 +107,7 @@ export interface CostTracking {
 export interface RepositoryMetadata {
   PK: string;              // ANALYSIS#<analysisId>
   SK: string;              // REPO_METADATA
-  
+
   // Repository info
   totalFiles: number;
   totalSizeBytes: number;
@@ -116,16 +116,16 @@ export interface RepositoryMetadata {
   entryPoints: string[];
   coreModules: string[];
   userCodeFilesS3Key?: string; // S3 key to JSON file containing userCodeFiles array
-  
+
   // Commit analysis
   commits: CommitAnalysis;
-  
+
   // File categorization
   fileTiers: FileTiers;
-  
+
   // Token budget
   tokenBudget: TokenBudgetStats;
-  
+
   s3Key: string;           // S3 path to cached repository
   processedAt: string;
   processingDurationMs: number;
@@ -163,17 +163,17 @@ export interface TokenBudgetStats {
 export interface ProjectReview {
   PK: string;              // ANALYSIS#<analysisId>
   SK: string;              // PROJECT_REVIEW
-  
+
   codeQuality: CodeQuality;
   architectureClarity: ArchitectureClarity;
   employabilitySignal: EmployabilitySignal;
-  
+
   strengths: Strength[];
   weaknesses: Weakness[];
   criticalIssues: CriticalIssue[];
-  
+
   projectAuthenticity: ProjectAuthenticity;
-  
+
   modelMetadata: ModelMetadata;
   generatedAt: string;
 }
@@ -284,15 +284,15 @@ export interface ModelMetadata {
 export interface IntelligenceReport {
   PK: string;              // ANALYSIS#<analysisId>
   SK: string;              // INTELLIGENCE_REPORT
-  
+
   systemArchitecture: SystemArchitecture;
   designDecisions: DesignDecision[];
   technicalTradeoffs: TechnicalTradeoff[];
   scalabilityAnalysis: ScalabilityAnalysis;
   securityPosture: SecurityPosture;
-  
+
   resumeBullets: ResumeBullet[];
-  
+
   groundingReport: GroundingReport;
   modelMetadata: ModelMetadata;
   generatedAt: string;
@@ -461,15 +461,15 @@ export interface FlaggedClaim {
 export interface InterviewSimulation {
   PK: string;              // ANALYSIS#<analysisId>
   SK: string;              // INTERVIEW_SIMULATION
-  
+
   questions: InterviewQuestion[];
-  
+
   categoryCounts: CategoryCounts;
   difficultyDistribution: DifficultyDistribution;
-  
+
   questionSetMetadata: QuestionSetMetadata;
   selfCorrectionReport: SelfCorrectionReport;
-  
+
   modelMetadata: ModelMetadata;
   generatedAt: string;
 }
@@ -479,12 +479,12 @@ export interface InterviewQuestion {
   question: string;
   category: 'architecture' | 'implementation' | 'tradeoffs' | 'scalability' | 'designPatterns' | 'debugging';
   difficulty: 'junior' | 'mid-level' | 'senior' | 'staff';
-  
+
   context: QuestionContext;
   expectedAnswer: ExpectedAnswer;
   followUpQuestions: string[];
   evaluationCriteria: EvaluationCriteria;
-  
+
   tags: string[];          // ["authentication", "security", "jwt"]
   groundingValidation: GroundingValidation;
 }
@@ -558,17 +558,17 @@ export interface InterviewSession {
   status: 'active' | 'completed' | 'abandoned';
   createdAt: string;
   completedAt?: string;
-  
+
   currentQuestionIndex: number;
   totalQuestions: number;
-  
+
   progress: SessionProgress;
   config: SessionConfig;
-  
+
   // GSI1: userId + createdAt (user's interview history)
   GSI1PK: string;          // USER#<userId>
   GSI1SK: string;          // SESSION#<createdAt>
-  
+
   ttl: number;             // 90 days
 }
 
@@ -597,30 +597,30 @@ export interface QuestionAttempt {
   sessionId: string;
   questionId: string;
   attemptNumber: number;   // Support retries
-  
+
   userAnswer: string;
   submittedAt: string;
-  
+
   evaluation: AnswerEvaluation;
-  
+
   improvementFromPrevious?: number; // Score delta
   timeSpentSeconds: number;
 }
 
 export interface AnswerEvaluation {
   overallScore: number;    // 0-100
-  
+
   criteriaScores: CriteriaScores;
-  
+
   strengths: string[];
   weaknesses: string[];
   missingKeyPoints: string[];
-  
+
   comparison: AnswerComparison;
-  
+
   feedback: string;
   improvementSuggestions: string[];
-  
+
   // AI feedback metadata
   modelId: string;
   tokensIn: number;
@@ -653,7 +653,7 @@ export interface AnalysisEvent {
   eventType: string;       // "analysis_initiated", "stage_started", etc.
   eventData: Record<string, any>;
   timestamp: string;
-  
+
   // For debugging/monitoring
   lambdaRequestId?: string;
   lambdaFunction?: string;
@@ -668,27 +668,27 @@ export interface UserProgress {
   PK: string;              // USER#<userId>
   SK: string;              // PROGRESS
   userId: string;
-  
+
   // Overall stats
   totalAnalyses: number;
   totalInterviewSessions: number;
   totalQuestionsAnswered: number;
-  
+
   // Performance metrics
   averageCodeQuality: number;
   averageEmployabilityScore: number;
   averageInterviewScore: number;
-  
+
   // Improvement trajectory
   improvementTrend: ImprovementTrend[];
-  
+
   // Skill gaps
   identifiedSkillGaps: SkillGap[];
-  
+
   // Learning path
   recommendedTopics: string[];
   completedTopics: string[];
-  
+
   updatedAt: string;
 }
 
@@ -720,12 +720,12 @@ export interface AnalysisResponse {
     completedAt?: string;
     stages: StageTracking;
   };
-  
+
   repository: RepositoryMetadata;
   projectReview: ProjectReview;
   intelligenceReport?: IntelligenceReport;
   interviewSimulation?: InterviewSimulation;
-  
+
   _metadata: {
     version: string;
     generatedAt: string;
@@ -737,13 +737,13 @@ export interface StatusResponse {
   analysisId: string;
   status: 'initiated' | 'processing' | 'completed' | 'failed';
   progress: number;        // 0-100
-  
+
   stages: {
     project_review: StageProgress;
     intelligence_report: StageProgress;
     interview_simulation: StageProgress;
   };
-  
+
   estimatedTimeRemaining?: number; // seconds
   errorMessage?: string;
 }

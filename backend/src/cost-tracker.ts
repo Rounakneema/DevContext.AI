@@ -194,7 +194,7 @@ export function estimateTokenCount(text: string): number {
 // COST TRACKING RECORDS
 // ============================================================================
 
-export interface BedrockCallRecord {
+export interface AiCallRecord {
   PK: string;              // ANALYSIS#<analysisId> or COST#<date>
   SK: string;              // CALL#<timestamp>#<callId>
 
@@ -288,12 +288,12 @@ export interface CostSummary {
 // ============================================================================
 
 /**
- * Track a Bedrock API call with cost calculation
+ * Track an AI API call with cost calculation
  */
-export async function trackBedrockCall(params: {
+export async function trackAiCall(params: {
   analysisId?: string;
   sessionId?: string;
-  stage: BedrockCallRecord['stage'];
+  stage: AiCallRecord['stage'];
   modelId: string;
   inputTokens: number;
   outputTokens: number;
@@ -302,7 +302,7 @@ export async function trackBedrockCall(params: {
   responseLength?: number;
   region?: string;
   requestId?: string;
-}): Promise<BedrockCallRecord> {
+}): Promise<AiCallRecord> {
   const callId = uuidv4();
   const timestamp = new Date().toISOString();
   const date = timestamp.split('T')[0]; // YYYY-MM-DD
@@ -315,7 +315,7 @@ export async function trackBedrockCall(params: {
     ? Math.round((params.outputTokens / params.inferenceTimeMs) * 1000)
     : 0;
 
-  const record: BedrockCallRecord = {
+  const record: AiCallRecord = {
     PK: params.analysisId ? `ANALYSIS#${params.analysisId}` : `COST#${date}`,
     SK: `CALL#${timestamp}#${callId}`,
 
@@ -371,7 +371,7 @@ export async function trackBedrockCall(params: {
 /**
  * Update cost summary for analytics
  */
-async function updateCostSummary(date: string, call: BedrockCallRecord): Promise<void> {
+async function updateCostSummary(date: string, call: AiCallRecord): Promise<void> {
   const summaryPK = `COST_SUMMARY#daily`;
   const summarySK = date;
 
@@ -448,7 +448,7 @@ async function updateCostSummary(date: string, call: BedrockCallRecord): Promise
 export async function getAnalysisCost(analysisId: string): Promise<{
   totalCostUsd: number;
   totalTokens: number;
-  calls: BedrockCallRecord[];
+  calls: AiCallRecord[];
   byStage: Record<string, {
     costUsd: number;
     tokens: number;
@@ -464,7 +464,7 @@ export async function getAnalysisCost(analysisId: string): Promise<{
     }
   }));
 
-  const calls = result.Items as BedrockCallRecord[];
+  const calls = result.Items as AiCallRecord[];
 
   let totalCostUsd = 0;
   let totalTokens = 0;
@@ -530,7 +530,7 @@ export async function getCostSummaryRange(
 /**
  * Get all Bedrock calls for a date
  */
-export async function getCallsByDate(date: string): Promise<BedrockCallRecord[]> {
+export async function getCallsByDate(date: string): Promise<AiCallRecord[]> {
   const result = await dynamoClient.send(new QueryCommand({
     TableName: MAIN_TABLE,
     IndexName: 'GSI1',
@@ -540,7 +540,7 @@ export async function getCallsByDate(date: string): Promise<BedrockCallRecord[]>
     }
   }));
 
-  return result.Items as BedrockCallRecord[];
+  return result.Items as AiCallRecord[];
 }
 
 // ============================================================================

@@ -1258,11 +1258,7 @@ async function handleCompleteSession(event: any, context: any) {
 // ============================================================================
 
 async function evaluateAnswer(question: any, answer: string): Promise<any> {
-  // Call Bedrock to evaluate answer
-  const { BedrockRuntimeClient, InvokeModelCommand } = await import('@aws-sdk/client-bedrock-runtime');
-
-  const bedrockClient = new BedrockRuntimeClient({ region: 'us-west-2' });
-  const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
+  const { callGemini, extractJson } = await import('./gemini-client');
 
   const expectedTopics = question.expectedTopics || [];
 
@@ -1303,52 +1299,22 @@ Respond in JSON format:
   "improvementSuggestions": ["Study X", "Practice Y"]
 }`;
 
-  const requestBody = {
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            text: prompt
-          }
-        ]
-      }
-    ],
-    inferenceConfig: {
-      max_new_tokens: 1500,
-      temperature: 0.3
-    }
-  };
-
   try {
-    const command = new InvokeModelCommand({
-      modelId: MODEL_ID,
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify(requestBody)
+    const startTime = Date.now();
+    const { text, inferenceTimeMs } = await callGemini(prompt, {
+      temperature: 0.3,
+      maxOutputTokens: 1500,
     });
 
-    const startTime = Date.now();
-    const response = await bedrockClient.send(command);
-    const inferenceTimeMs = Date.now() - startTime;
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-
-    const content = responseBody.output?.message?.content?.[0]?.text || '';
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-
-    if (!jsonMatch) {
-      throw new Error('Failed to parse JSON from Bedrock response');
-    }
-
-    const evaluation = JSON.parse(jsonMatch[0]);
+    const evaluation = extractJson(text);
 
     // Add metadata
-    evaluation.modelId = MODEL_ID;
+    evaluation.modelId = 'gemini-2.0-flash';
     evaluation.inferenceTimeMs = inferenceTimeMs;
 
     return evaluation;
   } catch (error) {
-    console.error('Bedrock evaluation failed:', error);
+    console.error('Gemini evaluation failed:', error);
 
     // DO NOT return fake scores - throw error so user knows evaluation failed
     throw new Error(`Answer evaluation unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`);

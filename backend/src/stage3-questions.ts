@@ -933,7 +933,7 @@ Generate ALL 50 questions. Return ONLY valid JSON, no markdown, no explanation.`
   const inputTokens = CostTracker.estimateTokenCount(prompt);
 
   // Track cost
-  await CostTracker.trackBedrockCall({
+  await CostTracker.trackAiCall({
     analysisId,
     stage: 'interview_questions',
     modelId: MODEL_ID,
