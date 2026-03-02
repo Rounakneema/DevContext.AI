@@ -41,20 +41,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // Check if user is already logged in on mount
   useEffect(() => {
     checkUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkUser = async () => {
     try {
       const currentUser = await getCurrentUser();
       const session = await fetchAuthSession();
-      
+
       // Extract groups from JWT token
       const groups = (session.tokens?.accessToken?.payload['cognito:groups'] as string[]) || [];
       const adminStatus = groups.includes('Admins');
-      
+
       // Check email verification
       const emailVerified = session.tokens?.idToken?.payload['email_verified'] === true;
-      
+
       setUser({
         email: currentUser.signInDetails?.loginId || "",
         userId: currentUser.userId,
@@ -64,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         profileComplete: false, // Will be checked separately
       });
       setIsAdmin(adminStatus);
-      
+
       // Check profile completion after setting user
       await checkProfileCompletionInternal();
     } catch (error) {
@@ -80,14 +81,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // Import getUserProfile dynamically to avoid circular dependency
       const { getUserProfile } = await import('../services/api');
       const profile = await getUserProfile();
-      
+
       // Check if profile is complete
       const isComplete = !!(
         profile.displayName &&
         profile.targetRole &&
         profile.language
       );
-      
+
       setUser(prev => prev ? {
         ...prev,
         profileComplete: isComplete,

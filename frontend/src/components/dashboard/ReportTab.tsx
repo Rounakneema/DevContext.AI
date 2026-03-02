@@ -14,6 +14,7 @@ const ReportTab: React.FC<ReportTabProps> = ({ analysisId }) => {
 
   useEffect(() => {
     loadAnalysis();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisId]);
 
   const loadAnalysis = async () => {

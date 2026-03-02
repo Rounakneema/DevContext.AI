@@ -12,6 +12,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
 
   useEffect(() => {
     loadAnalysis();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisId]);
 
   const loadAnalysis = async () => {
@@ -45,7 +46,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
     );
   }
 
-  const { projectReview, repository } = analysis;
+  const { projectReview } = analysis;
   const { architectureClarity, projectAuthenticity, codeQuality } = projectReview;
 
   return (
@@ -66,7 +67,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
           <p style={{ fontSize: "13px", color: "var(--text2)", lineHeight: "1.7", marginBottom: "14px" }}>
             {architectureClarity.componentOrganization}
           </p>
-          
+
           {architectureClarity.designPatterns && architectureClarity.designPatterns.length > 0 && (
             <div className="tag-row" style={{ marginBottom: "14px" }}>
               {architectureClarity.designPatterns.map((pattern: any, idx: number) => {
@@ -123,9 +124,9 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
                   </span>
                 </div>
                 <div style={{ background: "var(--border2)", borderRadius: "3px", height: "4px", overflow: "hidden" }}>
-                  <div style={{ 
-                    background: score >= 70 ? "#27AE60" : score >= 50 ? "#E67E22" : "#E74C3C", 
-                    height: "100%", 
+                  <div style={{
+                    background: score >= 70 ? "#27AE60" : score >= 50 ? "#E67E22" : "#E74C3C",
+                    height: "100%",
                     width: `${score}%`,
                     transition: "width 0.3s ease"
                   }}></div>
@@ -182,7 +183,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
                 </div>
               </div>
             </div>
-            
+
             {projectAuthenticity.warnings && projectAuthenticity.warnings.length > 0 && (
               <div className="insight-list">
                 {projectAuthenticity.warnings.map((warning: string, idx: number) => (
@@ -193,7 +194,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
                 ))}
               </div>
             )}
-            
+
             <div style={{ fontSize: "12px", color: "var(--text3)", marginTop: "12px", fontStyle: "italic" }}>
               Confidence: {projectAuthenticity.confidence}
             </div>
