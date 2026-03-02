@@ -19,8 +19,26 @@ check-status.js
 get-token.js
 set-password.js
 test-*.js
+test-*.bat
 *.test.ts
 *.test.js
+
+# Operational scripts (not needed in repo)
+*.ps1
+check-*.js
+clear-*.js
+list-*.js
+migrate-*.js
+mock-*.js
+add-*.js
+create-*.js
+view-*.js
+verify-*.js
+update-*.js
+pre-deploy-*.js
+configure-*.bat
+quick-deploy-*.bat
+switch-*.bat
 
 # Documentation (keep only README.md)
 *.md
