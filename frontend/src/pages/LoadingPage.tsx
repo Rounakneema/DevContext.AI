@@ -144,8 +144,14 @@ const LoadingPage: React.FC = () => {
             navigate(`/app/dashboard?id=${analysisId}&tab=interview`);
           }, 1500);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Polling error:', err);
+        // Stop polling if analysis is gone (deleted) or unrecoverable
+        const msg = err?.message || '';
+        if (msg.includes('not found') || msg.includes('404') || msg.includes('Analysis not found')) {
+          clearInterval(pollInterval);
+          navigate('/app', { replace: true });
+        }
       }
     };
 
@@ -178,8 +184,12 @@ const LoadingPage: React.FC = () => {
           if (data.workflowState === 'stage2_complete_awaiting_approval') {
             clearInterval(pollInterval);
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Polling error:', err);
+          const msg = err?.message || '';
+          if (msg.includes('not found') || msg.includes('404') || msg.includes('Analysis not found')) {
+            clearInterval(pollInterval);
+          }
         }
       }, 3000);
     } catch (err: any) {
@@ -212,8 +222,12 @@ const LoadingPage: React.FC = () => {
               navigate(`/app/dashboard?id=${analysisId}&tab=interview`);
             }, 1500);
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Polling error:', err);
+          const msg = err?.message || '';
+          if (msg.includes('not found') || msg.includes('404') || msg.includes('Analysis not found')) {
+            clearInterval(pollInterval);
+          }
         }
       }, 3000);
     } catch (err: any) {

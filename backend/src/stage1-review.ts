@@ -36,50 +36,50 @@ interface Stage1Response {
 
 export const handler: Handler<Stage1Event, Stage1Response> = async (event) => {
   const { analysisId, projectContextMap, s3Key, codeContext } = event;
-  
+
   try {
     console.log(`Starting Stage 1 (Industry-Grade Analysis) for: ${analysisId}`);
-    
+
     // Use pre-loaded code context if available, otherwise load from S3
     const code = codeContext || await loadCodeContext(s3Key, projectContextMap);
-    
+
     // CRITICAL: Fail if no code was loaded
     if (!code || code.length < 100) {
       throw new Error('Failed to load code context from S3. Cannot generate review without code.');
     }
-    
+
     console.log(`Loaded ${code.length} characters of code context`);
-    
+
     // Generate project review using enhanced industry-standard prompt
     const projectReview = await generateProjectReview(projectContextMap, code);
-    
+
     // Validate grounding
     const groundingChecker = new GroundingChecker();
     const groundingResult = groundingChecker.validateProjectReview(projectReview, projectContextMap);
-    
+
     console.log('Grounding validation:', groundingResult);
     console.log(groundingChecker.generateReport(groundingResult));
-    
+
     if (groundingResult.confidence === 'insufficient') {
       console.warn('⚠️ Insufficient grounding detected. Invalid references:', groundingResult.invalidReferences);
     }
-    
+
     // Save to DynamoDB
     await DB.saveProjectReview(analysisId, projectReview);
-    
+
     console.log(`Stage 1 completed for: ${analysisId}`);
     console.log(`Code Quality: ${projectReview.codeQuality.overall}/100`);
     console.log(`Employability: ${projectReview.employabilitySignal.overall}/100`);
-    
+
     return {
       success: true,
       analysisId,
       projectReview
     };
-    
+
   } catch (error) {
     console.error('Stage 1 failed:', error);
-    
+
     return {
       success: false,
       analysisId,
@@ -93,19 +93,19 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
     ...contextMap.entryPoints.slice(0, 3),
     ...contextMap.coreModules.slice(0, 7)
   ].slice(0, 10);
-  
+
   const fileContents: string[] = [];
-  
+
   for (const file of filesToLoad) {
     try {
       const command = new GetObjectCommand({
         Bucket: CACHE_BUCKET,
         Key: `${s3KeyPrefix}${file}`
       });
-      
+
       const response = await s3Client.send(command);
       const content = await response.Body?.transformToString();
-      
+
       if (content) {
         const truncated = content.length > 5000 ? content.substring(0, 5000) + '\n... (truncated)' : content;
         fileContents.push(`\n--- File: ${file} ---\n${truncated}`);
@@ -118,12 +118,12 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
       }
     }
   }
-  
+
   // CRITICAL: Throw error if no files loaded
   if (fileContents.length === 0) {
     throw new Error('No code files could be loaded from S3. Repository processing may have failed.');
   }
-  
+
   return fileContents.join('\n\n');
 }
 
@@ -496,20 +496,40 @@ CRITICAL INSTRUCTIONS:
       temperature: 0.3
     }
   });
-  
+
   const startTime = Date.now();
   const response = await bedrockClient.send(command);
   const inferenceTimeMs = Date.now() - startTime;
-  
+
   const content = response.output?.message?.content?.[0]?.text || '';
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  
-  if (!jsonMatch) {
-    throw new Error('Failed to parse JSON from Bedrock response');
+
+  // Robust JSON extraction — handles ```json fences, plain JSON, and partial matches
+  let parsed: any;
+  try {
+    // Step 1: strip markdown code fences if present
+    const stripped = content
+      .replace(/^```json\s*/im, '')
+      .replace(/^```\s*/im, '')
+      .replace(/```\s*$/im, '')
+      .trim();
+
+    // Step 2: try direct parse first
+    try {
+      parsed = JSON.parse(stripped);
+    } catch {
+      // Step 3: find first {...} block (non-greedy inner search)
+      const match = stripped.match(/\{[\s\S]*\}/);
+      if (!match) {
+        console.error('Raw AI response:', content.substring(0, 500));
+        throw new Error('No JSON object found in AI response');
+      }
+      parsed = JSON.parse(match[0]);
+    }
+  } catch (parseErr) {
+    console.error('JSON parse failed. Raw response snippet:', content.substring(0, 300));
+    throw new Error(`Failed to parse Stage 1 JSON response: ${parseErr instanceof Error ? parseErr.message : parseErr}`);
   }
-  
-  const parsed = JSON.parse(jsonMatch[0]);
-  
+
   // Add UUIDs where missing
   if (parsed.strengths) {
     parsed.strengths = parsed.strengths.map((s: any) => ({
@@ -517,28 +537,28 @@ CRITICAL INSTRUCTIONS:
       strengthId: s.strengthId || uuidv4()
     }));
   }
-  
+
   if (parsed.weaknesses) {
     parsed.weaknesses = parsed.weaknesses.map((w: any) => ({
       ...w,
       weaknessId: w.weaknessId || uuidv4()
     }));
   }
-  
+
   if (parsed.criticalIssues) {
     parsed.criticalIssues = parsed.criticalIssues.map((c: any) => ({
       ...c,
       issueId: c.issueId || uuidv4()
     }));
   }
-  
+
   if (parsed.improvementAreas) {
     parsed.improvementAreas = parsed.improvementAreas.map((a: any) => ({
       ...a,
       areaId: a.areaId || uuidv4()
     }));
   }
-  
+
   // Add metadata
   parsed.modelMetadata = {
     modelId: MODEL_ID,
@@ -547,8 +567,8 @@ CRITICAL INSTRUCTIONS:
     inferenceTimeMs,
     temperature: 0.3
   };
-  
+
   parsed.generatedAt = new Date().toISOString();
-  
+
   return parsed;
 }
