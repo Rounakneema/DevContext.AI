@@ -100,37 +100,67 @@ export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
 
 async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMap): Promise<string> {
   // Load more files for architecture analysis
-  const filesToLoad = [
+  const fileContents: string[] = [];
+
+  const primary = [
     ...contextMap.entryPoints.slice(0, 5),
     ...contextMap.coreModules.slice(0, 10)
   ].slice(0, 15);
 
-  const fileContents: string[] = [];
-
-  for (const file of filesToLoad) {
+  for (const file of primary) {
     try {
-      const command = new GetObjectCommand({
-        Bucket: CACHE_BUCKET,
-        Key: `${s3KeyPrefix}${file}`
-      });
-
-      const response = await s3Client.send(command);
+      const response = await s3Client.send(new GetObjectCommand({ Bucket: CACHE_BUCKET, Key: `${s3KeyPrefix}${file}` }));
       const content = await response.Body?.transformToString();
-
       if (content) {
         const truncated = content.length > 4000 ? content.substring(0, 4000) + '\n... (truncated)' : content;
         fileContents.push(`\n--- File: ${file} ---\n${truncated}`);
       }
     } catch (err: any) {
-      if (err.Code === 'NoSuchKey') {
-        console.warn(`File not found in S3: ${file}`);
-      } else {
-        console.error(`Error loading ${file}:`, err);
-      }
+      if (err.Code !== 'NoSuchKey') console.error(`Error loading ${file}:`, err);
     }
   }
 
-  // CRITICAL: Fail if no code was loaded
+  // Fallback: read _userCodeFiles.json for repos with non-standard file types (.ipynb etc.)
+  if (fileContents.length === 0) {
+    console.log('Stage2 fallback: reading _userCodeFiles.json');
+    try {
+      const indexResp = await s3Client.send(new GetObjectCommand({
+        Bucket: CACHE_BUCKET,
+        Key: `${s3KeyPrefix}_userCodeFiles.json`
+      }));
+      const userFiles: any[] = JSON.parse(await indexResp.Body?.transformToString() || '[]');
+
+      for (const entry of userFiles.slice(0, 15)) {
+        const filePath: string = typeof entry === 'string' ? entry : (entry.path || entry.file || '');
+        if (!filePath) continue;
+        try {
+          const resp = await s3Client.send(new GetObjectCommand({ Bucket: CACHE_BUCKET, Key: `${s3KeyPrefix}${filePath}` }));
+          let content = await resp.Body?.transformToString() || '';
+
+          if (filePath.endsWith('.ipynb') && content) {
+            try {
+              const nb = JSON.parse(content);
+              const cells: string[] = (nb.cells || []).map((cell: any) => {
+                const src = Array.isArray(cell.source) ? cell.source.join('') : String(cell.source);
+                return cell.cell_type === 'code' ? `# [code cell]\n${src}` : `# [markdown]\n# ${src.replace(/\n/g, '\n# ')}`;
+              }).filter(Boolean);
+              content = cells.join('\n\n');
+            } catch { /* keep raw content */ }
+          }
+
+          if (content) {
+            const truncated = content.length > 6000 ? content.substring(0, 6000) + '\n... (truncated)' : content;
+            fileContents.push(`\n--- File: ${filePath} ---\n${truncated}`);
+          }
+        } catch (err: any) {
+          if (err.Code !== 'NoSuchKey') console.error(`Stage2 fallback error loading ${filePath}:`, err);
+        }
+      }
+    } catch (err: any) {
+      console.error('Stage2: failed to load _userCodeFiles.json:', err);
+    }
+  }
+
   if (fileContents.length === 0) {
     throw new Error('Failed to load any code files from S3 for Stage 2. Cannot generate intelligence report without code.');
   }

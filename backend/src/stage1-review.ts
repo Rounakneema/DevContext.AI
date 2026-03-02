@@ -81,37 +81,83 @@ export const handler: Handler<Stage1Event, Stage1Response> = async (event) => {
 };
 
 async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMap): Promise<string> {
-  const filesToLoad = [
+  const fileContents: string[] = [];
+
+  // Primary: load from entryPoints + coreModules (fast path for normal repos)
+  const primary = [
     ...contextMap.entryPoints.slice(0, 3),
     ...contextMap.coreModules.slice(0, 7)
   ].slice(0, 10);
 
-  const fileContents: string[] = [];
-
-  for (const file of filesToLoad) {
+  for (const file of primary) {
     try {
-      const command = new GetObjectCommand({
-        Bucket: CACHE_BUCKET,
-        Key: `${s3KeyPrefix}${file}`
-      });
-
-      const response = await s3Client.send(command);
+      const response = await s3Client.send(new GetObjectCommand({ Bucket: CACHE_BUCKET, Key: `${s3KeyPrefix}${file}` }));
       const content = await response.Body?.transformToString();
-
       if (content) {
         const truncated = content.length > 5000 ? content.substring(0, 5000) + '\n... (truncated)' : content;
         fileContents.push(`\n--- File: ${file} ---\n${truncated}`);
       }
     } catch (err: any) {
-      if (err.Code === 'NoSuchKey') {
-        console.warn(`File not found in S3: ${file}`);
-      } else {
-        console.error(`Error loading ${file}:`, err);
-      }
+      if (err.Code !== 'NoSuchKey') console.error(`Error loading ${file}:`, err);
     }
   }
 
-  // CRITICAL: Throw error if no files loaded
+  // Fallback: when no normal code files exist, use the raw userCodeFiles list
+  // This handles repos that contain only .ipynb, .md, .csv, etc.
+  if (fileContents.length === 0) {
+    console.log('No files from entryPoints/coreModules — falling back to _userCodeFiles.json');
+    try {
+      const indexResp = await s3Client.send(new GetObjectCommand({
+        Bucket: CACHE_BUCKET,
+        Key: `${s3KeyPrefix}_userCodeFiles.json`
+      }));
+      const indexRaw = await indexResp.Body?.transformToString();
+      const userFiles: any[] = indexRaw ? JSON.parse(indexRaw) : [];
+
+      for (const entry of userFiles.slice(0, 10)) {
+        const filePath: string = typeof entry === 'string' ? entry : (entry.path || entry.file || '');
+        if (!filePath) continue;
+        try {
+          const resp = await s3Client.send(new GetObjectCommand({
+            Bucket: CACHE_BUCKET,
+            Key: `${s3KeyPrefix}${filePath}`
+          }));
+          let content = await resp.Body?.transformToString() || '';
+
+          // Extract Python source cells from Jupyter notebooks
+          if (filePath.endsWith('.ipynb') && content) {
+            try {
+              const nb = JSON.parse(content);
+              const cells: string[] = (nb.cells || []).map((cell: any) => {
+                if (cell.cell_type === 'code') {
+                  const src = Array.isArray(cell.source) ? cell.source.join('') : String(cell.source);
+                  return `# [code cell]\n${src}`;
+                } else if (cell.cell_type === 'markdown') {
+                  const src = Array.isArray(cell.source) ? cell.source.join('') : String(cell.source);
+                  return `# [markdown]\n# ${src.replace(/\n/g, '\n# ')}`;
+                }
+                return '';
+              }).filter(Boolean);
+              content = cells.join('\n\n');
+              console.log(`Extracted ${cells.length} cells from notebook ${filePath}`);
+            } catch (nbErr) {
+              console.warn(`Could not parse .ipynb ${filePath}:`, nbErr);
+            }
+          }
+
+          if (content) {
+            const truncated = content.length > 8000 ? content.substring(0, 8000) + '\n... (truncated)' : content;
+            fileContents.push(`\n--- File: ${filePath} ---\n${truncated}`);
+          }
+        } catch (err: any) {
+          if (err.Code !== 'NoSuchKey') console.error(`Error loading fallback file ${filePath}:`, err);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to load _userCodeFiles.json for fallback:', err);
+    }
+  }
+
   if (fileContents.length === 0) {
     throw new Error('No code files could be loaded from S3. Repository processing may have failed.');
   }
