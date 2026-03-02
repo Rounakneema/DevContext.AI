@@ -14,12 +14,27 @@ import * as DB from './db-utils';
  * GET /cost/export?format=csv         - Export cost data
  */
 
-const CORS_HEADERS = {
-  'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+const ALLOWED_ORIGINS = [
+  'https://dev-context-ai.vercel.app',
+  'https://devcontext.ai',
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
+
+const getCorsHeaders = (requestOrigin?: string) => {
+  const origin = requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)
+    ? requestOrigin
+    : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+    'Content-Type': 'application/json',
+  };
 };
+
+const CORS_HEADERS = getCorsHeaders();
 
 function createResponse(statusCode: number, body: any): APIGatewayProxyResult {
   return {
@@ -32,60 +47,64 @@ function createResponse(statusCode: number, body: any): APIGatewayProxyResult {
 export const handler: APIGatewayProxyHandler = async (event) => {
   const path = event.path;
   const method = event.httpMethod;
-  
+
   try {
     console.log(`Cost API: ${method} ${path}`, JSON.stringify(event, null, 2));
-    
+
     // Handle OPTIONS for CORS preflight
     if (method === 'OPTIONS') {
-      return createResponse(200, { message: 'OK' });
+      return {
+        statusCode: 200,
+        headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+        body: ''
+      };
     }
-    
+
     // GET /cost/realtime
     if (path === '/cost/realtime' && method === 'GET') {
       return await handleGetRealtimeMetrics(event);
     }
-    
+
     // GET /cost/analysis/{analysisId}
     if (path.match(/\/cost\/analysis\/[^/]+$/) && method === 'GET') {
       return await handleGetAnalysisCost(event);
     }
-    
+
     // GET /cost/daily/{date}
     if (path.match(/\/cost\/daily\/[^/]+$/) && method === 'GET') {
       return await handleGetDailyCost(event);
     }
-    
+
     // GET /cost/range
     if (path === '/cost/range' && method === 'GET') {
       return await handleGetCostRange(event);
     }
-    
+
     // GET /cost/projection
     if (path === '/cost/projection' && method === 'GET') {
       return await handleGetProjection(event);
     }
-    
+
     // GET /cost/models
     if (path === '/cost/models' && method === 'GET') {
       return await handleGetModelBreakdown(event);
     }
-    
+
     // GET /cost/export
     if (path === '/cost/export' && method === 'GET') {
       return await handleExportCosts(event);
     }
-    
+
     // GET /cost/pricing
     if (path === '/cost/pricing' && method === 'GET') {
       return await handleGetPricing(event);
     }
-    
+
     return createResponse(404, { error: 'Endpoint not found', path, method });
-    
+
   } catch (error) {
     console.error('Cost API error:', error);
-    
+
     return createResponse(500, {
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -100,36 +119,36 @@ export const handler: APIGatewayProxyHandler = async (event) => {
  */
 async function handleGetAnalysisCost(event: any) {
   const analysisId = event.pathParameters?.analysisId || event.path.split('/').pop();
-  
+
   if (!analysisId) {
     return createResponse(400, { error: 'analysisId is required' });
   }
-  
+
   // Get analysis metadata
   const analysis = await DB.getAnalysis(analysisId);
-  
+
   if (!analysis) {
     return createResponse(404, { error: 'Analysis not found' });
   }
-  
+
   // Get cost breakdown
   const costData = await CostTracker.getAnalysisCost(analysisId);
-  
+
   // Calculate repository size metrics
   const repoMetadata = await DB.getRepositoryMetadata(analysisId);
-  
+
   const response = {
     analysisId,
     repositoryUrl: analysis.repositoryUrl,
     repositoryName: analysis.repositoryName,
     status: analysis.status,
-    
+
     cost: {
       totalCostUsd: costData.totalCostUsd,
       totalTokens: costData.totalTokens,
-      
+
       byStage: costData.byStage,
-      
+
       breakdown: costData.calls.map(call => ({
         stage: call.stage,
         modelName: call.modelName,
@@ -141,25 +160,25 @@ async function handleGetAnalysisCost(event: any) {
         timestamp: call.timestamp
       }))
     },
-    
+
     repositoryMetrics: repoMetadata ? {
       totalFiles: repoMetadata.totalFiles,
       totalSizeBytes: repoMetadata.totalSizeBytes,
       languages: repoMetadata.languages,
       tokenBudget: repoMetadata.tokenBudget
     } : null,
-    
+
     efficiency: {
       costPerFile: repoMetadata ? (costData.totalCostUsd / repoMetadata.totalFiles).toFixed(6) : null,
       costPerKB: repoMetadata ? (costData.totalCostUsd / (repoMetadata.totalSizeBytes / 1024)).toFixed(6) : null,
       tokensPerFile: repoMetadata ? Math.round(costData.totalTokens / repoMetadata.totalFiles) : null
     },
-    
+
     _metadata: {
       generatedAt: new Date().toISOString()
     }
   };
-  
+
   return createResponse(200, response);
 }
 
@@ -169,13 +188,13 @@ async function handleGetAnalysisCost(event: any) {
  */
 async function handleGetDailyCost(event: any) {
   const date = event.pathParameters?.date || event.path.split('/').pop();
-  
+
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return createResponse(400, { error: 'Invalid date format. Use YYYY-MM-DD' });
   }
-  
+
   const summary = await CostTracker.getDailyCostSummary(date);
-  
+
   if (!summary) {
     return createResponse(200, {
       date,
@@ -184,7 +203,7 @@ async function handleGetDailyCost(event: any) {
       message: 'No data for this date'
     });
   }
-  
+
   return createResponse(200, summary);
 }
 
@@ -195,13 +214,13 @@ async function handleGetDailyCost(event: any) {
 async function handleGetCostRange(event: any) {
   const startDate = event.queryStringParameters?.start;
   const endDate = event.queryStringParameters?.end;
-  
+
   if (!startDate || !endDate) {
     return createResponse(400, { error: 'start and end dates required (YYYY-MM-DD)' });
   }
-  
+
   const summaries = await CostTracker.getCostSummaryRange(startDate, endDate);
-  
+
   const totals = summaries.reduce((acc, s) => ({
     totalCostUsd: acc.totalCostUsd + s.totalCostUsd,
     totalCalls: acc.totalCalls + s.totalCalls,
@@ -215,7 +234,7 @@ async function handleGetCostRange(event: any) {
     totalOutputTokens: 0,
     totalTokens: 0
   });
-  
+
   return createResponse(200, {
     startDate,
     endDate,
@@ -337,25 +356,25 @@ async function handleGetRealtimeMetrics(event: any) {
   try {
     const today = new Date().toISOString().split('T')[0];
     const currentMonth = today.substring(0, 7); // YYYY-MM
-    
+
     // Get today's summary
     const todaySummary = await CostTracker.getDailyCostSummary(today);
-    
+
     // Get this month's data
     const monthStart = `${currentMonth}-01`;
     const monthSummaries = await CostTracker.getCostSummaryRange(monthStart, today);
-    
+
     // Calculate month totals
     let monthTotalCost = 0;
     let monthTotalCalls = 0;
     let monthTotalTokens = 0;
     const modelCosts: Record<string, { cost: number; calls: number }> = {};
-    
+
     for (const summary of monthSummaries) {
       monthTotalCost += summary.totalCostUsd;
       monthTotalCalls += summary.totalCalls;
       monthTotalTokens += summary.totalTokens;
-      
+
       // byModel is a Record, not an array
       for (const [modelId, modelData] of Object.entries(summary.byModel)) {
         if (!modelCosts[modelId]) {
@@ -365,12 +384,12 @@ async function handleGetRealtimeMetrics(event: any) {
         modelCosts[modelId].calls += modelData.calls;
       }
     }
-    
+
     // Calculate projection
     const daysInMonth = new Date(new Date(today).getFullYear(), new Date(today).getMonth() + 1, 0).getDate();
     const dayOfMonth = new Date(today).getDate();
     const projectedMonthCost = dayOfMonth > 0 ? (monthTotalCost / dayOfMonth) * daysInMonth : 0;
-    
+
     // Build model breakdown
     const byModel = Object.entries(modelCosts).map(([modelId, data]) => ({
       modelId,
@@ -378,31 +397,31 @@ async function handleGetRealtimeMetrics(event: any) {
       callCount: data.calls,
       avgCostPerCall: parseFloat((data.cost / data.calls).toFixed(4))
     }));
-    
+
     // Generate alerts
     const alerts: Array<{ type: 'warning' | 'info' | 'critical'; message: string }> = [];
-    
+
     if (projectedMonthCost > 500) {
       alerts.push({
         type: 'warning',
         message: `Projected monthly cost ($${projectedMonthCost.toFixed(2)}) exceeds $500 budget`
       });
     }
-    
+
     if (todaySummary && todaySummary.totalCostUsd > 50) {
       alerts.push({
         type: 'critical',
         message: `Today's cost ($${todaySummary.totalCostUsd.toFixed(2)}) is unusually high`
       });
     }
-    
+
     if (alerts.length === 0) {
       alerts.push({
         type: 'info',
         message: 'All systems operating within budget'
       });
     }
-    
+
     const response = {
       today: {
         totalCost: todaySummary?.totalCostUsd || 0,
@@ -418,7 +437,7 @@ async function handleGetRealtimeMetrics(event: any) {
       recentAnalyses: [], // TODO: Add recent analyses query
       alerts
     };
-    
+
     return createResponse(200, response);
   } catch (error) {
     console.error('Error in handleGetRealtimeMetrics:', error);
@@ -509,39 +528,39 @@ async function handleGetPricing(event: any) {
 
 function generateCostRecommendations(projection: CostTracker.CostProjection): string[] {
   const recommendations: string[] = [];
-  
+
   if (projection.averageCostPerAnalysis > 1.5) {
     recommendations.push('Consider using cheaper models for non-critical stages (e.g., Qwen Coder for Stage 3)');
   }
-  
+
   if (projection.projectedMonthCost > 50) {
     recommendations.push('Enable prompt caching to reduce input token costs by up to 90%');
   }
-  
+
   if (projection.totalAnalyses > 100) {
     recommendations.push('Consider batch inference for Stage 3 questions to save 50% on costs');
   }
-  
+
   return recommendations;
 }
 
 function generateRealtimeAlerts(todayCost: number, projection: CostTracker.CostProjection): any[] {
   const alerts: any[] = [];
-  
+
   if (todayCost > projection.averageCostPerDay * 2) {
     alerts.push({
       level: 'warning',
       message: `Today's cost ($${todayCost.toFixed(2)}) is 2x higher than daily average`
     });
   }
-  
+
   if (projection.projectedMonthCost > 200) {
     alerts.push({
       level: 'critical',
       message: `Projected monthly cost ($${projection.projectedMonthCost.toFixed(2)}) exceeds $200`
     });
   }
-  
+
   return alerts;
 }
 
@@ -555,7 +574,7 @@ function convertToCSV(summaries: CostTracker.CostSummary[]): string {
     'Total Tokens',
     'Avg Cost/Call'
   ];
-  
+
   const rows = summaries.map(s => [
     s.periodKey,
     s.totalCostUsd.toFixed(4),
@@ -565,7 +584,7 @@ function convertToCSV(summaries: CostTracker.CostSummary[]): string {
     s.totalTokens,
     (s.totalCostUsd / s.totalCalls).toFixed(6)
   ]);
-  
+
   return [
     headers.join(','),
     ...rows.map(r => r.join(','))
