@@ -457,6 +457,12 @@ export const continueToStage3 = (analysisId: string) =>
     method: 'POST',
   });
 
+export const cancelAnalysis = (analysisId: string) =>
+  apiCall<{ success: boolean; message: string }>(`/analysis/${analysisId}/cancel`, {
+    method: 'POST',
+  });
+
+
 // ============================================================================
 // FILE MANAGEMENT APIs
 // ============================================================================
@@ -697,11 +703,11 @@ export async function exportCostData(format: 'csv' | 'json' = 'csv', days: numbe
       'Content-Type': 'application/json',
     },
   });
-  
+
   if (!response.ok) {
     throw new Error(`Export failed with status ${response.status}`);
   }
-  
+
   return response.text();
 }
 

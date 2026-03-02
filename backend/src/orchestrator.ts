@@ -96,6 +96,10 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
       return await handleContinueStage3(event, context);
     }
 
+    if (path.endsWith('/cancel') && method === 'POST') {
+      return await handleCancelAnalysis(event);
+    }
+
     // User profile endpoints
     if (path === '/user/profile' && method === 'GET') {
       return await handleGetUserProfile(event);
@@ -384,18 +388,17 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
     console.error('❌ Pipeline failed:', error);
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
 
-    // Mark as failed
-    await DB.updateAnalysisStatus(
-      analysisId,
-      'failed',
-      error instanceof Error ? error.message : 'Unknown error'
-    );
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+
+    // Mark status AND workflow state so frontend polling can detect the failure
+    await DB.updateAnalysisStatus(analysisId, 'failed', errMsg);
+    await DB.updateWorkflowState(analysisId, 'failed' as any);
     await DB.logAnalysisEvent(analysisId, 'analysis_failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errMsg,
       errorStack: error instanceof Error ? error.stack : undefined
     }, context);
 
-    // Re-throw to ensure it's logged
+    // Re-throw to ensure Lambda marks the invocation as an error
     throw error;
   }
 }
@@ -585,6 +588,38 @@ async function handleDeleteAnalysis(event: any) {
         error: 'Failed to delete analysis',
         message: error instanceof Error ? error.message : 'Unknown error'
       })
+    };
+  }
+}
+
+// POST /analysis/{analysisId}/cancel
+// Marks an in-progress analysis as cancelled so the frontend can stop polling
+async function handleCancelAnalysis(event: any) {
+  const analysisId = event.pathParameters?.id;
+  const corsHeaders = getCorsHeaders(event.headers?.origin || event.headers?.Origin);
+
+  if (!analysisId) {
+    return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'analysisId is required' }) };
+  }
+
+  try {
+    await DB.updateAnalysisStatus(analysisId, 'cancelled' as any, 'Cancelled by user');
+    await DB.updateWorkflowState(analysisId, 'cancelled' as any);
+    await DB.logAnalysisEvent(analysisId, 'analysis_cancelled', { cancelledBy: 'user' }, null);
+
+    console.log(`✅ Analysis ${analysisId} cancelled by user`);
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({ success: true, message: 'Analysis cancelled' })
+    };
+  } catch (error) {
+    console.error('Cancel failed:', error);
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Failed to cancel analysis', message: error instanceof Error ? error.message : 'Unknown error' })
     };
   }
 }

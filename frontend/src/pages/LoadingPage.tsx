@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getAnalysisStatus, continueToStage2, continueToStage3, exportAnalysis } from '../services/api';
+import { getAnalysisStatus, continueToStage2, continueToStage3, exportAnalysis, cancelAnalysis } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 
 type WorkflowState =
@@ -10,7 +10,8 @@ type WorkflowState =
   | 'stage2_complete_awaiting_approval'
   | 'stage3_pending'
   | 'all_complete'
-  | 'failed';
+  | 'failed'
+  | 'cancelled';
 
 interface Stage {
   name: string;
@@ -27,6 +28,8 @@ const LoadingPage: React.FC = () => {
   const [workflowState, setWorkflowState] = useState<WorkflowState>('stage1_pending');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [pipelineError, setPipelineError] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   // Redirect if no analysisId
   React.useEffect(() => {
@@ -129,6 +132,17 @@ const LoadingPage: React.FC = () => {
         setWorkflowState(data.workflowState as WorkflowState);
         updateStagesFromWorkflow(data.workflowState as WorkflowState);
 
+        // Detect backend failure or cancellation
+        if (data.workflowState === 'failed') {
+          clearInterval(pollInterval);
+          setPipelineError((data as any).errorMessage || 'The analysis failed. Please try again.');
+          return;
+        }
+        if (data.workflowState === 'cancelled') {
+          clearInterval(pollInterval);
+          return;
+        }
+
         // Stop polling at decision points or completion
         if (
           data.workflowState === 'stage1_complete_awaiting_approval' ||
@@ -146,7 +160,6 @@ const LoadingPage: React.FC = () => {
         }
       } catch (err: any) {
         console.error('Polling error:', err);
-        // Stop polling if analysis is gone (deleted) or unrecoverable
         const msg = err?.message || '';
         if (msg.includes('not found') || msg.includes('404') || msg.includes('Analysis not found')) {
           clearInterval(pollInterval);
@@ -155,14 +168,27 @@ const LoadingPage: React.FC = () => {
       }
     };
 
-    // Initial fetch
     pollStatus();
-
-    // Poll every 3 seconds while processing
     pollInterval = setInterval(pollStatus, 3000);
-
     return () => clearInterval(pollInterval);
   }, [analysisId, navigate, updateStagesFromWorkflow]);
+
+  // Cancel analysis
+  const handleCancel = async () => {
+    if (cancelling) return;
+    const confirmed = window.confirm('Stop this analysis? You can start a new one any time.');
+    if (!confirmed) return;
+    setCancelling(true);
+    try {
+      await cancelAnalysis(analysisId);
+      setWorkflowState('cancelled');
+    } catch (err: any) {
+      // Even if the API call fails, treat it as cancelled on the frontend
+      setWorkflowState('cancelled');
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   // Continue to Stage 2
   const handleContinueStage2 = async () => {
@@ -309,6 +335,56 @@ const LoadingPage: React.FC = () => {
     workflowState === 'stage1_pending' ||
     workflowState === 'stage2_pending' ||
     workflowState === 'stage3_pending';
+  const isTerminal = workflowState === 'failed' || workflowState === 'cancelled';
+
+  // ── Terminal failure/cancelled screen ────────────────────────────────────────
+  if (isTerminal) {
+    const isFailed = workflowState === 'failed';
+    return (
+      <div className="main page active loading-page">
+        <div className="loading-inner">
+          <div style={{
+            background: isFailed ? 'rgba(231,76,60,0.08)' : 'rgba(230,126,34,0.08)',
+            border: `1px solid ${isFailed ? '#E74C3C' : '#E67E22'}44`,
+            borderRadius: '16px', padding: '32px', textAlign: 'center', maxWidth: '420px',
+          }}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>{isFailed ? '❌' : '🚫'}</div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>
+              {isFailed ? 'Analysis Failed' : 'Analysis Cancelled'}
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '6px', lineHeight: 1.6 }}>
+              {isFailed
+                ? (pipelineError || 'Something went wrong during analysis. This is often a temporary issue.')
+                : 'You cancelled this analysis. No problem — you can start a new one any time.'}
+            </div>
+            {isFailed && (
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '20px', fontStyle: 'italic' }}>
+                Common causes: repository too large, unsupported file types, or a temporary API issue.
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '16px' }}>
+              <button
+                className="btn-accent"
+                onClick={() => navigate('/app')}
+                style={{ padding: '10px 20px', fontSize: '13px' }}
+              >
+                ← Try Another Repo
+              </button>
+              {isFailed && (
+                <button
+                  className="btn-secondary"
+                  onClick={() => navigate('/app', { state: { retryUrl: queryUrl } })}
+                  style={{ padding: '10px 16px', fontSize: '13px' }}
+                >
+                  🔄 Retry
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="main page active loading-page">
@@ -342,13 +418,31 @@ const LoadingPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Progress bar only when processing */}
+        {/* Progress bar + cancel only when processing */}
         {isProcessing && (
           <>
             <div className="progress-bar-wrap">
               <div className="progress-bar-fill"></div>
             </div>
             <div className="loading-hint">Results stream progressively — Stage 1 arrives first</div>
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              style={{
+                marginTop: '16px',
+                padding: '8px 20px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text3)',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: cancelling ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              {cancelling ? 'Cancelling…' : '✕ Cancel Analysis'}
+            </button>
           </>
         )}
 
