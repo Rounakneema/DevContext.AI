@@ -22,12 +22,12 @@ if (!GEMINI_API_KEY) {
     try {
         const samconfig = fs.readFileSync(path.join(__dirname, 'samconfig.toml'), 'utf8');
         const match = samconfig.match(/GeminiApiKey=(\S+)/);
-        if (match) GEMINI_API_KEY = match[1].replace(/"/g, '').replace(/'/g, '');
+        if (match) GEMINI_API_KEY = match[1].replace(/["'\\]/g, '');
     } catch { }
 }
 
 // Backend URL — read from .env or use production
-const BACKEND_URL = process.env.BACKEND_URL || 'https://api.devcontext.ai'; // update if different
+const BACKEND_URL = process.env.BACKEND_URL || 'https://2jhc5i9ex2.execute-api.ap-southeast-1.amazonaws.com/prod'; // update if different
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const RESET = '\x1b[0m';
@@ -110,7 +110,7 @@ async function checkGemini() {
 
     ok('API key loaded', `${GEMINI_API_KEY.substring(0, 8)}…`);
 
-    const model = 'gemini-3.1-pro';
+    const model = 'gemini-3.1-pro-preview';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
     const body = {
         contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: OK' }] }],

@@ -105,7 +105,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     provider: 'mistral'
   },
 
-  // ─── Add Llama 3.3 70B Inference Profiles to pricing ────────────────────
+  // ─── Add Llama  70B Inference Profiles to pricing ────────────────────
   'us.meta.llama3-3-70b-instruct-v1:0': {
     modelId: 'us.meta.llama3-3-70b-instruct-v1:0',
     modelName: 'Meta Llama 3.3 70B (Inference Profile)',

@@ -1,7 +1,7 @@
 /**
  * DevContext AI — Google Gemini Client
  *
- * Model: gemini-3.1-pro
+ * Model: gemini-3.1-pro-preview
  * Rate limits (free / standard tier):
  *   RPM  : 25   (requests per minute)
  *   TPM  : 1,000,000 (tokens per minute)
@@ -21,7 +21,7 @@ const API_KEY = process.env.GEMINI_API_KEY!;
 // (useful in dev/test to save RPD quota).
 export const GEMINI_MODEL = process.env.GEMINI_USE_FLASH === 'true'
     ? 'gemini-2.0-flash'
-    : 'gemini-3.1-pro';
+    : 'gemini-3.1-pro-preview';
 
 // ─── Rate-limit constants ─────────────────────────────────────────────────────
 const MAX_RPM = 25;           // hard ceiling
