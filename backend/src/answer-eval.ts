@@ -1,14 +1,7 @@
-import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { callGemini, extractJson, GEMINI_MODEL } from './gemini-client';
 
-const bedrockClient = new BedrockRuntimeClient({ region: 'us-west-2' });
-// 🏆 OPTIMAL MODEL: Meta Llama 3.3 70B Instruct (Inference Profile)
-// Cost: ~$0.15 per evaluation | Context: 128K tokens | Quality: ⭐⭐⭐⭐⭐
-// Why: Hiring decisions require accurate, nuanced, FAANG-calibrated scoring
-//      - Matches actual hiring bars (BigTech 75+, Product 65+, Startup 60+)
-//      - Provides detailed feedback with interviewer notes
-//      - No fake scores - throws error if evaluation fails
-// Uses AWS Credits: ✅ Yes
-const MODEL_ID = 'us.meta.llama3-3-70b-instruct-v1:0';
+// Using Google Gemini 2.0 Flash — fast, high-quality, cost-efficient
+const MODEL_ID = GEMINI_MODEL;
 
 /**
  * FAANG-Calibrated Answer Evaluation
@@ -26,7 +19,7 @@ export async function evaluateAnswerComprehensive(
   const expectedKeyPoints = question.expectedAnswer?.keyPoints || [];
   const redFlags = question.expectedAnswer?.redFlags || [];
   const scoringRubric = question.scoringRubric || {};
-  
+
   const prompt = `You are a Staff Engineer at Google conducting a technical interview evaluation. You must provide honest, calibrated feedback that matches industry hiring standards.
 
 ═══════════════════════════════════════════════════════════════════════════
@@ -260,52 +253,31 @@ CRITICAL INSTRUCTIONS:
 5. If you see ANY red flags, score must be <60 and explain why in detailedFeedback.`;
 
   try {
-    const command = new ConverseCommand({
-      modelId: MODEL_ID,
-      messages: [
-        {
-          role: 'user',
-          content: [{ text: prompt }]
-        }
-      ],
-      inferenceConfig: {
-        maxTokens: 2000,
-        temperature: 0.2 // Low temperature for consistent, calibrated evaluation
-      }
-    });
-    
     const startTime = Date.now();
-    const response = await bedrockClient.send(command);
-    const inferenceTimeMs = Date.now() - startTime;
-    
-    const content = response.output?.message?.content?.[0]?.text || '';
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    
-    if (!jsonMatch) {
-      throw new Error('Failed to parse JSON from Bedrock evaluation response');
-    }
-    
-    const evaluation = JSON.parse(jsonMatch[0]);
-    
+    const { text: content, inputTokens, outputTokens, inferenceTimeMs } = await callGemini(prompt, {
+      temperature: 0.2,
+      maxOutputTokens: 2000,
+    });
+
+    const evaluation = extractJson(content);
+
     // Add metadata
     evaluation.modelMetadata = {
       modelId: MODEL_ID,
       evaluationVersion: 'v2.0',
       rubricApplied: 'FAANG-calibrated',
-      tokensIn: response.usage?.inputTokens || 0,
-      tokensOut: response.usage?.outputTokens || 0,
+      tokensIn: inputTokens,
+      tokensOut: outputTokens,
       inferenceTimeMs
     };
-    
+
     evaluation.evaluatedAt = new Date().toISOString();
     evaluation.questionId = question.questionId;
-    
+
     return evaluation;
-    
+
   } catch (error) {
-    console.error('Bedrock evaluation failed:', error);
-    
-    // DO NOT return fake scores - throw error
+    console.error('Gemini evaluation failed:', error);
     throw new Error(`Evaluation service unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

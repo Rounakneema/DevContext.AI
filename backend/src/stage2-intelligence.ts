@@ -1,24 +1,17 @@
 import { Handler } from 'aws-lambda';
-import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { callGemini, extractJson, GEMINI_MODEL } from './gemini-client';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { ProjectContextMap } from './types';
 import { GroundingChecker } from './grounding-checker';
 import * as DB from './db-utils';
 import { v4 as uuidv4 } from 'uuid';
 
-const bedrockClient = new BedrockRuntimeClient({ region: 'us-west-2' });
+// Using Google Gemini 2.0 Flash
+const MODEL_ID = GEMINI_MODEL;
 const s3Client = new S3Client({});
 
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
 // 🏆 OPTIMAL MODEL: Meta Llama 3.3 70B Instruct (Inference Profile)
-// Cost: ~$0.38 per report | Context: 128K tokens | Quality: ⭐⭐⭐⭐⭐
-// Why: Complex system architecture reconstruction requires deep reasoning
-//      - Design pattern identification with nuance
-//      - Scalability analysis and bottleneck detection
-//      - Trade-off reasoning at Staff Engineer level
-//      - Resume bullet generation (ATS-optimized)
-// Uses AWS Credits: ✅ Yes
-const MODEL_ID = 'us.meta.llama3-3-70b-instruct-v1:0';
 
 /**
  * Utility: Ensure all items in array have IDs
@@ -49,19 +42,19 @@ interface Stage2Response {
 
 export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
   const { analysisId, projectContextMap, s3Key } = event;
-  
+
   try {
     console.log(`Starting Stage 2 (Intelligence Report) for: ${analysisId}`);
-    
+
     // Load code context
     const codeContext = await loadCodeContext(s3Key, projectContextMap);
-    
+
     // Generate intelligence report using Chain-of-Thought
     const intelligenceReport = await generateIntelligenceReport(
       projectContextMap,
       codeContext
     );
-    
+
     // Validate grounding (only if userCodeFiles available)
     if (projectContextMap.userCodeFiles && projectContextMap.userCodeFiles.length > 0) {
       const groundingChecker = new GroundingChecker();
@@ -69,34 +62,34 @@ export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
         intelligenceReport,
         projectContextMap.userCodeFiles
       );
-      
+
       console.log('Grounding validation:', groundingResult);
-      
+
       if (groundingResult.confidence === 'insufficient') {
         console.warn('⚠️ Insufficient grounding detected in intelligence report');
       }
     } else {
       console.warn('⚠️ No userCodeFiles available - skipping grounding validation (old analysis or S3 load failed)');
     }
-    
+
     console.log('💾 Saving intelligence report to DynamoDB');
-    
+
     // Save to DynamoDB using db-utils
     await DB.saveIntelligenceReport(analysisId, intelligenceReport);
-    
+
     console.log('✅ Intelligence report saved to DynamoDB');
-    
+
     console.log(`Stage 2 completed for: ${analysisId}`);
-    
+
     return {
       success: true,
       analysisId,
       intelligenceReport
     };
-    
+
   } catch (error) {
     console.error('Stage 2 failed:', error);
-    
+
     return {
       success: false,
       analysisId,
@@ -111,19 +104,19 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
     ...contextMap.entryPoints.slice(0, 5),
     ...contextMap.coreModules.slice(0, 10)
   ].slice(0, 15);
-  
+
   const fileContents: string[] = [];
-  
+
   for (const file of filesToLoad) {
     try {
       const command = new GetObjectCommand({
         Bucket: CACHE_BUCKET,
         Key: `${s3KeyPrefix}${file}`
       });
-      
+
       const response = await s3Client.send(command);
       const content = await response.Body?.transformToString();
-      
+
       if (content) {
         const truncated = content.length > 4000 ? content.substring(0, 4000) + '\n... (truncated)' : content;
         fileContents.push(`\n--- File: ${file} ---\n${truncated}`);
@@ -136,12 +129,12 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
       }
     }
   }
-  
+
   // CRITICAL: Fail if no code was loaded
   if (fileContents.length === 0) {
     throw new Error('Failed to load any code files from S3 for Stage 2. Cannot generate intelligence report without code.');
   }
-  
+
   return fileContents.join('\n\n');
 }
 
@@ -320,66 +313,43 @@ Respond in JSON format:
   "generatedAt": "${new Date().toISOString()}"
 }`;
 
-  const command = new ConverseCommand({
-    modelId: MODEL_ID,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            text: prompt
-          }
-        ]
-      }
-    ],
-    inferenceConfig: {
-      maxTokens: 4000,
-      temperature: 0.4
-    }
-  });
-  
   const startTime = Date.now();
-  const response = await bedrockClient.send(command);
-  const inferenceTimeMs = Date.now() - startTime;
-  
-  const content = response.output?.message?.content?.[0]?.text || '';
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  
-  if (!jsonMatch) {
-    throw new Error('Failed to parse JSON from Bedrock response');
-  }
-  
-  const parsed = JSON.parse(jsonMatch[0]);
-  
+  const { text: content, inputTokens, outputTokens, inferenceTimeMs } = await callGemini(prompt, {
+    temperature: 0.4,
+    maxOutputTokens: 4000,
+  });
+
+  const parsed = extractJson(content);
+
   // Add UUIDs where missing using utility function
   parsed.designDecisions = ensureIdsInArray(parsed.designDecisions, 'decisionId');
   parsed.technicalTradeoffs = ensureIdsInArray(parsed.technicalTradeoffs, 'tradeoffId');
   parsed.resumeBullets = ensureIdsInArray(parsed.resumeBullets, 'bulletId');
-  
+
   if (parsed.scalabilityAnalysis?.bottlenecks) {
     parsed.scalabilityAnalysis.bottlenecks = ensureIdsInArray(
       parsed.scalabilityAnalysis.bottlenecks,
       'bottleneckId'
     );
   }
-  
+
   if (parsed.scalabilityAnalysis?.recommendedImprovements) {
     parsed.scalabilityAnalysis.recommendedImprovements = ensureIdsInArray(
       parsed.scalabilityAnalysis.recommendedImprovements,
       'improvementId'
     );
   }
-  
+
   // Add metadata
   parsed.modelMetadata = {
     modelId: MODEL_ID,
-    tokensIn: response.usage?.inputTokens || 0,
-    tokensOut: response.usage?.outputTokens || 0,
+    tokensIn: inputTokens,
+    tokensOut: outputTokens,
     inferenceTimeMs,
     temperature: 0.4
   };
-  
+
   parsed.generatedAt = new Date().toISOString();
-  
+
   return parsed;
 }

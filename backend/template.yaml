@@ -20,6 +20,11 @@ Parameters:
     Type: String
     Description: Cognito App Client ID
     Default: ""
+  GeminiApiKey:
+    Type: String
+    Description: Google Gemini API Key
+    Default: ""
+    NoEcho: true
 
 Globals:
   Function:
@@ -37,6 +42,7 @@ Globals:
         COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
         COGNITO_CLIENT_ID: !Ref CognitoClientId
         NODE_ENV: production
+        GEMINI_API_KEY: !Ref GeminiApiKey
 
 Resources:
   # ============================================================================

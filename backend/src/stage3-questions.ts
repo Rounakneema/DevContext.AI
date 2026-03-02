@@ -668,7 +668,7 @@
 //   return dist;
 // }
 import { Handler } from 'aws-lambda';
-import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { callGemini, GEMINI_MODEL } from './gemini-client';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import { ProjectContextMap } from './types';
@@ -677,12 +677,11 @@ import { SelfCorrectionLoop, ValidationResult } from './self-correction';
 import * as DB from './db-utils';
 import * as CostTracker from './cost-tracker';
 
-const bedrockClient = new BedrockRuntimeClient({ region: 'us-west-2' });
 const s3Client = new S3Client({});
 
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
 // 🎯 OPTIMAL MODEL: Meta Llama 3.3 70B (Inference Profile)
-const MODEL_ID = 'us.meta.llama3-3-70b-instruct-v1:0';
+const MODEL_ID = GEMINI_MODEL;
 
 interface Stage3Event {
   analysisId: string;
@@ -925,28 +924,13 @@ Generate ALL 50 questions. Return ONLY valid JSON, no markdown, no explanation.`
 
   const startTime = Date.now();
 
-  // Estimate input tokens
-  const inputTokens = CostTracker.estimateTokenCount(prompt);
-
-  const command = new ConverseCommand({
-    modelId: MODEL_ID,
-    messages: [
-      {
-        role: 'user',
-        content: [{ text: prompt }]
-      }
-    ],
-    inferenceConfig: {
-      maxTokens: 16000,
-      temperature: 0.5
-    }
+  const { text: content, inferenceTimeMs } = await callGemini(prompt, {
+    temperature: 0.5,
+    maxOutputTokens: 16000,
   });
 
-  const response = await bedrockClient.send(command);
-  const inferenceTimeMs = Date.now() - startTime;
-
-  const content = response.output?.message?.content?.[0]?.text || '';
   const outputTokens = CostTracker.estimateTokenCount(content);
+  const inputTokens = CostTracker.estimateTokenCount(prompt);
 
   // Track cost
   await CostTracker.trackBedrockCall({

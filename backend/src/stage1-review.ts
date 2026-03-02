@@ -1,24 +1,16 @@
 import { Handler } from 'aws-lambda';
-import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { callGemini, extractJson, GEMINI_MODEL } from './gemini-client';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { ProjectContextMap } from './types';
 import { GroundingChecker } from './grounding-checker';
 import * as DB from './db-utils';
 import { v4 as uuidv4 } from 'uuid';
 
-const bedrockClient = new BedrockRuntimeClient({ region: 'us-west-2' });
+// Using Google Gemini 2.0 Flash for fast, high-quality analysis
+const MODEL_ID = GEMINI_MODEL;
 const s3Client = new S3Client({});
 
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
-// 🏆 OPTIMAL MODEL: Meta Llama 3.3 70B Instruct (Inference Profile)
-// Cost: ~$0.38 per analysis | Context: 128K tokens | Quality: ⭐⭐⭐⭐⭐
-// Why: Critical hiring decision requires deep technical understanding
-//      - OWASP Top 10 security analysis
-//      - CWE/CVSS vulnerability scoring
-//      - Industry-standard benchmarks (Google/Meta/Microsoft)
-//      - 8-dimension code quality assessment
-// Region: us-west-2 (Meta models available via inference profiles)
-const MODEL_ID = 'us.meta.llama3-3-70b-instruct-v1:0';
 
 interface Stage1Event {
   analysisId: string;
@@ -475,7 +467,7 @@ RESPONSE FORMAT (STRICT JSON)
   },
   "generatedAt": "${new Date().toISOString()}"
 }
-
+ 
 CRITICAL INSTRUCTIONS:
 1. Be HONEST and CALIBRATED. Most projects score 60-75. Scores of 90+ are rare.
 2. Reference SPECIFIC files and line numbers for all claims.
@@ -483,48 +475,15 @@ CRITICAL INSTRUCTIONS:
 4. Use industry benchmarks (Google, Microsoft, Meta standards).
 5. Provide actionable remediation with code examples.`;
 
-  const command = new ConverseCommand({
-    modelId: MODEL_ID,
-    messages: [
-      {
-        role: 'user',
-        content: [{ text: prompt }]
-      }
-    ],
-    inferenceConfig: {
-      maxTokens: 4000,
-      temperature: 0.3
-    }
+  const startTime = Date.now();
+  const { text: content, inputTokens, outputTokens, inferenceTimeMs } = await callGemini(prompt, {
+    temperature: 0.3,
+    maxOutputTokens: 4000,
   });
 
-  const startTime = Date.now();
-  const response = await bedrockClient.send(command);
-  const inferenceTimeMs = Date.now() - startTime;
-
-  const content = response.output?.message?.content?.[0]?.text || '';
-
-  // Robust JSON extraction — handles ```json fences, plain JSON, and partial matches
   let parsed: any;
   try {
-    // Step 1: strip markdown code fences if present
-    const stripped = content
-      .replace(/^```json\s*/im, '')
-      .replace(/^```\s*/im, '')
-      .replace(/```\s*$/im, '')
-      .trim();
-
-    // Step 2: try direct parse first
-    try {
-      parsed = JSON.parse(stripped);
-    } catch {
-      // Step 3: find first {...} block (non-greedy inner search)
-      const match = stripped.match(/\{[\s\S]*\}/);
-      if (!match) {
-        console.error('Raw AI response:', content.substring(0, 500));
-        throw new Error('No JSON object found in AI response');
-      }
-      parsed = JSON.parse(match[0]);
-    }
+    parsed = extractJson(content);
   } catch (parseErr) {
     console.error('JSON parse failed. Raw response snippet:', content.substring(0, 300));
     throw new Error(`Failed to parse Stage 1 JSON response: ${parseErr instanceof Error ? parseErr.message : parseErr}`);
@@ -562,8 +521,8 @@ CRITICAL INSTRUCTIONS:
   // Add metadata
   parsed.modelMetadata = {
     modelId: MODEL_ID,
-    tokensIn: response.usage?.inputTokens || 0,
-    tokensOut: response.usage?.outputTokens || 0,
+    tokensIn: inputTokens,
+    tokensOut: outputTokens,
     inferenceTimeMs,
     temperature: 0.3
   };
