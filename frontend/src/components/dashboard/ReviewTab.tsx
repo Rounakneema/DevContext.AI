@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../../services/api";
+import GapAnalysisPanel from "./GapAnalysisPanel";
+import CodeDNAPanel from "./CodeDNAPanel";
 
 interface ReviewTabProps {
   analysisId: string;
@@ -22,7 +24,6 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
       setAnalysis(data);
       setError(null);
     } catch (err) {
-      console.error('Failed to load analysis:', err);
       setError(err instanceof Error ? err.message : 'Failed to load analysis');
     } finally {
       setLoading(false);
@@ -32,7 +33,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-        <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+        <div className="spinner" style={{ margin: '0 auto 16px' }} />
         <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Loading project review...</div>
       </div>
     );
@@ -46,17 +47,31 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
     );
   }
 
-  const { projectReview } = analysis;
-  const { architectureClarity, projectAuthenticity, codeQuality } = projectReview;
+  const { projectReview, repository } = analysis;
+  const { architectureClarity, projectAuthenticity, codeQuality, strengths = [], weaknesses = [], employabilitySignal } = projectReview;
+  const stack = repository?.frameworks || [];
 
   return (
     <>
       <div className="view-title">Project Review</div>
       <div className="view-sub">
-        Detailed code quality analysis grounded in specific files and line numbers.
+        Deep-dive analysis: deal-breakers, code DNA, and your path to the next level.
       </div>
 
-      <div className="panel">
+      {/* ── GAP ANALYSIS (new, most impactful) ── */}
+      {employabilitySignal && (
+        <GapAnalysisPanel
+          employabilitySignal={employabilitySignal}
+          weaknesses={weaknesses}
+          strengths={strengths}
+        />
+      )}
+
+      {/* ── CODE DNA (new) ── */}
+      <CodeDNAPanel codeQuality={codeQuality} stack={stack} />
+
+      {/* ── ARCHITECTURE CLARITY (original) ── */}
+      <div className="panel" style={{ marginBottom: '16px' }}>
         <div className="panel-head">
           <div className="panel-title">Architecture Clarity</div>
           <div className={`chip ${architectureClarity.score >= 70 ? 'green' : architectureClarity.score >= 50 ? 'amber' : 'red'}`}>
@@ -72,11 +87,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
             <div className="tag-row" style={{ marginBottom: "14px" }}>
               {architectureClarity.designPatterns.map((pattern: any, idx: number) => {
                 const patternName = typeof pattern === 'string' ? pattern : (pattern?.name || JSON.stringify(pattern));
-                return (
-                  <span key={idx} className="tag tech">
-                    {patternName}
-                  </span>
-                );
+                return <span key={idx} className="tag tech">{patternName}</span>;
               })}
             </div>
           )}
@@ -84,13 +95,11 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
           {architectureClarity.antiPatterns && architectureClarity.antiPatterns.length > 0 && (
             <div className="insight-list">
               {architectureClarity.antiPatterns.map((antiPattern: any, idx: number) => {
-                const antiPatternText = typeof antiPattern === 'string' ? antiPattern : (antiPattern?.name || JSON.stringify(antiPattern));
+                const text = typeof antiPattern === 'string' ? antiPattern : (antiPattern?.name || JSON.stringify(antiPattern));
                 return (
                   <div key={idx} className="insight-item">
                     <div className="i-dot warn">!</div>
-                    <div className="i-text">
-                      <strong>Anti-pattern detected:</strong> {antiPatternText}
-                    </div>
+                    <div className="i-text"><strong>Anti-pattern detected:</strong> {text}</div>
                   </div>
                 );
               })}
@@ -99,7 +108,8 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
         </div>
       </div>
 
-      <div className="panel">
+      {/* ── CODE QUALITY BREAKDOWN (original) ── */}
+      <div className="panel" style={{ marginBottom: '16px' }}>
         <div className="panel-head">
           <div className="panel-title">Code Quality Breakdown</div>
           <div className={`chip ${codeQuality.overall >= 70 ? 'green' : codeQuality.overall >= 50 ? 'amber' : 'red'}`}>
@@ -126,20 +136,17 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
                 <div style={{ background: "var(--border2)", borderRadius: "3px", height: "4px", overflow: "hidden" }}>
                   <div style={{
                     background: score >= 70 ? "#27AE60" : score >= 50 ? "#E67E22" : "#E74C3C",
-                    height: "100%",
-                    width: `${score}%`,
-                    transition: "width 0.3s ease"
-                  }}></div>
+                    height: "100%", width: `${score}%`, transition: "width 0.3s ease"
+                  }} />
                 </div>
               </div>
             ))}
           </div>
-          <p style={{ fontSize: "12px", color: "var(--text3)", fontStyle: "italic" }}>
-            {codeQuality.justification}
-          </p>
+          <p style={{ fontSize: "12px", color: "var(--text3)", fontStyle: "italic" }}>{codeQuality.justification}</p>
         </div>
       </div>
 
+      {/* ── PROJECT AUTHENTICITY (original) ── */}
       {projectAuthenticity && (
         <div className="panel">
           <div className="panel-head">
@@ -150,40 +157,18 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
           </div>
           <div className="panel-body">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "16px" }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
-                <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>
-                  {projectAuthenticity.signals?.commitDiversity || 0}
+              {[
+                { label: 'Commit Diversity', value: projectAuthenticity.signals?.commitDiversity || 0 },
+                { label: 'Time Spread', value: projectAuthenticity.signals?.timeSpread || 0 },
+                { label: 'Message Quality', value: projectAuthenticity.signals?.messageQuality || 0 },
+                { label: 'Code Evolution', value: projectAuthenticity.signals?.codeEvolution || 0 },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>{value}</div>
+                  <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>{label}</div>
                 </div>
-                <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>
-                  Commit Diversity
-                </div>
-              </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
-                <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>
-                  {projectAuthenticity.signals?.timeSpread || 0}
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>
-                  Time Spread
-                </div>
-              </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
-                <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>
-                  {projectAuthenticity.signals?.messageQuality || 0}
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>
-                  Message Quality
-                </div>
-              </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "7px", padding: "12px", textAlign: "center" }}>
-                <div style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-1px" }}>
-                  {projectAuthenticity.signals?.codeEvolution || 0}
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>
-                  Code Evolution
-                </div>
-              </div>
+              ))}
             </div>
-
             {projectAuthenticity.warnings && projectAuthenticity.warnings.length > 0 && (
               <div className="insight-list">
                 {projectAuthenticity.warnings.map((warning: string, idx: number) => (
@@ -194,7 +179,6 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
                 ))}
               </div>
             )}
-
             <div style={{ fontSize: "12px", color: "var(--text3)", marginTop: "12px", fontStyle: "italic" }}>
               Confidence: {projectAuthenticity.confidence}
             </div>

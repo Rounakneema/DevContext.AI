@@ -6,9 +6,10 @@ import ReportTab from "../components/dashboard/ReportTab";
 import InterviewTab from "../components/dashboard/InterviewTab";
 import HistoryTab from "../components/dashboard/HistoryTab";
 import FileExplorer from "../components/dashboard/FileExplorer";
+import EvaluationFrameworkPage from "./EvaluationFrameworkPage";
 import api from "../services/api";
 
-type Tab = "overview" | "review" | "report" | "interview" | "history";
+type Tab = "overview" | "review" | "report" | "interview" | "history" | "framework";
 
 interface AnalysisSummary {
   analysisId: string;
@@ -83,13 +84,10 @@ const DashboardPage: React.FC = () => {
   const tabs = [
     {
       id: "overview" as Tab,
-      label: "Overview",
+      label: "Career Impact",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <rect x="3" y="3" width="7" height="7" rx="1" />
-          <rect x="14" y="3" width="7" height="7" rx="1" />
-          <rect x="3" y="14" width="7" height="7" rx="1" />
-          <rect x="14" y="14" width="7" height="7" rx="1" />
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
         </svg>
       ),
     },
@@ -135,9 +133,20 @@ const DashboardPage: React.FC = () => {
         </svg>
       ),
     },
+    {
+      id: "framework" as Tab,
+      label: "How We Score",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 8v4M12 16h.01" />
+        </svg>
+      ),
+    },
   ];
 
   const practiceTabIds = ["interview", "history"];
+  const metaTabIds = ["framework"];
 
   return (
     <div className="dashboard-page">
@@ -229,7 +238,7 @@ const DashboardPage: React.FC = () => {
 
         <div className="ds-section-label">Analysis</div>
         {tabs
-          .filter((tab) => !practiceTabIds.includes(tab.id))
+          .filter((tab) => !practiceTabIds.includes(tab.id) && !metaTabIds.includes(tab.id))
           .map((tab) => (
             <div
               key={tab.id}
@@ -255,7 +264,22 @@ const DashboardPage: React.FC = () => {
             </div>
           ))}
 
-        <div className="ds-spacer"></div>
+        <div className="ds-spacer" />
+
+        {/* How We Score — bottom of sidebar */}
+        {tabs
+          .filter(tab => metaTabIds.includes(tab.id))
+          .map(tab => (
+            <div
+              key={tab.id}
+              className={`ds-nav-item ${activeTab === tab.id ? "active" : ""}`}
+              onClick={() => setActiveTab(tab.id)}
+              style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '4px' }}
+            >
+              {tab.icon}
+              {tab.label}
+            </div>
+          ))}
 
         <div style={{ padding: "0 12px 8px" }}>
           <button className="ds-new-btn" onClick={() => navigate("/app")}>
@@ -301,6 +325,9 @@ const DashboardPage: React.FC = () => {
         </div>
         <div className={`tab-view ${activeTab === "history" ? "active" : ""}`}>
           <HistoryTab />
+        </div>
+        <div className={`tab-view ${activeTab === "framework" ? "active" : ""}`}>
+          <EvaluationFrameworkPage />
         </div>
       </div>
     </div>

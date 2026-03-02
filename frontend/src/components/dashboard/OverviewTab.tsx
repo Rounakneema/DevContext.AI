@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 import api from "../../services/api";
+import CareerImpactHero from "./CareerImpactHero";
+import EngineeringLevelPanel from "./EngineeringLevelPanel";
+import ResumeBulletsPanel from "./ResumeBulletsPanel";
 import EmployabilitySignalPanel from "./EmployabilitySignalPanel";
 import ExportDropdown from "./ExportDropdown";
 
@@ -9,14 +12,6 @@ interface OverviewTabProps {
 
 const ScoreColor = (score: number) =>
   score >= 70 ? "#27AE60" : score >= 50 ? "#E67E22" : "#E74C3C";
-
-const ScoreBadge = ({ score }: { score: number }) => (
-  <span style={{
-    fontWeight: 700,
-    fontSize: '13px',
-    color: ScoreColor(score),
-  }}>{score}<span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text3)' }}>/100</span></span>
-);
 
 const MiniBar = ({ score }: { score: number }) => (
   <div style={{ background: 'var(--border2)', borderRadius: '3px', height: '5px', overflow: 'hidden', marginTop: '6px' }}>
@@ -41,7 +36,6 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
       setAnalysis(data);
       setError(null);
     } catch (err) {
-      console.error('Failed to load analysis:', err);
       setError(err instanceof Error ? err.message : 'Failed to load analysis');
     } finally {
       setLoading(false);
@@ -51,8 +45,8 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-        <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
-        <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Loading analysis...</div>
+        <div className="spinner" style={{ margin: '0 auto 16px' }} />
+        <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Loading your career intelligence report…</div>
       </div>
     );
   }
@@ -65,18 +59,30 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
     );
   }
 
-  const { projectReview, repository, analysis: meta } = analysis;
-  const employabilitySignal = projectReview?.employabilitySignal || { overall: 0, companyTierMatch: {} };
+  const { projectReview, repository, analysis: meta, intelligenceReport } = analysis;
+  const employabilitySignal = projectReview?.employabilitySignal || { overall: 0, companyTierMatch: { bigTech: 0, productCompanies: 0, startups: 0, serviceCompanies: 0 } };
   const codeQuality = projectReview?.codeQuality || { overall: 0 };
   const authenticity = projectReview?.projectAuthenticity || { score: 0 };
   const strengths = projectReview?.strengths || [];
   const weaknesses = projectReview?.weaknesses || [];
+  const resumeBullets = intelligenceReport?.resumeBullets || [];
 
-  // Derive a clean repo name from URL if repositoryName not set
   const repoName = repository?.repositoryName
     || meta?.repositoryName
     || meta?.repositoryUrl?.split('/').slice(-2).join('/')
     || 'Repository';
+
+  const stack = repository?.frameworks || [];
+
+  // ── Quick wins: top 3 weaknesses with severity ──
+  const quickWins = [...weaknesses]
+    .sort((a: any, b: any) => {
+      const sv = (s?: string) => s === 'high' ? 3 : s === 'medium' ? 2 : 1;
+      return sv(b.severity) - sv(a.severity);
+    })
+    .slice(0, 3);
+
+  const pointsMap: Record<string, number> = { high: 15, medium: 10, low: 5 };
 
   return (
     <>
@@ -108,46 +114,72 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
         </div>
       )}
 
-      {/* Score Cards */}
-      <div className="score-row">
-        <div className="score-card">
-          <div className="sc-label">Employability Signal</div>
-          <div className={`sc-num ${employabilitySignal.overall >= 70 ? 'green' : employabilitySignal.overall >= 50 ? 'amber' : 'red'}`}>
-            {employabilitySignal.overall}
-          </div>
-          <div className="sc-sub" style={{ WebkitLineClamp: 'unset', overflow: 'visible', display: 'block' }}>
-            {employabilitySignal.justification || 'Analysis complete'}
-          </div>
-          <MiniBar score={employabilitySignal.overall} />
-        </div>
-        <div className="score-card">
-          <div className="sc-label">Code Quality</div>
-          <div className={`sc-num ${codeQuality.overall >= 70 ? 'green' : codeQuality.overall >= 50 ? 'amber' : 'red'}`}>
-            {codeQuality.overall}
-          </div>
-          <div className="sc-sub" style={{ WebkitLineClamp: 'unset', overflow: 'visible', display: 'block' }}>
-            {codeQuality.justification || 'Quality assessed'}
-          </div>
-          <MiniBar score={codeQuality.overall} />
-        </div>
-        <div className="score-card">
-          <div className="sc-label">Authenticity Score</div>
-          <div className={`sc-num ${authenticity.score >= 70 ? 'green' : authenticity.score >= 50 ? 'amber' : 'red'}`}>
-            {authenticity.score}
-          </div>
-          <div className="sc-sub">{authenticity.confidence ? `${authenticity.confidence} confidence` : 'Assessed'}</div>
-          <MiniBar score={authenticity.score} />
-        </div>
-      </div>
+      {/* ── CAREER IMPACT HERO (new) ── */}
+      <CareerImpactHero
+        employabilitySignal={employabilitySignal}
+        codeQuality={codeQuality}
+        stack={stack}
+      />
 
+      {/* ── ENGINEERING LEVEL (new) ── */}
+      <EngineeringLevelPanel overall={employabilitySignal.overall} codeQuality={codeQuality} />
+
+      {/* ── QUICK WINS ── */}
+      {quickWins.length > 0 && (
+        <div className="panel" style={{ marginBottom: '16px' }}>
+          <div className="panel-head">
+            <div className="panel-title">⚡ Quick Wins</div>
+            <div className="chip amber">Improve today</div>
+          </div>
+          <div className="panel-body">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {quickWins.map((w: any, i: number) => {
+                const pts = pointsMap[w.severity] ?? 8;
+                return (
+                  <div key={w.weaknessId ?? i} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '12px',
+                    background: 'var(--surface2)', borderRadius: '10px', padding: '12px 14px',
+                    border: '1px solid var(--border)',
+                  }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '8px', flexShrink: 0,
+                      background: i === 0 ? 'rgba(231,76,60,0.1)' : 'rgba(230,126,34,0.1)',
+                      color: i === 0 ? '#E74C3C' : '#E67E22',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 800, fontSize: '14px',
+                    }}>{i + 1}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)', marginBottom: '2px' }}>
+                        {w.issue}
+                      </div>
+                      {w.recommendation && (
+                        <div style={{ fontSize: '12px', color: 'var(--text3)', fontStyle: 'italic' }}>→ {w.recommendation}</div>
+                      )}
+                    </div>
+                    <div style={{
+                      fontSize: '11px', fontWeight: 800, color: '#27AE60',
+                      background: '#E8F8F0', border: '1px solid #A9DFBF',
+                      borderRadius: '6px', padding: '2px 8px', flexShrink: 0,
+                    }}>+{pts} pts</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EMPLOYABILITY SIGNAL (original, enhanced) ── */}
       <EmployabilitySignalPanel employabilitySignal={employabilitySignal} />
 
-      {/* Code Quality Sub-scores */}
+      {/* ── CODE QUALITY BREAKDOWN (original) ── */}
       {(codeQuality.readability || codeQuality.security) && (
-        <div className="panel">
+        <div className="panel" style={{ marginBottom: '16px' }}>
           <div className="panel-head">
             <div className="panel-title">Code Quality Breakdown</div>
-            <ScoreBadge score={codeQuality.overall} />
+            <span style={{ fontWeight: 700, fontSize: '13px', color: ScoreColor(codeQuality.overall) }}>
+              {codeQuality.overall}<span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text3)' }}>/100</span>
+            </span>
           </div>
           <div className="panel-body">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
@@ -172,8 +204,8 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
         </div>
       )}
 
-      {/* Tech Stack */}
-      <div className="panel">
+      {/* ── TECH STACK (original) ── */}
+      <div className="panel" style={{ marginBottom: '16px' }}>
         <div className="panel-head">
           <div className="panel-title">Tech Stack</div>
           <div className="chip neutral">Auto-detected</div>
@@ -186,18 +218,18 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
           </div>
           <div style={{ marginTop: '10px', fontSize: '12.5px', color: 'var(--text3)' }}>
             {Object.entries(repository?.languages || {}).map(([lang, pct]: [string, any], idx) => (
-              <span key={lang}>
-                {idx > 0 && ' · '}
-                {lang} <strong style={{ color: 'var(--text)' }}>{pct}%</strong>
-              </span>
+              <span key={lang}>{idx > 0 && ' · '}{lang} <strong style={{ color: 'var(--text)' }}>{pct}%</strong></span>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Strengths — show ALL */}
+      {/* ── RESUME BULLETS (new, collapsible) ── */}
+      <ResumeBulletsPanel resumeBullets={resumeBullets} />
+
+      {/* ── STRENGTHS ── */}
       {strengths.length > 0 && (
-        <div className="panel">
+        <div className="panel" style={{ marginBottom: '16px' }}>
           <div className="panel-head">
             <div className="panel-title">Strengths</div>
             <div className="chip green">{strengths.length} found</div>
@@ -227,7 +259,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
         </div>
       )}
 
-      {/* Weaknesses — show ALL */}
+      {/* ── WEAKNESSES ── */}
       {weaknesses.length > 0 && (
         <div className="panel">
           <div className="panel-head">
@@ -248,7 +280,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
                         marginLeft: '6px', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
                         color: weakness.severity === 'high' ? '#E74C3C' : '#E67E22',
                         background: weakness.severity === 'high' ? 'rgba(231,76,60,0.1)' : 'rgba(230,126,34,0.1)',
-                        padding: '1px 5px', borderRadius: '4px'
+                        padding: '1px 5px', borderRadius: '4px',
                       }}>
                         {weakness.severity}
                       </span>
@@ -257,9 +289,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
                       <div style={{ fontSize: '12.5px', color: 'var(--text2)', marginTop: '3px' }}>{weakness.impact}</div>
                     )}
                     {weakness.recommendation && (
-                      <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '3px', fontStyle: 'italic' }}>
-                        → {weakness.recommendation}
-                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '3px', fontStyle: 'italic' }}>→ {weakness.recommendation}</div>
                     )}
                     {weakness.fileReferences && weakness.fileReferences.length > 0 && (
                       <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
