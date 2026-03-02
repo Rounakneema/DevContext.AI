@@ -13,7 +13,7 @@
  * - Cost projections
  */
 
-import { DynamoDBDocumentClient, PutCommand, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 
 const dynamoClient = DynamoDBDocumentClient.from(new (require('@aws-sdk/client-dynamodb').DynamoDBClient)({}));
@@ -58,7 +58,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     contextWindow: 32000,
     provider: 'amazon'
   },
-  
+
   // Meta Llama Models (Recommended - Best Value)
   'meta.llama3-3-70b-instruct-v1:0': {
     modelId: 'meta.llama3-3-70b-instruct-v1:0',
@@ -76,7 +76,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     contextWindow: 128000,
     provider: 'meta'
   },
-  
+
   // Cohere Models (Great for Question Generation)
   'cohere.command-r-plus-v1:0': {
     modelId: 'cohere.command-r-plus-v1:0',
@@ -94,7 +94,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     contextWindow: 128000,
     provider: 'cohere'
   },
-  
+
   // Mistral Models (Strong Reasoning)
   'mistral.mistral-large-2-v1:0': {
     modelId: 'mistral.mistral-large-2-v1:0',
@@ -104,17 +104,26 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     contextWindow: 128000,
     provider: 'mistral'
   },
-  
-  // Anthropic Claude Models (Premium - Separate Billing)
-  'anthropic.claude-3-5-sonnet-20241022-v2:0': {
-    modelId: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-    modelName: 'Claude 3.5 Sonnet',
-    inputPricePerMillion: 3.00,
-    outputPricePerMillion: 15.00,
-    contextWindow: 200000,
-    provider: 'anthropic'
+
+  // ─── Add Llama 3.3 70B Inference Profiles to pricing ────────────────────
+  'us.meta.llama3-3-70b-instruct-v1:0': {
+    modelId: 'us.meta.llama3-3-70b-instruct-v1:0',
+    modelName: 'Meta Llama 3.3 70B (Inference Profile)',
+    inputPricePerMillion: 2.65,
+    outputPricePerMillion: 3.50,
+    contextWindow: 128000,
+    provider: 'meta'
+  },
+  'eu.meta.llama3-3-70b-instruct-v1:0': {
+    modelId: 'eu.meta.llama3-3-70b-instruct-v1:0',
+    modelName: 'Meta Llama 3.3 70B (EU Inference Profile)',
+    inputPricePerMillion: 2.65,
+    outputPricePerMillion: 3.50,
+    contextWindow: 128000,
+    provider: 'meta'
   }
 };
+
 
 // ============================================================================
 // COST CALCULATION FUNCTIONS
@@ -148,17 +157,17 @@ export function calculateCost(
   outputTokens: number
 ): CostCalculation {
   const pricing = MODEL_PRICING[modelId];
-  
+
   if (!pricing) {
     console.warn(`Unknown model: ${modelId}. Using default pricing.`);
     // Default to Nova Lite pricing
     return calculateCost('global.amazon.nova-2-lite-v1:0', inputTokens, outputTokens);
   }
-  
+
   const inputCostUsd = (inputTokens / 1_000_000) * pricing.inputPricePerMillion;
   const outputCostUsd = (outputTokens / 1_000_000) * pricing.outputPricePerMillion;
   const totalCostUsd = inputCostUsd + outputCostUsd;
-  
+
   return {
     inputTokens,
     outputTokens,
@@ -188,61 +197,61 @@ export function estimateTokenCount(text: string): number {
 export interface BedrockCallRecord {
   PK: string;              // ANALYSIS#<analysisId> or COST#<date>
   SK: string;              // CALL#<timestamp>#<callId>
-  
+
   callId: string;          // UUID
   analysisId?: string;     // Link to analysis
   sessionId?: string;      // Link to interview session
-  
+
   // Call details
   stage: 'repo_processing' | 'project_review' | 'intelligence_report' | 'interview_questions' | 'answer_evaluation';
   modelId: string;
   modelName: string;
   provider: string;
-  
+
   // Token usage
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  
+
   // Cost
   inputCostUsd: number;
   outputCostUsd: number;
   totalCostUsd: number;
-  
+
   // Performance
   inferenceTimeMs: number;
   tokensPerSecond: number;
-  
+
   // Context
   promptLength: number;
   responseLength: number;
-  
+
   // Metadata
   timestamp: string;
   region: string;
   requestId?: string;
-  
+
   // GSI for analytics
   GSI1PK: string;          // COST#<YYYY-MM-DD>
   GSI1SK: string;          // <timestamp>
-  
+
   ttl?: number;            // 180 days retention
 }
 
 export interface CostSummary {
   PK: string;              // COST_SUMMARY#<period>
   SK: string;              // <YYYY-MM-DD> or <YYYY-MM> or <YYYY>
-  
+
   period: 'daily' | 'monthly' | 'yearly';
   periodKey: string;       // "2026-03-01", "2026-03", "2026"
-  
+
   // Aggregated metrics
   totalCalls: number;
   totalInputTokens: number;
   totalOutputTokens: number;
   totalTokens: number;
   totalCostUsd: number;
-  
+
   // Per-stage breakdown
   byStage: Record<string, {
     calls: number;
@@ -250,7 +259,7 @@ export interface CostSummary {
     outputTokens: number;
     costUsd: number;
   }>;
-  
+
   // Per-model breakdown
   byModel: Record<string, {
     calls: number;
@@ -258,7 +267,7 @@ export interface CostSummary {
     outputTokens: number;
     costUsd: number;
   }>;
-  
+
   // Per-provider breakdown
   byProvider: Record<string, {
     calls: number;
@@ -266,11 +275,11 @@ export interface CostSummary {
     outputTokens: number;
     costUsd: number;
   }>;
-  
+
   // Performance
   avgInferenceTimeMs: number;
   avgTokensPerSecond: number;
-  
+
   updatedAt: string;
 }
 
@@ -297,65 +306,65 @@ export async function trackBedrockCall(params: {
   const callId = uuidv4();
   const timestamp = new Date().toISOString();
   const date = timestamp.split('T')[0]; // YYYY-MM-DD
-  
+
   // Calculate cost
   const cost = calculateCost(params.modelId, params.inputTokens, params.outputTokens);
-  
+
   // Calculate performance metrics
   const tokensPerSecond = params.inferenceTimeMs > 0
     ? Math.round((params.outputTokens / params.inferenceTimeMs) * 1000)
     : 0;
-  
+
   const record: BedrockCallRecord = {
     PK: params.analysisId ? `ANALYSIS#${params.analysisId}` : `COST#${date}`,
     SK: `CALL#${timestamp}#${callId}`,
-    
+
     callId,
     analysisId: params.analysisId,
     sessionId: params.sessionId,
-    
+
     stage: params.stage,
     modelId: cost.modelId,
     modelName: cost.modelName,
     provider: cost.provider,
-    
+
     inputTokens: cost.inputTokens,
     outputTokens: cost.outputTokens,
     totalTokens: cost.totalTokens,
-    
+
     inputCostUsd: cost.inputCostUsd,
     outputCostUsd: cost.outputCostUsd,
     totalCostUsd: cost.totalCostUsd,
-    
+
     inferenceTimeMs: params.inferenceTimeMs,
     tokensPerSecond,
-    
+
     promptLength: params.promptLength || 0,
     responseLength: params.responseLength || 0,
-    
+
     timestamp,
     region: params.region || process.env.AWS_REGION || 'ap-southeast-1',
     requestId: params.requestId,
-    
+
     GSI1PK: `COST#${date}`,
     GSI1SK: timestamp,
-    
+
     ttl: Math.floor(Date.now() / 1000) + (180 * 24 * 60 * 60) // 180 days
   };
-  
+
   // Save to DynamoDB
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: record
   }));
-  
+
   // Update daily summary asynchronously (don't await to avoid blocking)
-  updateCostSummary(date, record).catch(err => 
+  updateCostSummary(date, record).catch(err =>
     console.error('Failed to update cost summary:', err)
   );
-  
+
   console.log(`💰 Cost tracked: ${cost.modelName} - $${cost.totalCostUsd.toFixed(4)} (${cost.totalTokens} tokens)`);
-  
+
   return record;
 }
 
@@ -365,58 +374,73 @@ export async function trackBedrockCall(params: {
 async function updateCostSummary(date: string, call: BedrockCallRecord): Promise<void> {
   const summaryPK = `COST_SUMMARY#daily`;
   const summarySK = date;
-  
-  // Atomic increment using UpdateExpression
-  await dynamoClient.send(new UpdateCommand({
+
+  // Read-modify-write: safe for async aggregations (occasional missed update is acceptable)
+  const existing = await dynamoClient.send(new GetCommand({
     TableName: MAIN_TABLE,
-    Key: {
-      PK: summaryPK,
-      SK: summarySK
-    },
-    UpdateExpression: `
-      SET 
-        #period = if_not_exists(#period, :period),
-        #periodKey = if_not_exists(#periodKey, :periodKey),
-        totalCalls = if_not_exists(totalCalls, :zero) + :one,
-        totalInputTokens = if_not_exists(totalInputTokens, :zero) + :inputTokens,
-        totalOutputTokens = if_not_exists(totalOutputTokens, :zero) + :outputTokens,
-        totalTokens = if_not_exists(totalTokens, :zero) + :totalTokens,
-        totalCostUsd = if_not_exists(totalCostUsd, :zeroFloat) + :cost,
-        byStage.#stage.calls = if_not_exists(byStage.#stage.calls, :zero) + :one,
-        byStage.#stage.inputTokens = if_not_exists(byStage.#stage.inputTokens, :zero) + :inputTokens,
-        byStage.#stage.outputTokens = if_not_exists(byStage.#stage.outputTokens, :zero) + :outputTokens,
-        byStage.#stage.costUsd = if_not_exists(byStage.#stage.costUsd, :zeroFloat) + :cost,
-        byModel.#model.calls = if_not_exists(byModel.#model.calls, :zero) + :one,
-        byModel.#model.inputTokens = if_not_exists(byModel.#model.inputTokens, :zero) + :inputTokens,
-        byModel.#model.outputTokens = if_not_exists(byModel.#model.outputTokens, :zero) + :outputTokens,
-        byModel.#model.costUsd = if_not_exists(byModel.#model.costUsd, :zeroFloat) + :cost,
-        byProvider.#provider.calls = if_not_exists(byProvider.#provider.calls, :zero) + :one,
-        byProvider.#provider.inputTokens = if_not_exists(byProvider.#provider.inputTokens, :zero) + :inputTokens,
-        byProvider.#provider.outputTokens = if_not_exists(byProvider.#provider.outputTokens, :zero) + :outputTokens,
-        byProvider.#provider.costUsd = if_not_exists(byProvider.#provider.costUsd, :zeroFloat) + :cost,
-        updatedAt = :timestamp
-    `,
-    ExpressionAttributeNames: {
-      '#period': 'period',
-      '#periodKey': 'periodKey',
-      '#stage': call.stage,
-      '#model': call.modelId,
-      '#provider': call.provider
-    },
-    ExpressionAttributeValues: {
-      ':period': 'daily',
-      ':periodKey': date,
-      ':zero': 0,
-      ':zeroFloat': 0.0,
-      ':one': 1,
-      ':inputTokens': call.inputTokens,
-      ':outputTokens': call.outputTokens,
-      ':totalTokens': call.totalTokens,
-      ':cost': call.totalCostUsd,
-      ':timestamp': new Date().toISOString()
-    }
+    Key: { PK: summaryPK, SK: summarySK }
+  }));
+
+  const current: any = existing.Item || {
+    PK: summaryPK,
+    SK: summarySK,
+    period: 'daily',
+    periodKey: date,
+    totalCalls: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalTokens: 0,
+    totalCostUsd: 0,
+    byStage: {},
+    byModel: {},
+    byProvider: {},
+    avgInferenceTimeMs: 0,
+    avgTokensPerSecond: 0,
+    updatedAt: new Date().toISOString()
+  };
+
+  // Update aggregates
+  current.totalCalls = (current.totalCalls || 0) + 1;
+  current.totalInputTokens = (current.totalInputTokens || 0) + call.inputTokens;
+  current.totalOutputTokens = (current.totalOutputTokens || 0) + call.outputTokens;
+  current.totalTokens = (current.totalTokens || 0) + call.totalTokens;
+  current.totalCostUsd = parseFloat(((current.totalCostUsd || 0) + call.totalCostUsd).toFixed(6));
+  current.updatedAt = new Date().toISOString();
+
+  // Update byStage
+  if (!current.byStage) current.byStage = {};
+  const stage = current.byStage[call.stage] || { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  stage.calls++;
+  stage.inputTokens += call.inputTokens;
+  stage.outputTokens += call.outputTokens;
+  stage.costUsd = parseFloat((stage.costUsd + call.totalCostUsd).toFixed(6));
+  current.byStage[call.stage] = stage;
+
+  // Update byModel
+  if (!current.byModel) current.byModel = {};
+  const modelKey = call.modelId.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+  const model = current.byModel[modelKey] || { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  model.calls++;
+  model.inputTokens += call.inputTokens;
+  model.outputTokens += call.outputTokens;
+  model.costUsd = parseFloat((model.costUsd + call.totalCostUsd).toFixed(6));
+  current.byModel[modelKey] = model;
+
+  // Update byProvider
+  if (!current.byProvider) current.byProvider = {};
+  const provider = current.byProvider[call.provider] || { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  provider.calls++;
+  provider.inputTokens += call.inputTokens;
+  provider.outputTokens += call.outputTokens;
+  provider.costUsd = parseFloat((provider.costUsd + call.totalCostUsd).toFixed(6));
+  current.byProvider[call.provider] = provider;
+
+  await dynamoClient.send(new PutCommand({
+    TableName: MAIN_TABLE,
+    Item: current
   }));
 }
+
 
 /**
  * Get cost breakdown for a specific analysis
@@ -439,26 +463,26 @@ export async function getAnalysisCost(analysisId: string): Promise<{
       ':prefix': 'CALL#'
     }
   }));
-  
+
   const calls = result.Items as BedrockCallRecord[];
-  
+
   let totalCostUsd = 0;
   let totalTokens = 0;
   const byStage: Record<string, any> = {};
-  
+
   calls.forEach(call => {
     totalCostUsd += call.totalCostUsd;
     totalTokens += call.totalTokens;
-    
+
     if (!byStage[call.stage]) {
       byStage[call.stage] = { costUsd: 0, tokens: 0, calls: 0 };
     }
-    
+
     byStage[call.stage].costUsd += call.totalCostUsd;
     byStage[call.stage].tokens += call.totalTokens;
     byStage[call.stage].calls += 1;
   });
-  
+
   return {
     totalCostUsd: parseFloat(totalCostUsd.toFixed(6)),
     totalTokens,
@@ -479,7 +503,7 @@ export async function getDailyCostSummary(date: string): Promise<CostSummary | n
       ':sk': date
     }
   }));
-  
+
   return result.Items?.[0] as CostSummary || null;
 }
 
@@ -499,7 +523,7 @@ export async function getCostSummaryRange(
       ':end': endDate
     }
   }));
-  
+
   return result.Items as CostSummary[];
 }
 
@@ -515,7 +539,7 @@ export async function getCallsByDate(date: string): Promise<BedrockCallRecord[]>
       ':pk': `COST#${date}`
     }
   }));
-  
+
   return result.Items as BedrockCallRecord[];
 }
 
@@ -542,20 +566,20 @@ export async function getMonthlyProjection(): Promise<CostProjection> {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const startDate = `${year}-${month}-01`;
   const endDate = `${year}-${month}-${String(new Date(year, now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
-  
+
   const summaries = await getCostSummaryRange(startDate, endDate);
-  
+
   const currentMonthCost = summaries.reduce((sum, s) => sum + s.totalCostUsd, 0);
   const totalAnalyses = summaries.reduce((sum, s) => sum + (s.byStage.project_review?.calls || 0), 0);
-  
+
   const daysElapsed = summaries.length;
   const daysInMonth = new Date(year, now.getMonth() + 1, 0).getDate();
   const daysRemaining = daysInMonth - daysElapsed;
-  
+
   const averageCostPerDay = daysElapsed > 0 ? currentMonthCost / daysElapsed : 0;
   const projectedMonthCost = currentMonthCost + (averageCostPerDay * daysRemaining);
   const averageCostPerAnalysis = totalAnalyses > 0 ? currentMonthCost / totalAnalyses : 0;
-  
+
   return {
     currentMonthCost: parseFloat(currentMonthCost.toFixed(2)),
     projectedMonthCost: parseFloat(projectedMonthCost.toFixed(2)),

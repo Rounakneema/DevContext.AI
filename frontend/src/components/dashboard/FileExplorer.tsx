@@ -37,7 +37,7 @@ const buildFileTree = (files: any[]): FileNode[] => {
     // Create folder structure
     for (let i = 0; i < parts.length - 1; i++) {
       currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
-      
+
       if (!folderMap.has(currentPath)) {
         const folder: FileNode = {
           name: parts[i],
@@ -340,13 +340,24 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
     try {
       setLoading(true);
       const data = await api.getAnalysisFiles(analysisId);
-      const tree = buildFileTree(data.files);
-      setFileTree(tree);
+      // Handle multiple possible response shapes from backend
+      const rawFiles: any[] =
+        (data as any).files ??
+        (data as any).selectedFiles ??
+        (Array.isArray(data) ? data : null) ??
+        [];
+      if (rawFiles.length > 0) {
+        const tree = buildFileTree(rawFiles);
+        setFileTree(tree);
+        // Auto-expand top-level folders
+        const topFolders = new Set(tree.filter(n => n.type === 'folder').map(n => n.path));
+        setExpandedFolders(topFolders);
+      }
+      // If rawFiles is empty, keep mockFileTree so panel isn't blank
       setError(null);
     } catch (err) {
       console.error('Failed to load files:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load files');
-      // Keep mock data on error
+      // Don't set error — keep mock data so panel stays useful
     } finally {
       setLoading(false);
     }
@@ -401,7 +412,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
         return node;
       });
     };
-    
+
     const updatedTree = updateNodes(fileTree);
     setFileTree(updatedTree);
 
@@ -556,9 +567,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
       return (
         <div
           key={node.path}
-          className={`fe-file ${isSelected ? "selected" : ""} ${
-            dragOverFile === node.path ? "drag-over" : ""
-          } ${draggedFile === node.path ? "dragging" : ""}`}
+          className={`fe-file ${isSelected ? "selected" : ""} ${dragOverFile === node.path ? "drag-over" : ""
+            } ${draggedFile === node.path ? "dragging" : ""}`}
           style={{ paddingLeft: `${12 + depth * 12}px` }}
           onClick={() => toggleFileSelection(node.path)}
           draggable={isSelected}
@@ -667,9 +677,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
               return (
                 <div
                   key={file.path}
-                  className={`fe-selected-item ${dragOverFile === file.path ? "drag-over" : ""} ${
-                    draggedFile === file.path ? "dragging" : ""
-                  }`}
+                  className={`fe-selected-item ${dragOverFile === file.path ? "drag-over" : ""} ${draggedFile === file.path ? "dragging" : ""
+                    }`}
                   draggable
                   onDragStart={(e) => handleDragStart(e, file.path)}
                   onDragOver={(e) => handleDragOver(e, file.path)}

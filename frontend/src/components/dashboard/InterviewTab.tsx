@@ -70,8 +70,8 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
         questionFocus === "mixed"
           ? ["technical", "behavioral", "system-design"]
           : questionFocus === "behavioral"
-          ? ["behavioral"]
-          : ["technical", "system-design"];
+            ? ["behavioral"]
+            : ["technical", "system-design"];
 
       const newSession = await createInterviewSession({
         analysisId,
@@ -107,23 +107,23 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
       });
 
       setCurrentEvaluation(response.evaluation);
-      
+
       // Update session with the answer
       setSession((prev) =>
         prev
           ? {
-              ...prev,
-              answers: [
-                ...prev.answers,
-                {
-                  questionId: currentQuestion.questionId,
-                  answer: answer.trim(),
-                  evaluation: response.evaluation,
-                  timeSpentSeconds: timeSpent,
-                },
-              ],
-              currentQuestionIndex: prev.currentQuestionIndex + 1,
-            }
+            ...prev,
+            answers: [
+              ...prev.answers,
+              {
+                questionId: currentQuestion.questionId,
+                answer: answer.trim(),
+                evaluation: response.evaluation,
+                timeSpentSeconds: timeSpent,
+              },
+            ],
+            currentQuestionIndex: prev.currentQuestionIndex + 1,
+          }
           : null
       );
     } catch (err) {
@@ -136,7 +136,7 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
     if (!session) return;
 
     const nextIndex = session.currentQuestionIndex;
-    
+
     if (nextIndex >= session.questions.length) {
       // Complete the session
       try {
@@ -160,15 +160,15 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
 
   const handleSkipQuestion = useCallback(() => {
     if (!session) return;
-    
+
     const nextIndex = session.currentQuestionIndex + 1;
-    
+
     setSession((prev) =>
       prev
         ? {
-            ...prev,
-            currentQuestionIndex: nextIndex,
-          }
+          ...prev,
+          currentQuestionIndex: nextIndex,
+        }
         : null
     );
 
@@ -211,7 +211,7 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
         <InterviewSummaryPanel
           summary={summary}
           onStartNew={handleStartNew}
-          onViewDetails={() => {}}
+          onViewDetails={() => { }}
         />
       </div>
     );
@@ -254,8 +254,8 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
                       i < answeredCount
                         ? "#27AE60"
                         : i === session.currentQuestionIndex
-                        ? "var(--accent)"
-                        : "var(--border2)",
+                          ? "var(--accent)"
+                          : "var(--border2)",
                     animation: i === session.currentQuestionIndex ? "blink 1s infinite" : "none",
                   }}
                 />
@@ -312,7 +312,7 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
-              Grounded in: {currentQuestion.groundedIn.join(" · ")}
+              Grounded in: {currentQuestion.groundedIn.map((g: any) => typeof g === 'string' ? g : g.file).join(" · ")}
             </div>
           )}
         </div>

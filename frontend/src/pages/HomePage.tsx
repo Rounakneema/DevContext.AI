@@ -7,10 +7,12 @@ const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [inputValue, setInputValue] = useState('');
+  const [urlError, setUrlError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [inProgressAnalysis, setInProgressAnalysis] = useState<any>(null);
   const [checkingInProgress, setCheckingInProgress] = useState(true);
   const charCount = inputValue.length;
-  const maxChars = 1000;
+  const maxChars = 500;
 
   // Check if repo URL was passed from landing page
   useEffect(() => {
@@ -19,7 +21,7 @@ const HomePage: React.FC = () => {
       setInputValue(repoParam);
     }
   }, [searchParams]);
-  
+
   const [stats, setStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -42,12 +44,12 @@ const HomePage: React.FC = () => {
     const checkInProgressAnalysis = async () => {
       try {
         const response = await api.getAnalyses();
-        const inProgress = response.items.find((a: any) => 
-          a.status === 'in_progress' || 
+        const inProgress = response.items.find((a: any) =>
+          a.status === 'in_progress' ||
           a.status === 'processing' ||
           a.status === 'pending'
         );
-        
+
         if (inProgress) {
           setInProgressAnalysis(inProgress);
         }
@@ -57,7 +59,7 @@ const HomePage: React.FC = () => {
         setCheckingInProgress(false);
       }
     };
-    
+
     checkInProgressAnalysis();
   }, []);
 
@@ -101,26 +103,43 @@ const HomePage: React.FC = () => {
   ];
 
   const handlePromptClick = (text: string) => {
-    setInputValue(text);
+    // Prompts are descriptive text — just set as placeholder hint, not as URL
+    setInputValue('');
+    setUrlError('');
+  };
+
+  const validateGitHubUrl = (url: string): string => {
+    const trimmed = url.trim();
+    if (!trimmed) return 'Please enter a GitHub repository URL.';
+    // Accept: https://github.com/owner/repo or github.com/owner/repo
+    const githubPattern = /^(https?:\/\/)?(www\.)?github\.com\/[\w.-]+\/[\w.-]+(\/?.*)?$/i;
+    if (!githubPattern.test(trimmed)) {
+      return 'Please enter a valid GitHub URL (e.g. https://github.com/owner/repository)';
+    }
+    return '';
   };
 
   const handleSend = async () => {
-    if (inputValue.trim()) {
-      try {
-        // Start the analysis
-        const result = await api.startAnalysis(inputValue.trim());
-        
-        // Navigate to loading page with the real analysis ID
-        navigate('/app/loading', { 
-          state: { 
-            query: inputValue.trim(),
-            analysisId: result.analysisId 
-          } 
-        });
-      } catch (error) {
-        console.error('Failed to start analysis:', error);
-        alert('Failed to start analysis. Please try again.');
-      }
+    const error = validateGitHubUrl(inputValue);
+    if (error) {
+      setUrlError(error);
+      return;
+    }
+    setUrlError('');
+    setIsSubmitting(true);
+    try {
+      const result = await api.startAnalysis(inputValue.trim());
+      navigate('/app/loading', {
+        state: {
+          query: inputValue.trim(),
+          analysisId: result.analysisId
+        }
+      });
+    } catch (error: any) {
+      console.error('Failed to start analysis:', error);
+      setUrlError(error?.message || 'Failed to start analysis. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -129,6 +148,11 @@ const HomePage: React.FC = () => {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputValue(e.target.value);
+    if (urlError) setUrlError(''); // clear error on edit
   };
 
   const refreshPrompts = () => {
@@ -208,11 +232,11 @@ const HomePage: React.FC = () => {
                 Cancel
               </button>
               <button
-                onClick={() => navigate('/app/loading', { 
-                  state: { 
+                onClick={() => navigate('/app/loading', {
+                  state: {
                     analysisId: inProgressAnalysis.analysisId,
-                    query: inProgressAnalysis.repositoryUrl 
-                  } 
+                    query: inProgressAnalysis.repositoryUrl
+                  }
                 })}
                 style={{
                   background: 'white',
@@ -284,11 +308,29 @@ const HomePage: React.FC = () => {
             <textarea
               className="chat-textarea"
               rows={2}
-              placeholder="Paste a GitHub URL or ask anything about your project..."
+              placeholder="Paste a GitHub URL (e.g. https://github.com/owner/repo)"
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={handleKeyDown}
+              style={urlError ? { borderColor: 'var(--error, #E74C3C)' } : {}}
             />
+            {urlError && (
+              <div style={{
+                fontSize: '12px',
+                color: 'var(--error, #E74C3C)',
+                marginTop: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {urlError}
+              </div>
+            )}
             <div className="web-badge">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <circle cx="12" cy="12" r="10" />
@@ -331,11 +373,17 @@ const HomePage: React.FC = () => {
               <span className="char-count">
                 {charCount}/{maxChars}
               </span>
-              <button className="send-btn" onClick={handleSend} disabled={!inputValue.trim()}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <polyline points="12 5 19 12 12 19" />
-                </svg>
+              <button className="send-btn" onClick={handleSend} disabled={!inputValue.trim() || isSubmitting}>
+                {isSubmitting ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                    <polyline points="12 5 19 12 12 19" />
+                  </svg>
+                )}
               </button>
             </div>
           </div>

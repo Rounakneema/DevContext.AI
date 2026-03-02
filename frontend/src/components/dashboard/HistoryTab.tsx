@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import SkillProgressionPanel from "./SkillProgressionPanel";
 
@@ -11,6 +12,7 @@ interface AnalysisItem {
 }
 
 const HistoryTab: React.FC = () => {
+  const navigate = useNavigate();
   const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
   const [progress, setProgress] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,7 @@ const HistoryTab: React.FC = () => {
         api.getAnalyses(),
         api.getUserProgress().catch(() => null) // Progress is optional
       ]);
-      
+
       // Handle both array and paginated responses
       const items = Array.isArray(analysesRes)
         ? analysesRes
@@ -139,8 +141,7 @@ const HistoryTab: React.FC = () => {
                 e.currentTarget.style.borderColor = "var(--border)";
               }}
               onClick={() => {
-                // Navigate to analysis (you can implement this)
-                console.log('Navigate to analysis:', item.analysisId);
+                navigate(`/app/dashboard?id=${item.analysisId}&tab=overview`);
               }}
             >
               <div

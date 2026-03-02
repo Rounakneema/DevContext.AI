@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getAnalysisStatus, continueToStage2, continueToStage3, exportAnalysis } from '../services/api';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 type WorkflowState =
   | 'stage1_pending'
@@ -35,6 +36,24 @@ const LoadingPage: React.FC = () => {
     }
   }, [analysisId, navigate]);
 
+  // WebSocket — instant stage-complete notifications (polling is the fallback)
+  useWebSocket(analysisId, {
+    onStageComplete: (payload) => {
+      if (payload.workflowState) {
+        setWorkflowState(payload.workflowState as WorkflowState);
+        updateStagesFromWorkflow(payload.workflowState as WorkflowState);
+        if (payload.workflowState === 'all_complete') {
+          setTimeout(() => navigate(`/app/dashboard?id=${analysisId}&tab=interview`), 1500);
+        }
+      }
+    },
+    onAnalysisComplete: () => {
+      setWorkflowState('all_complete');
+      updateStagesFromWorkflow('all_complete');
+      setTimeout(() => navigate(`/app/dashboard?id=${analysisId}&tab=interview`), 1500);
+    },
+  });
+
   const [stages, setStages] = useState<Stage[]>([
     {
       name: 'Repository cloning & processing',
@@ -43,17 +62,17 @@ const LoadingPage: React.FC = () => {
     },
     {
       name: 'Stage 1 — Project Review',
-      detail: 'Scoring code quality · Claude 3.5 Haiku',
+      detail: 'Scoring code quality · Llama 3.3 70B',
       status: 'running',
     },
     {
       name: 'Stage 2 — Intelligence Report',
-      detail: 'Architecture reconstruction · Claude 3.5 Sonnet',
+      detail: 'Architecture reconstruction · Llama 3.3 70B',
       status: 'pending',
     },
     {
       name: 'Stage 3 — Interview Simulation',
-      detail: 'Generating project-specific questions',
+      detail: 'Generating interview questions · Cohere Command R+',
       status: 'pending',
     },
   ]);
@@ -62,7 +81,7 @@ const LoadingPage: React.FC = () => {
   const updateStagesFromWorkflow = useCallback((state: WorkflowState) => {
     setStages((prev) => {
       const newStages = [...prev];
-      
+
       switch (state) {
         case 'stage1_pending':
           newStages[1] = { ...newStages[1], status: 'running' };
@@ -95,7 +114,7 @@ const LoadingPage: React.FC = () => {
           newStages[3] = { ...newStages[3], status: 'done' };
           break;
       }
-      
+
       return newStages;
     });
   }, []);
@@ -145,17 +164,17 @@ const LoadingPage: React.FC = () => {
     setError('');
     try {
       await continueToStage2(analysisId);
-      
+
       setWorkflowState('stage2_pending');
       updateStagesFromWorkflow('stage2_pending');
-      
+
       // Resume polling
       const pollInterval = setInterval(async () => {
         try {
           const data = await getAnalysisStatus(analysisId);
           setWorkflowState(data.workflowState as WorkflowState);
           updateStagesFromWorkflow(data.workflowState as WorkflowState);
-          
+
           if (data.workflowState === 'stage2_complete_awaiting_approval') {
             clearInterval(pollInterval);
           }
@@ -176,17 +195,17 @@ const LoadingPage: React.FC = () => {
     setError('');
     try {
       await continueToStage3(analysisId);
-      
+
       setWorkflowState('stage3_pending');
       updateStagesFromWorkflow('stage3_pending');
-      
+
       // Resume polling
       const pollInterval = setInterval(async () => {
         try {
           const data = await getAnalysisStatus(analysisId);
           setWorkflowState(data.workflowState as WorkflowState);
           updateStagesFromWorkflow(data.workflowState as WorkflowState);
-          
+
           if (data.workflowState === 'all_complete') {
             clearInterval(pollInterval);
             setTimeout(() => {

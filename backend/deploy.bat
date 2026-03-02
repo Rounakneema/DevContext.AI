@@ -43,7 +43,7 @@ echo ✓ SAM build completed
 echo.
 
 echo [3/5] Deploying to AWS...
-call sam deploy --no-confirm-changeset --force-upload
+call sam deploy --no-confirm-changeset
 if %errorlevel% neq 0 (
     echo ERROR: Deployment failed
     exit /b %errorlevel%

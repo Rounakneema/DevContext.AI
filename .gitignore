@@ -4,4 +4,14 @@ Idea Submission _ AWS AI for Bharat Hackathon.pdf
 Idea Submission _ AWS AI for Bharat Hackathon.pptx 
 .kiro/
 node_modules/
+docs/
+*.md
+!README.md
+!design.md
+!requirements.md
 
+# Test & dev scripts
+test-*.js
+check-*.js
+*.test.js
+*.test.ts

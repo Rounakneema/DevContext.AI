@@ -19,6 +19,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1000.0",
     "@aws-sdk/client-bedrock-runtime": "^3.700.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.998.0",
     "@aws-sdk/client-dynamodb": "^3.700.0",

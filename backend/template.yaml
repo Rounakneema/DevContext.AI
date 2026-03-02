@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: DevContext AI Backend - Production v2.1.0 (March 2026)
 
@@ -42,13 +42,13 @@ Resources:
   # ============================================================================
   # SINGLE TABLE DESIGN (Normalized with Composite Keys)
   # ============================================================================
-  
+
   MainTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: devcontext-main
       BillingMode: PAY_PER_REQUEST
-      
+
       # Primary Key: PK (partition) + SK (sort)
       AttributeDefinitions:
         - AttributeName: PK
@@ -63,13 +63,13 @@ Resources:
           AttributeType: S
         - AttributeName: GSI2SK
           AttributeType: S
-      
+
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
-      
+
       # GSI1: User lookups (email, user's analyses, user's sessions)
       GlobalSecondaryIndexes:
         - IndexName: GSI1
@@ -80,7 +80,7 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-        
+
         # GSI2: Repository deduplication/caching
         - IndexName: GSI2
           KeySchema:
@@ -90,21 +90,21 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-      
+
       # TTL for automatic data expiration
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
-      
+
       # Point-in-time recovery for production
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
-      
+
       # Server-side encryption
       SSESpecification:
         SSEEnabled: true
         SSEType: KMS
-      
+
       Tags:
         - Key: Environment
           Value: Production
@@ -114,36 +114,36 @@ Resources:
   # ============================================================================
   # S3 BUCKET FOR REPOSITORY CACHE
   # ============================================================================
-  
+
   CacheBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub devcontext-cache-${AWS::AccountId}
-      
+
       # Lifecycle: Delete after 24 hours
       LifecycleConfiguration:
         Rules:
           - Id: DeleteAfter24Hours
             Status: Enabled
             ExpirationInDays: 1
-      
+
       # Encryption at rest
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
-      
+
       # Block public access
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      
+
       # Versioning for data protection
       VersioningConfiguration:
         Status: Enabled
-      
+
       Tags:
         - Key: Environment
           Value: Production
@@ -153,19 +153,19 @@ Resources:
   # ============================================================================
   # API GATEWAY WITH COGNITO AUTHORIZER
   # ============================================================================
-  
+
   DevContextApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
-      
+
       # CORS configuration
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
         AllowOrigin: "'*'"
         MaxAge: "'3600'"
-      
+
       # Cognito authentication
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
@@ -173,14 +173,14 @@ Resources:
           CognitoAuthorizer:
             UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
         AddDefaultAuthorizerToCorsPreflight: false
-      
+
       # Throttling
       MethodSettings:
-        - ResourcePath: '/*'
-          HttpMethod: '*'
+        - ResourcePath: "/*"
+          HttpMethod: "*"
           ThrottlingBurstLimit: 100
           ThrottlingRateLimit: 50
-      
+
       Tags:
         Environment: Production
         Application: DevContext-AI
@@ -188,7 +188,7 @@ Resources:
   # ============================================================================
   # LAMBDA FUNCTIONS
   # ============================================================================
-  
+
   OrchestratorFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -210,7 +210,7 @@ Resources:
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
-              Resource: '*'
+              Resource: "*"
       Events:
         Analyze:
           Type: Api
@@ -383,7 +383,7 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-              Resource: '*'
+              Resource: "*"
 
   Stage2Function:
     Type: AWS::Serverless::Function
@@ -400,7 +400,7 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-              Resource: '*'
+              Resource: "*"
 
   Stage3Function:
     Type: AWS::Serverless::Function
@@ -417,7 +417,7 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-              Resource: '*'
+              Resource: "*"
 
   AnswerEvalFunction:
     Type: AWS::Serverless::Function
@@ -433,7 +433,7 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-              Resource: '*'
+              Resource: "*"
       Events:
         SubmitAnswer:
           Type: Api
@@ -511,7 +511,7 @@ Resources:
   # ============================================================================
   # CLOUDWATCH ALARMS
   # ============================================================================
-  
+
   OrchestratorErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -544,6 +544,96 @@ Resources:
         - Name: TableName
           Value: !Ref MainTable
 
+  # ============================================================================
+  # WEBSOCKET API (Real-time stage progress push)
+  # ============================================================================
+
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: DevContextWebSocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+      Description: DevContext AI WebSocket for real-time analysis progress
+
+  WebSocketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: devcontext-websocket
+      CodeUri: dist/
+      Handler: websocket-handler.handler
+      Runtime: nodejs20.x
+      Timeout: 29
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MainTable
+          WS_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MainTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*"
+
+  WebSocketFunctionPermissionConnect:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt WebSocketFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*"
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: "$connect"
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${WsConnectIntegration}"
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: "$disconnect"
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${WsConnectIntegration}"
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: "$default"
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${WsConnectIntegration}"
+
+  WsConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketFunction.Arn}/invocations"
+
+  WebSocketDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+      - DefaultRoute
+    Properties:
+      ApiId: !Ref WebSocketApi
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      DeploymentId: !Ref WebSocketDeployment
+      StageName: prod
+      AutoDeploy: true
+
 # ============================================================================
 # OUTPUTS
 # ============================================================================
@@ -554,21 +644,27 @@ Outputs:
     Value: !Sub https://${DevContextApi}.execute-api.${AWS::Region}.amazonaws.com/prod/
     Export:
       Name: DevContext-ApiEndpoint
-  
+
   MainTableName:
     Description: Main DynamoDB table name
     Value: !Ref MainTable
     Export:
       Name: DevContext-MainTable
-  
+
   CacheBucketName:
     Description: S3 cache bucket name
     Value: !Ref CacheBucket
     Export:
       Name: DevContext-CacheBucket
-  
+
   OrchestratorFunctionArn:
     Description: Orchestrator Lambda ARN
     Value: !GetAtt OrchestratorFunction.Arn
     Export:
       Name: DevContext-OrchestratorArn
+
+  WebSocketEndpoint:
+    Description: WebSocket API endpoint (use as REACT_APP_WEBSOCKET_URL)
+    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    Export:
+      Name: DevContext-WebSocketEndpoint

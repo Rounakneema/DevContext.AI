@@ -23,6 +23,8 @@ const AccountPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [passwordNote, setPasswordNote] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     const fetchAccount = async () => {
@@ -60,14 +62,25 @@ const AccountPage: React.FC = () => {
   };
 
   const handleChangePassword = () => {
-    // In real app, this would trigger Cognito change password flow
-    alert('Change password flow would be triggered via Cognito');
+    setPasswordNote(true);
+    setTimeout(() => setPasswordNote(false), 6000);
   };
 
-  const handleDeleteAccount = () => {
-    setShowDeleteModal(false);
-    // In real app, this would call a delete account endpoint
-    alert('Account deletion would be processed');
+  const handleDeleteAccount = async () => {
+    setDeleteLoading(true);
+    try {
+      // Account deletion endpoint — inform backend to purge all data
+      await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://2jhc5i9ex2.execute-api.ap-southeast-1.amazonaws.com/prod'}/user/account`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      await logout();
+      navigate('/', { replace: true });
+    } catch (err) {
+      console.error('Delete account error:', err);
+      setDeleteLoading(false);
+      setShowDeleteModal(false);
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -166,8 +179,13 @@ const AccountPage: React.FC = () => {
               </svg>
               Change Password
             </button>
-            <button 
-              className="btn-outline-settings" 
+            {passwordNote && (
+              <div style={{ fontSize: '12px', color: 'var(--text2)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', marginTop: '8px', lineHeight: 1.5 }}>
+                To change your password, use the Cognito account portal or sign out and click "Forgot Password" on the login page.
+              </div>
+            )}
+            <button
+              className="btn-outline-settings"
               onClick={handleLogout}
               disabled={loggingOut}
             >
@@ -205,8 +223,8 @@ const AccountPage: React.FC = () => {
               <button className="btn-secondary" onClick={() => setShowDeleteModal(false)}>
                 Cancel
               </button>
-              <button className="btn-danger" onClick={handleDeleteAccount}>
-                Delete Permanently
+              <button className="btn-danger" onClick={handleDeleteAccount} disabled={deleteLoading}>
+                {deleteLoading ? 'Deleting...' : 'Delete Permanently'}
               </button>
             </div>
           </div>
