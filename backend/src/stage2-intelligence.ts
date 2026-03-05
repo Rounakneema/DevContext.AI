@@ -725,17 +725,17 @@ CATEGORIES TO COVER:
 - performance: Optimizations, scaling, caching, query optimization
 - leadership: Code organization, best practices, documentation
 
-EXAMPLES OF EXCELLENT BULLETS:
-✓ "Architected event-driven microservices platform using Node.js, RabbitMQ, and PostgreSQL, processing 50K+ daily transactions with 99.9% uptime"
-✓ "Engineered real-time WebSocket notification system reducing client polling by 85% and decreasing server load from 2000 RPS to 300 RPS"
-✓ "Designed and implemented RBAC authorization middleware protecting 45+ API endpoints, reducing unauthorized access incidents by 100%"
-✓ "Built CI/CD pipeline using GitHub Actions with automated testing achieving 92% code coverage, reducing deployment time from 2 hours to 8 minutes"
+FORMAT GUIDANCE (do NOT copy these — create NEW bullets from the actual code above):
+✓ GOOD format: "[Action Verb] + [specific system/feature from THIS codebase] + [actual technologies from THIS repo] + [realistic scale estimate based on architecture]"
+✓ GOOD: References actual files, modules, and patterns visible in the code
+✓ GOOD: Quantifies impact using realistic estimates grounded in the codebase's architecture
 
-EXAMPLES OF BAD BULLETS (AVOID THESE):
-✗ "Built a website using React" (too vague, no impact)
-✗ "Used Node.js and MongoDB" (just a tech list)
-✗ "Implemented features" (no specifics)
-✗ "Worked on the backend" (generic)
+✗ BAD: Vague one-liners with no specifics (e.g., "Built a website")
+✗ BAD: Just listing technologies without describing what was built
+✗ BAD: Generic statements like "Implemented features" or "Worked on the backend"
+✗ BAD: Mentioning technologies, frameworks, or metrics NOT present in this codebase
+
+CRITICAL: Every technology, pattern, and metric you mention MUST come from the actual code above. Do NOT invent technologies or numbers that aren't supported by the codebase.
 
 KEYWORD GUIDANCE:
 - Include ATS keywords: ${(contextMap.frameworks || []).concat(Object.keys(contextMap.languages || {})).join(', ')}

@@ -276,11 +276,13 @@ ${codeContext}
                 LIVE INTERVIEW QUESTION GENERATION
 ═══════════════════════════════════════════════════════════
 Generate 18 CORE QUESTIONS with this distribution:
-• Architecture (5): "Walk me through the overall architecture", "How does data flow from X to Y?", "Why did you choose this layer structure?"
-• Implementation (4): "Explain how this function works", "Why did you implement X this way?", "What data structure did you use and why?"
-• Trade-offs (4): "Why did you choose X over Y?", "What would you change if you had more time?", "What are the downsides of this approach?"
-• Scalability (3): "What happens if traffic increases 100x?", "Where are the bottlenecks?", "How would you add caching?"
-• Security (2): "How do you handle authentication?", "Where could an attacker exploit this system?"
+• Architecture (5): Probe system structure, layer interactions, data flow paths, component dependencies. Questions must reference specific files and modules from the code.
+• Implementation (4): Probe specific code choices, algorithms, data structures, function design. Reference actual functions and logic visible in the source.
+• Trade-offs (4): Probe why specific approaches were chosen over alternatives, and what the engineer would change. Reference actual design decisions from the code.
+• Scalability (3): Probe bottlenecks, capacity limits, and scaling strategies. Ground questions in the actual architecture observed.
+• Security (2): Probe authentication, authorization, input validation, and data protection. Reference actual security mechanisms (or lack thereof) in the code.
+
+IMPORTANT: Do NOT use generic template questions. Every question must be unique and specifically reference files, patterns, or decisions from THIS codebase.
 
 QUESTION QUALITY RULES:
 1. EVERY question must reference specific files, functions, or patterns from the code
