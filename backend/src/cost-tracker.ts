@@ -107,16 +107,17 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'mistral.mistral-large-2-v1:0': {
     modelId: 'mistral.mistral-large-2-v1:0',
     modelName: 'Mistral Large 2',
-    inputPricePerMillion: 2.00,
-    outputPricePerMillion: 6.00,
+    inputPricePerMillion: 3.00,   // $3.00 / 1M input
+    outputPricePerMillion: 9.00,  // $9.00 / 1M output
     contextWindow: 128000,
     provider: 'mistral'
   },
+  // PRIMARY MODEL — Mistral Large 3 (actual pricing: $0.50 input / $1.50 output per 1M tokens)
   'mistral.mistral-large-3-675b-instruct': {
     modelId: 'mistral.mistral-large-3-675b-instruct',
     modelName: 'Mistral Large 3',
-    inputPricePerMillion: 2.00,
-    outputPricePerMillion: 6.00,
+    inputPricePerMillion: 0.50,   // $0.50 / 1M input tokens
+    outputPricePerMillion: 1.50,  // $1.50 / 1M output tokens
     contextWindow: 128000,
     provider: 'mistral'
   },
@@ -179,9 +180,9 @@ export function calculateCost(
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
-    inputCostUsd: parseFloat(inputCostUsd.toFixed(6)),
-    outputCostUsd: parseFloat(outputCostUsd.toFixed(6)),
-    totalCostUsd: parseFloat(totalCostUsd.toFixed(6)),
+    inputCostUsd: parseFloat(inputCostUsd.toFixed(8)),
+    outputCostUsd: parseFloat(outputCostUsd.toFixed(8)),
+    totalCostUsd: parseFloat(totalCostUsd.toFixed(8)),
     modelId: pricing.modelId,
     modelName: pricing.modelName,
     provider: pricing.provider,
@@ -370,7 +371,7 @@ export async function trackAiCall(params: {
     console.error('Failed to update cost summary:', err)
   );
 
-  console.log(`💰 Cost tracked: ${cost.modelName} - $${cost.totalCostUsd.toFixed(4)} (${cost.totalTokens} tokens)`);
+  console.log(`💰 Cost tracked: ${cost.modelName} - $${cost.totalCostUsd.toFixed(8)} (${cost.inputTokens} in + ${cost.outputTokens} out = ${cost.totalTokens} tokens | $${cost.inputCostUsd.toFixed(8)} in + $${cost.outputCostUsd.toFixed(8)} out)`);
 
   return record;
 }
