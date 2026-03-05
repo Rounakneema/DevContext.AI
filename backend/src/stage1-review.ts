@@ -1,16 +1,27 @@
 import { Handler } from 'aws-lambda';
-import { callGemini, extractJson, GEMINI_MODEL } from './gemini-client';
+import { callBedrockConverse, extractJson, MISTRAL_LARGE_MODEL } from './bedrock-client';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { ProjectContextMap } from './types';
 import { GroundingChecker } from './grounding-checker';
 import * as DB from './db-utils';
 import { v4 as uuidv4 } from 'uuid';
 
-// Using Google Gemini 2.0 Flash for fast, high-quality analysis
-const MODEL_ID = GEMINI_MODEL;
+// Using Mistral Large 3 via Bedrock Converse API
+const MODEL_ID = MISTRAL_LARGE_MODEL;
 const s3Client = new S3Client({});
 
 const CACHE_BUCKET = process.env.CACHE_BUCKET!;
+
+function ensureIdsInArray<T extends Record<string, any>>(
+  array: T[] | undefined,
+  idField: keyof T
+): T[] {
+  if (!array) return [];
+  return array.map(item => ({
+    ...item,
+    [idField]: item[idField] || uuidv4()
+  }));
+}
 
 interface Stage1Event {
   analysisId: string;
@@ -103,7 +114,6 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
   }
 
   // Fallback: when no normal code files exist, use the raw userCodeFiles list
-  // This handles repos that contain only .ipynb, .md, .csv, etc.
   if (fileContents.length === 0) {
     console.log('No files from entryPoints/coreModules — falling back to _userCodeFiles.json');
     try {
@@ -139,7 +149,6 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
                 return '';
               }).filter(Boolean);
               content = cells.join('\n\n');
-              console.log(`Extracted ${cells.length} cells from notebook ${filePath}`);
             } catch (nbErr) {
               console.warn(`Could not parse .ipynb ${filePath}:`, nbErr);
             }
@@ -169,408 +178,387 @@ async function generateProjectReview(
   contextMap: ProjectContextMap,
   codeContext: string
 ): Promise<any> {
-  const prompt = `You are a Principal Software Engineer at a FAANG company conducting a comprehensive code review for hiring purposes. Your analysis will determine if this candidate gets an interview.
+  const startTime = Date.now();
 
-═══════════════════════════════════════════════════════════════════════════
-REPOSITORY CONTEXT
-═══════════════════════════════════════════════════════════════════════════
-Total Files: ${contextMap.totalFiles}
-Languages: ${JSON.stringify(contextMap.languages || {})}
-Frameworks: ${contextMap.frameworks.join(', ') || 'None detected'}
-Entry Points: ${contextMap.entryPoints.slice(0, 5).join(', ') || 'None'}
-Core Modules: ${contextMap.coreModules.length} files
+  const commonHeader = `REPO CONTEXT:
+- Total Files: ${contextMap.totalFiles}
+- Languages: ${JSON.stringify(contextMap.languages || {})}
+- Frameworks: ${contextMap.frameworks.join(', ')}
 
-═══════════════════════════════════════════════════════════════════════════
-CODE SAMPLE (User-Written Code)
-═══════════════════════════════════════════════════════════════════════════
+CODE SAMPLE:
 ${codeContext}
+`;
 
-═══════════════════════════════════════════════════════════════════════════
-ANALYSIS FRAMEWORK - USE INDUSTRY STANDARDS
-═══════════════════════════════════════════════════════════════════════════
+  // 1. Define Parallel Prompts
+  const techFoundationPrompt = `${commonHeader}
 
-## 1. CODE QUALITY ASSESSMENT (0-100 scale)
+ROLE:
+You are a Principal Software Engineer reviewing the internal code quality of a software project.
 
-Evaluate against industry benchmarks from Google's Code Review Guidelines, Microsoft's Engineering Practices, and Meta's Code Quality Standards.
+OBJECTIVE:
+Evaluate the internal technical foundation of the repository.
 
-### 1.1 READABILITY (0-100)
-- Variable naming: descriptive, follows conventions (camelCase, snake_case, UPPER_CASE)
-- Function/method naming: verb-based, clear intent
-- Code organization: logical grouping, proper file structure
-- Comments: necessary only, no obvious comments, explain "why" not "what"
-- Consistent formatting: indentation, spacing, line breaks
-- **Benchmark**: Google-level = 90+, Startup-level = 70-80, Beginner = <60
+Focus on observable evidence in the code only.
 
-### 1.2 MAINTAINABILITY (0-100)
-- DRY principle: no significant code duplication
-- Function length: <50 lines ideal, <100 acceptable, >150 problematic
-- File size: <500 lines ideal, <1000 acceptable
-- Cyclomatic complexity: <10 ideal, <15 acceptable, >20 problematic
-- Modularity: clear separation of concerns, single responsibility
-- **Benchmark**: Production-grade = 85+, Acceptable = 70-84, Needs work = <70
+Evaluate these dimensions:
 
-### 1.3 TEST COVERAGE (0-100)
-- Unit tests present: score heavily if absent
-- Test quality: proper assertions, edge cases, mocking
-- Integration tests: API/database interactions tested
-- Test organization: mirrors source structure
-- **Benchmark**: Google requires 80%+, Acceptable = 60%+, Poor = <40%
+1. Readability
+- clarity of variable/function names
+- logical organization of code
+- indentation and formatting
+- ability to understand code quickly
 
-### 1.4 DOCUMENTATION (0-100)
-- README exists and is comprehensive
-- API documentation: endpoints, parameters, responses
-- Code comments: complex logic explained
-- Architecture docs: system design documented
-- Setup instructions: clear, reproducible
-- **Benchmark**: Open-source quality = 85+, Acceptable = 60-84, Poor = <60
+2. Maintainability
+- code duplication
+- modularization
+- file sizes and function sizes
+- coupling between components
 
-### 1.5 ERROR HANDLING (0-100)
-- Try-catch blocks: proper exception handling
-- Error messages: descriptive, actionable
-- Graceful degradation: fallbacks for failures
-- Logging: structured, appropriate levels
-- Input validation: all user inputs validated
-- **Benchmark**: Production-ready = 85+, Acceptable = 65-84, Risky = <65
+3. Testing
+- presence of test files
+- evidence of unit tests or integration tests
+- coverage of edge cases if visible
 
-### 1.6 SECURITY (0-100)
-- OWASP Top 10 compliance:
-  * SQL Injection: parameterized queries used
-  * XSS: output sanitization
-  * CSRF: tokens implemented for state-changing operations
-  * Authentication: proper password hashing (bcrypt, argon2)
-  * Authorization: role-based access control
-  * Sensitive data: no secrets in code, environment variables used
-- **Benchmark**: Enterprise-grade = 85+, Acceptable = 70-84, Vulnerable = <70
+4. Documentation
+- README presence
+- comments explaining complex logic
+- API documentation if present
 
-### 1.7 PERFORMANCE (0-100)
-- Algorithm complexity: appropriate data structures, O(n) vs O(n²)
-- Database queries: indexed, no N+1 problems
-- Caching: used where appropriate
-- Lazy loading: resources loaded on-demand
-- Memory leaks: proper cleanup, no circular references
-- **Benchmark**: Optimized = 85+, Acceptable = 65-84, Inefficient = <65
+5. Authenticity Signals
+Assess whether the code appears:
+- likely written by a real developer
+- copied from templates
+- AI-generated with low customization
 
-### 1.8 BEST PRACTICES (0-100)
-- Language idioms: follows community standards (PEP 8, Airbnb style, etc.)
-- Design patterns: appropriate use of patterns (no over-engineering)
-- Dependency management: proper version locking
-- Git practices: meaningful commits, .gitignore proper
-- Configuration: environment-based, not hardcoded
-- **Benchmark**: Professional = 85+, Learning = 65-84, Beginner = <65
+Rules:
+• Only reference files that exist in the provided context
+• Do not assume missing files
+• Do not fabricate evidence
 
-**CRITICAL**: Reference specific files and line numbers for ALL claims.
-
-═══════════════════════════════════════════════════════════════════════════
-## 2. ARCHITECTURE QUALITY (0-100 scale)
-═══════════════════════════════════════════════════════════════════════════
-
-### 2.1 COMPONENT ORGANIZATION
-- Layered architecture: presentation, business logic, data access separated
-- Cohesion: related functionality grouped
-- Coupling: minimal dependencies between components
-- **Score based on**: Clear layers = 90+, Some separation = 70-89, Monolithic = <70
-
-### 2.2 DESIGN PATTERNS USAGE
-Identify patterns used (with file references):
-- Creational: Singleton, Factory, Builder
-- Structural: Adapter, Decorator, Facade
-- Behavioral: Observer, Strategy, Command
-**Score**: Appropriate use = 90+, Over-engineered = 60-70, No patterns = <60
-
-### 2.3 ANTI-PATTERNS DETECTED
-Flag any of these with severity:
-- God Object: class doing too much
-- Spaghetti Code: tangled dependencies
-- Golden Hammer: one solution for everything
-- Copy-Paste Programming: duplicated code
-- Hard Coding: magic numbers, strings in code
-
-═══════════════════════════════════════════════════════════════════════════
-## 3. EMPLOYABILITY SIGNAL (0-100 scale)
-═══════════════════════════════════════════════════════════════════════════
-
-### 3.1 PRODUCTION READINESS
-- Deployment ready: Docker, CI/CD, environment configs
-- Monitoring: logging, metrics, error tracking
-- Testing: comprehensive test suite
-- Documentation: onboarding possible
-- **Score**: Production-ready = 85+, MVP-ready = 65-84, Prototype = <65
-
-### 3.2 PROFESSIONAL STANDARDS
-- Code review ready: clear, reviewable code
-- Collaboration: team-friendly structure
-- Industry practices: follows modern standards
-- Scalability awareness: growth considered
-- **Score**: Senior-level = 85+, Mid-level = 65-84, Junior = <65
-
-### 3.3 COMPLEXITY LEVEL
-Classify as: trivial, simple, moderate, complex, advanced
-- trivial: Todo app, calculator
-- simple: CRUD API, basic dashboard
-- moderate: E-commerce, social media MVP
-- complex: Real-time systems, distributed architecture
-- advanced: High-scale systems, novel algorithms
-
-### 3.4 COMPANY TIER MATCH (0-100 each)
-Calibrate against actual hiring bars:
-- **BigTech (FAANG)**: Google/Meta/Amazon standards
-  * Requires: 85+ code quality, proper architecture, testing, documentation
-  * Scalability awareness, production readiness
-  * Typical bar: 75-100 = interview, <75 = reject
-  
-- **Product Companies**: Startup unicorns, mid-size tech
-  * Requires: 70+ code quality, decent architecture, some testing
-  * MVP-ready, growth potential
-  * Typical bar: 65-100 = interview, <65 = reject
-  
-- **Startups**: Early-stage, fast-moving
-  * Requires: 60+ code quality, working product, any testing
-  * Scrappy but functional
-  * Typical bar: 60-100 = interview, <60 = maybe
-  
-- **Service Companies**: Agencies, outsourcing
-  * Requires: 50+ code quality, follows templates
-  * Gets job done, maintainable
-  * Typical bar: 50-100 = interview, <50 = junior only
-
-═══════════════════════════════════════════════════════════════════════════
-## 4. CRITICAL ISSUES (Security/Performance/Reliability)
-═══════════════════════════════════════════════════════════════════════════
-
-For EACH critical issue found:
-1. Category: security / performance / reliability / maintainability
-2. Severity: critical (blocks production) / high (risky) / medium (tech debt)
-3. Title: Short description
-4. Description: what is wrong
-5. Location: exact file and line numbers
-6. CWE: Common Weakness Enumeration (e.g., CWE-89 for SQL Injection)
-7. CVSS Score: 0-10 severity rating
-8. Remediation:
-   - Priority (1-5, where 1 = fix immediately)
-   - Effort (low: <1 hour, medium: 1-4 hours, high: 1+ days)
-   - Estimated hours
-   - Step-by-step fix
-   - Code example of correct implementation
-   - Resources: links to OWASP, documentation
-
-═══════════════════════════════════════════════════════════════════════════
-## 5. IMPROVEMENT AREAS
-═══════════════════════════════════════════════════════════════════════════
-
-For each improvement area:
-1. Issue: What needs improvement
-2. Priority: critical / high / medium / low
-3. Estimated Impact: high / medium / low
-4. Estimated Effort: low / medium / high
-5. Category: quality / security / performance / maintainability
-6. Actionable Suggestion: Specific steps to improve
-7. Code Example: Before/after code snippets
-
-═══════════════════════════════════════════════════════════════════════════
-## 6. PROJECT AUTHENTICITY (0-100 scale)
-═══════════════════════════════════════════════════════════════════════════
-
-Assess if this is genuinely the candidate's work:
-- Code style consistency: similar patterns across files
-- Commit pattern: gradual development vs bulk upload
-- Comment style: consistent voice
-- Complexity progression: builds up over time
-- **Red flags**: 
-  * Single commit with complete codebase
-  * Drastically different coding styles
-  * Professional-level code but no tests
-  * Copy-paste from tutorials (check common patterns)
-
-═══════════════════════════════════════════════════════════════════════════
-RESPONSE FORMAT (STRICT JSON)
-═══════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT:
+Return VALID JSON with keys:
 
 {
-  "codeQuality": {
-    "overall": 78,
-    "readability": 82,
-    "maintainability": 75,
-    "testCoverage": 0,
-    "documentation": 65,
-    "errorHandling": 70,
-    "security": 60,
-    "performance": 85,
-    "bestPractices": 78,
-    "justification": "Clean code with good naming conventions. Lacks test coverage (0%). Security concerns with input validation. Performance is solid with appropriate data structures. Follows most JavaScript best practices but missing ESLint configuration."
+  "codeQuality_foundation": {
+    "readability": "Score 0-100",
+    "maintainability": "Score 0-100",
+    "testCoverage": "Score 0-100",
+    "documentation": "Score 0-100",
+    "bestPractices": "Score 0-100",
+    "justification": "Detailed explanation referencing real code evidence and specific files"
   },
+  "authenticity": {
+    "score": "Score 0-100",
+    "signals": ["list of factual authenticity indicators found in code"],
+    "assessment": "Short professional explanation of authenticity"
+  }
+}
+`;
+
+  const archPrompt = `${commonHeader}
+
+ROLE:
+You are a Software Architect conducting a structural analysis of a codebase.
+
+OBJECTIVE:
+Understand how the system is architected and identify major engineering strengths.
+
+Analyze:
+
+1. System Architecture
+- layering
+- module boundaries
+- separation of concerns
+- component responsibilities
+
+2. Design Patterns
+Identify patterns ONLY if supported by evidence.
+
+Possible patterns include:
+Factory, Repository, Service Layer, Strategy, Observer, Adapter.
+
+3. Anti-Patterns
+Detect issues such as:
+- God objects
+- Tight coupling
+- Large files handling too many responsibilities
+- Hardcoded configuration
+
+4. Engineering Strengths
+Highlight real engineering wins such as:
+- good modularization
+- clean API design
+- efficient abstractions
+- reusable components
+
+Rules:
+• Only reference real files
+• Provide evidence
+• Avoid speculation
+
+OUTPUT FORMAT:
+
+Return VALID JSON:
+
+{
   "architectureClarity": {
-    "score": 72,
-    "componentOrganization": "Three-tier architecture with React frontend, Express API, and PostgreSQL. Separation is present but could be improved - business logic leaks into controllers.",
-    "separationOfConcerns": "Moderate. Routes handle both validation and business logic. Recommend extracting to service layer.",
+    "score": "Score 0-100",
+    "componentOrganization": "Description of how project components are organized",
+    "separationOfConcerns": "Detailed assessment of separation of concerns",
     "designPatterns": [
       {
-        "name": "MVC",
-        "implementation": "Partial - has models and controllers but views are in separate React app",
-        "fileReferences": [{"file": "src/controllers/userController.js"}, {"file": "src/models/User.js"}]
+        "name": "Name of pattern",
+        "implementation": "How it is implemented in this project",
+        "fileReferences": [{"file": "path/to/file"}]
       }
     ],
     "antiPatterns": [
       {
-        "name": "God Object",
-        "severity": "medium",
-        "description": "UserController handles too many responsibilities",
-        "fileReferences": [{"file": "src/controllers/userController.js"}]
+        "name": "Name of anti-pattern",
+        "severity": "high|medium|low",
+        "description": "Details of the violation",
+        "fileReferences": [{"file": "path/to/file"}]
       }
     ]
   },
-  "employabilitySignal": {
-    "overall": 68,
-    "productionReadiness": 55,
-    "professionalStandards": 72,
-    "complexity": "moderate",
-    "companyTierMatch": {
-      "bigTech": 45,
-      "productCompanies": 68,
-      "startups": 82,
-      "serviceCompanies": 88
-    },
-    "justification": "Solid fundamentals but not production-ready. Missing tests, incomplete error handling, no CI/CD. Code quality suggests mid-level developer. Best fit for startup or product company willing to mentor."
-  },
   "strengths": [
     {
-      "strengthId": "uuid-1",
-      "pattern": "Clean API Design",
-      "description": "RESTful endpoints follow best practices. Proper HTTP verbs, status codes, and error responses.",
-      "impact": "high",
-      "fileReferences": [
-        {"file": "src/routes/api.js", "lineStart": 15, "lineEnd": 45}
-      ],
-      "groundingConfidence": "verified"
+      "pattern": "Technical strength name",
+      "description": "Why this is an engineering win",
+      "impact": "high|medium|low",
+      "fileReferences": [{"file": "path/to/file"}]
+    }
+  ]
+}
+`;
+
+  const riskPrompt = `${commonHeader}
+
+ROLE:
+You are a Staff Engineer evaluating the operational and production risks of a software project.
+
+OBJECTIVE:
+Identify issues that could impact security, performance, reliability, or employability.
+
+Evaluate:
+
+1. Security
+Look for evidence of:
+- input validation
+- secrets handling
+- authentication logic
+- unsafe data processing
+
+2. Performance
+Check for:
+- inefficient algorithms
+- excessive loops or queries
+- blocking I/O patterns
+- large in-memory operations
+
+3. Reliability
+Check for:
+- error handling
+- exception management
+- null safety
+- failure recovery
+
+4. Production Readiness
+Assess:
+- logging
+- configuration via environment variables
+- deployability
+- maintainability in a team environment
+
+5. Employability Signal
+Evaluate how this project reflects engineering maturity.
+
+Rules:
+• Only report issues visible in code
+• Do not fabricate vulnerabilities
+
+OUTPUT FORMAT:
+
+Return VALID JSON:
+
+{
+  "criticalIssues": [
+    {
+      "category": "security|performance|reliability|maintainability",
+      "title": "Brief title of the issue",
+      "description": "Technical details of the risk",
+      "severity": "critical|high|medium|low",
+      "remediation": {
+        "priority": "1-5 (1 is highest)",
+        "effort": "low|medium|high",
+        "actionableSuggestion": "Specific technical fix"
+      },
+      "fileReferences": [{"file": "path/to/file"}]
     }
   ],
+  "employabilitySignal": {
+    "overall": "Score 0-100",
+    "productionReadiness": "Score 0-100",
+    "professionalStandards": "Score 0-100",
+    "complexity": "Trivial|Simple|Moderate|Complex|Advanced",
+    "companyTierMatch": {
+      "bigTech": "Score 0-100",
+      "productCompanies": "Score 0-100",
+      "startups": "Score 0-100",
+      "serviceCompanies": "Score 0-100"
+    },
+    "justification": "Summary of কেন candidate fits the industry tiers"
+  }
+}
+`;
+
+  console.log('🚀 Launching parallel Stage 1 analysis...');
+
+  // 2. Execute Parallel Calls
+  const [techRes, archRes, riskRes] = await Promise.all([
+    callBedrockConverse(techFoundationPrompt, MODEL_ID, { maxTokens: 4000, temperature: 0.4 }),
+    callBedrockConverse(archPrompt, MODEL_ID, { maxTokens: 4000, temperature: 0.4 }),
+    callBedrockConverse(riskPrompt, MODEL_ID, { maxTokens: 4000, temperature: 0.4 })
+  ]);
+
+  console.log('✅ Parallel analysis complete. Synthesizing Stage 1 Review...');
+
+  // 3. Synthesis Prompt
+  const synthesisPrompt = `You are a Principal Software Engineer producing a final industry-grade code review.
+
+You have received multiple specialized analyses of the same repository.
+
+Your task is to combine them into a single coherent engineering report.
+
+INPUT ANALYSES:
+
+--- TECH FOUNDATION ---
+${techRes.text}
+
+--- ARCHITECTURE ---
+${archRes.text}
+
+--- RISK & EMPLOYABILITY ---
+${riskRes.text}
+
+OBJECTIVES:
+
+1. Merge findings across all analyses
+2. Normalize scores to a consistent 0-100 scale
+3. Remove duplicated insights
+4. Prioritize the most important issues
+5. Ensure every claim is grounded in code evidence
+
+Important rules:
+
+• Do not invent files
+• Do not hallucinate vulnerabilities
+• Prefer conservative scoring
+• Most projects fall between 60-75
+
+OUTPUT REQUIREMENTS:
+
+Return STRICT VALID JSON.
+
+No markdown.
+No explanation outside JSON.
+
+Ensure the JSON parses correctly.
+
+If formatting is invalid, regenerate the JSON.
+
+Structure:
+
+{
+  "codeQuality": {
+    "overall": "Score 0-100",
+    "readability": "Score 0-100",
+    "maintainability": "Score 0-100",
+    "testCoverage": "Score 0-100",
+    "documentation": "Score 0-100",
+    "errorHandling": "Score 0-100",
+    "security": "Score 0-100",
+    "performance": "Score 0-100",
+    "bestPractices": "Score 0-100",
+    "justification": "Executive summary of code quality with specific evidence"
+  },
+  "architectureClarity": {
+    "score": "Score 0-100",
+    "componentOrganization": "Synthesis of project organization",
+    "separationOfConcerns": "Assessment of layered design",
+    "designPatterns": [
+      { "name": "Pattern Name", "implementation": "How it works here", "fileReferences": [{ "file": "path/file" }] }
+    ],
+    "antiPatterns": [
+      { "name": "Anti-pattern Name", "severity": "Severity", "description": "Why it is bad here", "fileReferences": [{ "file": "path/file" }] }
+    ]
+  },
+  "employabilitySignal": {
+    "overall": "Score 0-100",
+    "productionReadiness": "Score 0-100",
+    "professionalStandards": "Score 0-100",
+    "complexity": "Overall classification",
+    "companyTierMatch": {
+      "bigTech": "Score 0-100",
+      "productCompanies": "Score 0-100",
+      "startups": "Score 0-100",
+      "serviceCompanies": "Score 0-100"
+    },
+    "justification": "Professional career readiness assessment"
+  },
+  "strengths": [
+    { "strengthId": "id", "pattern": "Strength Name", "description": "Details", "impact": "High/Medium/Low", "fileReferences": [{ "file": "path" }] }
+  ],
   "weaknesses": [
-    {
-      "weaknessId": "uuid-4",
-      "issue": "Zero Test Coverage",
-      "severity": "high",
-      "impact": "Cannot verify correctness, regression risk, not production-ready.",
-      "category": "quality",
-      "fileReferences": []
-    }
+    { "weaknessId": "id", "issue": "Problem description", "severity": "High/Medium/Low", "fileReferences": [{ "file": "path" }] }
   ],
   "criticalIssues": [
     {
-      "issueId": "uuid-6",
-      "category": "security",
-      "title": "SQL Injection Vulnerability",
-      "description": "User input is directly concatenated into SQL queries without parameterization.",
-      "severity": "critical",
-      "cwe": "CWE-89",
-      "cvssScore": 9.8,
-      "remediation": {
-        "priority": 1,
-        "effort": "low",
-        "estimatedHours": 2,
-        "actionableSuggestion": "Use parameterized queries for all database operations.",
-        "codeExample": "// VULNERABLE\\nconst query = \`SELECT * FROM users WHERE email = '\${userEmail}'\`;\\n\\n// SECURE\\nconst query = 'SELECT * FROM users WHERE email = $1';\\nconst result = await pool.query(query, [userEmail]);",
-        "resources": [
-          "https://owasp.org/www-community/attacks/SQL_Injection",
-          "https://node-postgres.com/features/queries#parameterized-query"
-        ]
-      },
-      "fileReferences": [
-        {"file": "src/models/User.js", "lineStart": 34, "lineEnd": 36}
-      ],
-      "affectedEndpoints": ["/api/users/login", "/api/users/search"]
+      "issueId": "id",
+      "category": "Classification",
+      "title": "Short title",
+      "description": "Technical depth",
+      "severity": "Critical/High/Medium/Low",
+      "remediation": { "priority": 1-5, "effort": "Effort level", "actionableSuggestion": "Step-by-step fix" },
+      "fileReferences": [{ "file": "path" }]
     }
   ],
   "improvementAreas": [
-    {
-      "areaId": "uuid-7",
-      "issue": "Add Comprehensive Test Suite",
-      "priority": "critical",
-      "estimatedImpact": "high",
-      "estimatedEffort": "high",
-      "category": "quality",
-      "actionableSuggestion": "Implement unit tests with Jest and integration tests with Supertest. Aim for 70%+ coverage.",
-      "codeExample": "// tests/auth.test.js\\nconst request = require('supertest');\\nconst app = require('../src/app');\\n\\ndescribe('POST /api/auth/login', () => {\\n  it('should return token for valid credentials', async () => {\\n    const res = await request(app)\\n      .post('/api/auth/login')\\n      .send({ email: 'test@example.com', password: 'password123' });\\n    expect(res.status).toBe(200);\\n    expect(res.body).toHaveProperty('token');\\n  });\\n});",
-      "fileReferences": []
-    }
+    { "areaId": "id", "issue": "What to improve", "priority": "Level", "actionableSuggestion": "How to fix", "category": "Category" }
   ],
   "projectAuthenticity": {
-    "score": 85,
-    "confidence": "high",
-    "signals": {
-      "commitDiversity": 85,
-      "timeSpread": 80,
-      "messageQuality": 85,
-      "codeEvolution": 90
-    },
-    "warnings": [],
-    "assessment": "Genuine work. Code shows consistent style and gradual development."
-  },
-  "modelMetadata": {
-    "modelId": "${MODEL_ID}",
-    "tokensIn": 0,
-    "tokensOut": 0,
-    "inferenceTimeMs": 0,
-    "temperature": 0.3
-  },
-  "generatedAt": "${new Date().toISOString()}"
+    "score": "Score 0-100",
+    "confidence": "high|medium|low",
+    "assessment": "Factual assessment of original work"
+  }
 }
- 
-CRITICAL INSTRUCTIONS:
-1. Be HONEST and CALIBRATED. Most projects score 60-75. Scores of 90+ are rare.
-2. Reference SPECIFIC files and line numbers for all claims.
-3. For security issues, provide CWE codes and CVSS scores.
-4. Use industry benchmarks (Google, Microsoft, Meta standards).
-5. Provide actionable remediation with code examples.`;
+`;
 
-  const startTime = Date.now();
-  const { text: content, inputTokens, outputTokens, inferenceTimeMs } = await callGemini(prompt, {
-    temperature: 0.3,
-    maxOutputTokens: 4000,
+  const finalRes = await callBedrockConverse(synthesisPrompt, MODEL_ID, {
+    maxTokens: 8000,
+    temperature: 0.4
   });
 
-  let parsed: any;
-  try {
-    parsed = extractJson(content);
-  } catch (parseErr) {
-    console.error('JSON parse failed. Raw response snippet:', content.substring(0, 300));
-    throw new Error(`Failed to parse Stage 1 JSON response: ${parseErr instanceof Error ? parseErr.message : parseErr}`);
+  const parsed = extractJson(finalRes.text);
+  if (!parsed) {
+    throw new Error(`Stage 1 Synthesis failed. Snippet: ${finalRes.text.substring(0, 300)}`);
   }
 
-  // Add UUIDs where missing
-  if (parsed.strengths) {
-    parsed.strengths = parsed.strengths.map((s: any) => ({
-      ...s,
-      strengthId: s.strengthId || uuidv4()
-    }));
-  }
+  // 4. Post-processing - Ensure IDs are present and consistent
+  parsed.strengths = ensureIdsInArray(parsed.strengths, 'strengthId');
+  parsed.weaknesses = ensureIdsInArray(parsed.weaknesses, 'weaknessId');
+  parsed.criticalIssues = ensureIdsInArray(parsed.criticalIssues, 'issueId');
+  parsed.improvementAreas = ensureIdsInArray(parsed.improvementAreas, 'areaId');
 
-  if (parsed.weaknesses) {
-    parsed.weaknesses = parsed.weaknesses.map((w: any) => ({
-      ...w,
-      weaknessId: w.weaknessId || uuidv4()
-    }));
-  }
-
-  if (parsed.criticalIssues) {
-    parsed.criticalIssues = parsed.criticalIssues.map((c: any) => ({
-      ...c,
-      issueId: c.issueId || uuidv4()
-    }));
-  }
-
-  if (parsed.improvementAreas) {
-    parsed.improvementAreas = parsed.improvementAreas.map((a: any) => ({
-      ...a,
-      areaId: a.areaId || uuidv4()
-    }));
-  }
-
-  // Add metadata
+  // Metadata
   parsed.modelMetadata = {
     modelId: MODEL_ID,
-    tokensIn: inputTokens,
-    tokensOut: outputTokens,
-    inferenceTimeMs,
-    temperature: 0.3
+    tokensIn: techRes.inputTokens + archRes.inputTokens + riskRes.inputTokens + finalRes.inputTokens,
+    tokensOut: techRes.outputTokens + archRes.outputTokens + riskRes.outputTokens + finalRes.outputTokens,
+    inferenceTimeMs: Date.now() - startTime,
+    parallelLatencyMs: Math.max(techRes.latency, archRes.latency, riskRes.latency),
+    synthesisLatencyMs: finalRes.latency,
+    temperature: 0.4
   };
 
   parsed.generatedAt = new Date().toISOString();

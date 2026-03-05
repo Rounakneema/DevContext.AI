@@ -447,7 +447,7 @@ export const continueToStage2 = (analysisId: string) =>
     method: 'POST',
   });
 
-export const continueToStage3 = (analysisId: string) =>
+export const continueToStage3 = (analysisId: string, mode: 'sheet' | 'live' = 'sheet') =>
   apiCall<{
     analysisId: string;
     message: string;
@@ -455,6 +455,7 @@ export const continueToStage3 = (analysisId: string) =>
     estimatedCompletionTime: number;
   }>(`/analysis/${analysisId}/continue-stage3`, {
     method: 'POST',
+    body: JSON.stringify({ mode }),
   });
 
 export const cancelAnalysis = (analysisId: string) =>
@@ -578,7 +579,29 @@ export const submitAnswer = (
     questionId: string;
     evaluation: AnswerEvaluation;
     improvementFromPrevious: number;
+    followUpQuestions?: InterviewQuestion[];
   }>(`/interview/sessions/${sessionId}/answer`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const getFollowUp = (
+  sessionId: string,
+  data: {
+    analysisId: string;
+    questionId: string;
+    questionText: string;
+    answer: string;
+    evaluation: any;
+    coverageMap?: Record<string, boolean>;
+    interviewContext?: any;
+  }
+) =>
+  apiCall<{
+    success: boolean;
+    followUpQuestions: InterviewQuestion[];
+    reason?: string;
+  }>(`/interview/sessions/${sessionId}/followup`, {
     method: 'POST',
     body: JSON.stringify(data),
   });

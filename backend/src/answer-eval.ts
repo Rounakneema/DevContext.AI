@@ -1,7 +1,7 @@
-import { callGemini, extractJson, GEMINI_MODEL } from './gemini-client';
+import { callBedrockConverse, extractJson, MISTRAL_LARGE_MODEL } from './bedrock-client';
 
-// Using Google Gemini 2.0 Flash — fast, high-quality, cost-efficient
-const MODEL_ID = GEMINI_MODEL;
+// Using Mistral Large 3 via Bedrock Converse API
+const MODEL_ID = MISTRAL_LARGE_MODEL;
 
 /**
  * FAANG-Calibrated Answer Evaluation
@@ -250,16 +250,24 @@ CRITICAL INSTRUCTIONS:
 2. Reference specific content from the candidate's answer in your feedback.
 3. Compare to the provided "acceptableAnswer" and "strongAnswer" for calibration.
 4. Your evaluation determines hiring decisions - take this seriously.
-5. If you see ANY red flags, score must be <60 and explain why in detailedFeedback.`;
+5. If you see ANY red flags, score must be <60 and explain why in detailedFeedback.
+
+Before finishing the response:
+1. Validate that the JSON is syntactically correct.
+2. Ensure all brackets and commas are valid.
+3. Ensure the output parses as JSON.
+4. If invalid, regenerate the JSON.`;
 
   try {
     const startTime = Date.now();
-    const { text: content, inputTokens, outputTokens, inferenceTimeMs } = await callGemini(prompt, {
-      temperature: 0.2,
-      maxOutputTokens: 2000,
+    const { text: content, inputTokens, outputTokens, inferenceTimeMs } = await callBedrockConverse(prompt, MODEL_ID, {
+      maxTokens: 3000
     });
 
     const evaluation = extractJson(content);
+    if (!evaluation) {
+      throw new Error(`Evaluation failed to parse model response. Snippet: ${content.substring(0, 300)}`);
+    }
 
     // Add metadata
     evaluation.modelMetadata = {
@@ -268,7 +276,8 @@ CRITICAL INSTRUCTIONS:
       rubricApplied: 'FAANG-calibrated',
       tokensIn: inputTokens,
       tokensOut: outputTokens,
-      inferenceTimeMs
+      inferenceTimeMs,
+      temperature: 1
     };
 
     evaluation.evaluatedAt = new Date().toISOString();

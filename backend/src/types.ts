@@ -467,8 +467,9 @@ export interface InterviewSimulation {
   categoryCounts: CategoryCounts;
   difficultyDistribution: DifficultyDistribution;
 
-  questionSetMetadata: QuestionSetMetadata;
-  selfCorrectionReport: SelfCorrectionReport;
+  mode?: 'sheet' | 'live';
+  coreQuestions?: InterviewQuestion[];
+  tracks?: any; // For sheet mode organization
 
   modelMetadata: ModelMetadata;
   generatedAt: string;
@@ -577,6 +578,7 @@ export interface SessionProgress {
   questionsSkipped: number;
   averageScore: number;
   totalTimeSpentSeconds: number;
+  coverageMap?: Record<string, boolean>; // Track which topics were covered
 }
 
 export interface SessionConfig {

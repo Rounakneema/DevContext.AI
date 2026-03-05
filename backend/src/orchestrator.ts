@@ -160,6 +160,10 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
       return await handleCompleteSession(event, context);
     }
 
+    if (path.endsWith('/followup') && method === 'POST') {
+      return await handleFollowUpQuestion(event, context);
+    }
+
     return {
       statusCode: 404,
       headers: CORS_HEADERS,
@@ -764,8 +768,10 @@ async function handleContinueStage3(event: any, context: any) {
     };
   }
 
-  // Start Stage 3 in background
-  processStage3(analysisId, context);
+  // Start Stage 3 in background with mode if provided
+  const body = JSON.parse(event.body || '{}');
+  const mode = body.mode || 'sheet';
+  processStage3(analysisId, mode, context);
 
   // Update workflow state to indicate Stage 3 is now in progress
   await DB.updateWorkflowState(analysisId, 'stage3_pending');
@@ -775,7 +781,7 @@ async function handleContinueStage3(event: any, context: any) {
     headers: CORS_HEADERS,
     body: JSON.stringify({
       analysisId,
-      message: 'Stage 3 (Interview Questions) started',
+      message: `Stage 3 (Interview Questions - ${mode} mode) started`,
       status: 'processing',
       estimatedCompletionTime: 90
     })
@@ -861,9 +867,9 @@ async function processStage2(analysisId: string, context: any) {
   }
 }
 
-async function processStage3(analysisId: string, context: any) {
+async function processStage3(analysisId: string, mode: string, context: any) {
   try {
-    console.log(`Starting Stage 3 for analysis: ${analysisId}`);
+    console.log(`Starting Stage 3 (${mode}) for analysis: ${analysisId}`);
 
     await DB.updateStageStatus(analysisId, 'interview_simulation', {
       status: 'processing',
@@ -903,10 +909,11 @@ async function processStage3(analysisId: string, context: any) {
         frameworks: repoMetadata.frameworks,
         entryPoints: repoMetadata.entryPoints,
         coreModules: repoMetadata.coreModules,
-        userCodeFiles: userCodeFiles, // Now properly loaded from S3
+        userCodeFiles: userCodeFiles,
         languages: repoMetadata.languages
       },
-      s3Key: repoMetadata.s3Key
+      s3Key: repoMetadata.s3Key,
+      mode // Pass mode to Stage 3
     });
 
     const duration = Date.now() - startTime;
@@ -1072,6 +1079,19 @@ async function handleCreateInterviewSession(event: any, context: any) {
     };
   }
 
+  // Use either questions (sheet) or coreQuestions (live)
+  const questions = analysis.interviewSimulation.mode === 'live'
+    ? analysis.interviewSimulation.coreQuestions
+    : analysis.interviewSimulation.questions;
+
+  if (!questions || !Array.isArray(questions)) {
+    return {
+      statusCode: 500,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: 'Interview questions array not found in analysis' })
+    };
+  }
+
   const session = await DB.createInterviewSession({
     userId,
     analysisId,
@@ -1081,8 +1101,11 @@ async function handleCreateInterviewSession(event: any, context: any) {
       timeLimit: 60,
       feedbackMode: 'immediate'
     },
-    totalQuestions: analysis.interviewSimulation.questions.length
+    totalQuestions: questions.length
   });
+
+  // Store the mode in the session if possible, or handle it via analysis ref
+  // For now, the session will refer to the questions we found.
 
   await DB.logAnalysisEvent(analysisId, 'interview_session_created', {
     sessionId: session.sessionId
@@ -1212,6 +1235,30 @@ async function handleSubmitAnswer(event: any, context: any) {
     evaluation
   });
 
+  // Check if we should generate a follow-up (only for live mode)
+  let followUpQuestions = [];
+  if (analysis.interviewSimulation?.mode === 'live') {
+    try {
+      // Invoke follow-up Lambda
+      const followUpResult = await invokeAsync(process.env.FOLLOWUP_FUNCTION || 'live-interview-followup', {
+        analysisId: session.analysisId,
+        sessionId,
+        questionAsked: question,
+        answerGiven: answer,
+        answerEvaluation: evaluation,
+        coverageMap: session.progress?.coverageMap || {},
+        interviewContext: session.config
+      });
+
+      if (followUpResult.success && followUpResult.followUpQuestions?.length > 0) {
+        followUpQuestions = followUpResult.followUpQuestions;
+        // Optionally update session with these follow-ups
+      }
+    } catch (err) {
+      console.warn('Follow-up generation skipped due to error:', err);
+    }
+  }
+
   // Update session progress
   await DB.updateSessionProgress(sessionId, {
     questionsAnswered: session.progress.questionsAnswered + 1,
@@ -1226,8 +1273,35 @@ async function handleSubmitAnswer(event: any, context: any) {
       attemptId: attempt.attemptId,
       questionId,
       evaluation,
-      improvementFromPrevious
+      improvementFromPrevious,
+      followUpQuestions // Return follow-ups to frontend
     })
+  };
+}
+
+/**
+ * Explicit followup endpoint
+ * POST /interview/sessions/{sessionId}/followup
+ */
+async function handleFollowUpQuestion(event: any, context: any) {
+  const sessionId = event.pathParameters?.sessionId;
+  const body = JSON.parse(event.body || '{}');
+  const { questionId, answer, evaluation, coverageMap, interviewContext } = body;
+
+  const result = await invokeAsync(process.env.FOLLOWUP_FUNCTION || 'live-interview-followup', {
+    analysisId: body.analysisId,
+    sessionId,
+    questionAsked: { questionId, question: body.questionText }, // Minimal info needed
+    answerGiven: answer,
+    answerEvaluation: evaluation,
+    coverageMap: coverageMap || {},
+    interviewContext: interviewContext || {}
+  });
+
+  return {
+    statusCode: result.success ? 200 : 500,
+    headers: CORS_HEADERS,
+    body: JSON.stringify(result)
   };
 }
 

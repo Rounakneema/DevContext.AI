@@ -108,6 +108,21 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
 
       setCurrentEvaluation(response.evaluation);
 
+      // Handle follow-up questions for live mode
+      if (response.followUpQuestions && response.followUpQuestions.length > 0) {
+        setSession((prev) => {
+          if (!prev) return null;
+          // Insert follow-up questions immediately after the current one
+          const updatedQuestions = [...prev.questions];
+          updatedQuestions.splice(prev.currentQuestionIndex + 1, 0, ...response.followUpQuestions!);
+          return {
+            ...prev,
+            questions: updatedQuestions,
+            totalQuestions: updatedQuestions.length
+          };
+        });
+      }
+
       // Update session with the answer
       setSession((prev) =>
         prev
@@ -275,6 +290,25 @@ const InterviewTab: React.FC<InterviewTabProps> = ({ analysisId }) => {
           >
             {formatTime(elapsedSeconds)}
           </div>
+        </div>
+
+        {/* Mode Indicator */}
+        <div style={{
+          fontSize: '11px',
+          color: 'var(--accent)',
+          marginBottom: '10px',
+          fontWeight: '600',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <div style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            background: 'var(--accent)',
+          }}></div>
+          {session.questions.length > 20 ? 'Sheet Mode: Comprehensive Bank' : 'Live Mode: Adaptive Interview'}
         </div>
 
         {/* Question Card */}

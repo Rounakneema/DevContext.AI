@@ -68,6 +68,14 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     contextWindow: 128000,
     provider: 'meta'
   },
+  'us.meta.llama3-3-70b-instruct-v1:0': {
+    modelId: 'us.meta.llama3-3-70b-instruct-v1:0',
+    modelName: 'Meta Llama 3.3 70B Instruct (US)',
+    inputPricePerMillion: 2.65,
+    outputPricePerMillion: 3.50,
+    contextWindow: 128000,
+    provider: 'meta'
+  },
   'meta.llama3-2-90b-instruct-v1:0': {
     modelId: 'meta.llama3-2-90b-instruct-v1:0',
     modelName: 'Meta Llama 3.2 90B Instruct',
@@ -104,16 +112,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     contextWindow: 128000,
     provider: 'mistral'
   },
-
-  // ─── Add Llama  70B Inference Profiles to pricing ────────────────────
-  'us.meta.llama3-3-70b-instruct-v1:0': {
-    modelId: 'us.meta.llama3-3-70b-instruct-v1:0',
-    modelName: 'Meta Llama 3.3 70B (Inference Profile)',
-    inputPricePerMillion: 2.65,
-    outputPricePerMillion: 3.50,
+  'mistral.mistral-large-3-675b-instruct': {
+    modelId: 'mistral.mistral-large-3-675b-instruct',
+    modelName: 'Mistral Large 3',
+    inputPricePerMillion: 2.00,
+    outputPricePerMillion: 6.00,
     contextWindow: 128000,
-    provider: 'meta'
+    provider: 'mistral'
   },
+
   'eu.meta.llama3-3-70b-instruct-v1:0': {
     modelId: 'eu.meta.llama3-3-70b-instruct-v1:0',
     modelName: 'Meta Llama 3.3 70B (EU Inference Profile)',

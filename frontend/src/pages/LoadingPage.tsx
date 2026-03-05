@@ -225,12 +225,11 @@ const LoadingPage: React.FC = () => {
     }
   };
 
-  // Continue to Stage 3
-  const handleContinueStage3 = async () => {
+  const handleContinueStage3 = async (mode: 'sheet' | 'live' = 'sheet') => {
     setLoading(true);
     setError('');
     try {
-      await continueToStage3(analysisId);
+      await continueToStage3(analysisId, mode);
 
       setWorkflowState('stage3_pending');
       updateStagesFromWorkflow('stage3_pending');
@@ -495,18 +494,35 @@ const LoadingPage: React.FC = () => {
           <div className="decision-panel">
             <div className="decision-title">Ready for interview practice?</div>
             <div className="decision-actions">
-              <button
-                className="btn-accent decision-btn primary"
-                onClick={handleContinueStage3}
-                disabled={loading}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                {loading ? 'Starting...' : 'Start Interview Practice'}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+                <button
+                  className="btn-accent decision-btn primary"
+                  onClick={() => handleContinueStage3('live')}
+                  disabled={loading}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  {loading ? 'Starting...' : 'Start Live Adaptive Interview'}
+                </button>
+                <button
+                  className="btn-secondary decision-btn"
+                  onClick={() => handleContinueStage3('sheet')}
+                  disabled={loading}
+                  style={{ background: 'var(--surface)', borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
+                  {loading ? 'Preparing...' : 'Generate Comprehensive Question Sheet (50+ Qs)'}
+                </button>
+              </div>
               <div className="decision-secondary">
                 <button className="btn-secondary" onClick={handleGoToDashboard}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
