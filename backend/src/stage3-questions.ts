@@ -225,46 +225,91 @@ async function generateCoreQuestions(
   analysisId: string
 ): Promise<any[]> {
 
-  const prompt = `You are a Staff Engineer at Google conducting a live technical interview.
+  const prompt = `You are a Staff Engineer at Google conducting a live technical interview. You have the candidate's codebase in front of you and must generate 18 CORE QUESTIONS that will be asked one-by-one during the interview. These questions must deeply test the candidate's understanding of THEIR OWN code.
 
-Your task is to generate 18 CORE QUESTIONS that MUST be asked during the interview to properly assess the candidate's understanding of their own codebase.
-
-PROJECT CONTEXT:
-Frameworks: ${contextMap.frameworks.join(', ') || 'None'}
+═══════════════════════════════════════════════════════════
+                    REPOSITORY METADATA
+═══════════════════════════════════════════════════════════
+Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
 Languages: ${JSON.stringify(contextMap.languages || {})}
-Code Quality: ${projectReview.codeQuality?.overall || 0}/100
+Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None'}
+Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None'}
+File Count: ${(contextMap.userCodeFiles || []).length}
 
-KEY ARCHITECTURAL PATTERNS:
-${intelligenceReport.systemArchitecture?.architecturalPatterns?.map((p: any) => `- ${p.name}`).join('\n') || 'None detected'}
+═══════════════════════════════════════════════════════════
+              STAGE 1: PROJECT REVIEW RESULTS
+═══════════════════════════════════════════════════════════
+Code Quality: ${projectReview?.codeQuality?.overall ?? 0}/100
+  ├─ Readability: ${projectReview?.codeQuality?.readability ?? 'N/A'}/100
+  ├─ Security: ${projectReview?.codeQuality?.security ?? 'N/A'}/100
+  ├─ Performance: ${projectReview?.codeQuality?.performance ?? 'N/A'}/100
+  └─ Error Handling: ${projectReview?.codeQuality?.errorHandling ?? 'N/A'}/100
 
-CRITICAL DESIGN DECISIONS:
-${intelligenceReport.designDecisions?.slice(0, 5).map((d: any, i: number) => `${i + 1}. ${d.title}`).join('\n') || 'None'}
+Architecture Clarity: ${projectReview?.architectureClarity?.score ?? 'N/A'}/100
+Design Patterns: ${projectReview?.architectureClarity?.designPatterns?.join(', ') ?? 'None'}
+Anti-Patterns: ${projectReview?.architectureClarity?.antiPatterns?.join(', ') ?? 'None'}
 
-CODE SAMPLE:
+Strengths: ${(projectReview?.strengths || []).slice(0, 4).map((s: any) => s.pattern).join(', ') || 'None'}
+Weaknesses: ${(projectReview?.weaknesses || []).slice(0, 4).map((w: any) => w.issue).join(', ') || 'None'}
+
+═══════════════════════════════════════════════════════════
+          STAGE 2: INTELLIGENCE REPORT HIGHLIGHTS
+═══════════════════════════════════════════════════════════
+Architectural Patterns:
+${intelligenceReport?.systemArchitecture?.architecturalPatterns?.map((p: any) => `  • ${p.name}: ${p.description || ''}`).join('\n') || '  None detected'}
+
+Critical Design Decisions:
+${(intelligenceReport?.designDecisions || []).slice(0, 5).map((d: any, i: number) => `  ${i + 1}. ${d.title}: ${d.decision || ''}`).join('\n') || '  None'}
+
+Key Tradeoffs:
+${(intelligenceReport?.technicalTradeoffs || []).slice(0, 3).map((t: any) => `  • ${t.aspect}: ${t.chosenApproach || ''}`).join('\n') || '  None'}
+
+Bottlenecks:
+${(intelligenceReport?.scalabilityAnalysis?.bottlenecks || []).slice(0, 3).map((b: any) => `  • [${b.severity}] ${b.area}`).join('\n') || '  None'}
+
+═══════════════════════════════════════════════════════════
+                     SOURCE CODE
+═══════════════════════════════════════════════════════════
 ${codeContext}
 
-GENERATE 18 CORE QUESTIONS with category distribution: Architecture (5), Implementation (4), Trade-offs (4), Scalability (3), Security (2).
+═══════════════════════════════════════════════════════════
+                LIVE INTERVIEW QUESTION GENERATION
+═══════════════════════════════════════════════════════════
+Generate 18 CORE QUESTIONS with this distribution:
+• Architecture (5): "Walk me through the overall architecture", "How does data flow from X to Y?", "Why did you choose this layer structure?"
+• Implementation (4): "Explain how this function works", "Why did you implement X this way?", "What data structure did you use and why?"
+• Trade-offs (4): "Why did you choose X over Y?", "What would you change if you had more time?", "What are the downsides of this approach?"
+• Scalability (3): "What happens if traffic increases 100x?", "Where are the bottlenecks?", "How would you add caching?"
+• Security (2): "How do you handle authentication?", "Where could an attacker exploit this system?"
+
+QUESTION QUALITY RULES:
+1. EVERY question must reference specific files, functions, or patterns from the code
+2. Questions should be open-ended and test UNDERSTANDING, not yes/no
+3. Include "Why" and "What if" questions that probe deeper thinking
+4. Mix difficulty: 30% mid-level, 50% senior, 20% staff-level
+5. Each question needs complete expectedAnswer with keyPoints and redFlags
+6. Include followUpTopics for dynamic probing during the live interview
 
 Return ONLY valid JSON array:
 [
   {
     "questionId": "CORE-01",
-    "question": "The actual interview question",
+    "question": "The actual interview question (referencing specific code)",
     "category": "architecture|implementation|tradeoffs|scalability|security",
     "difficulty": "mid-level|senior|staff",
     "estimatedTime": 5,
     "priority": "critical",
     "context": {
       "fileReferences": [{"file": "path/to/file", "lineStart": 10, "lineEnd": 50}],
-      "codeSnippet": "relevant code snippet",
+      "codeSnippet": "relevant code snippet if applicable",
       "relatedConcepts": ["concept1", "concept2"]
     },
     "expectedAnswer": {
-      "keyPoints": ["point1", "point2"],
+      "keyPoints": ["point1", "point2", "point3"],
       "acceptableApproaches": ["approach1"],
-      "redFlags": ["red flag1"]
+      "redFlags": ["red flag that suggests the candidate didn't build this"]
     },
-    "followUpTopics": ["topic1", "topic2"],
+    "followUpTopics": ["deeper topic 1", "edge case to explore"],
     "tags": ["tag1", "tag2"]
   }
 ]`;
@@ -330,24 +375,90 @@ function buildQuestionSheetPrompt(
   codeContext: string
 ): string {
 
-  return `You are a Staff Software Engineer at Google creating a 50-question technical interview bank.
+  return `You are a Staff Software Engineer at Google creating a comprehensive 50-question technical interview bank based on a candidate's actual codebase. Your questions must be deeply grounded in the code — never generic. A great interviewer asks questions that reveal whether the candidate truly understands what they built and WHY.
 
-PROJECT CONTEXT:
-Frameworks: ${contextMap.frameworks.join(', ') || 'None'}
+═══════════════════════════════════════════════════════════
+                    REPOSITORY METADATA
+═══════════════════════════════════════════════════════════
 Languages: ${JSON.stringify(contextMap.languages || {})}
-Total Files: ${contextMap.userCodeFiles.length}
+Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None'}
+Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None'}
+Total Files: ${(contextMap.userCodeFiles || []).length}
+File List: ${(contextMap.userCodeFiles || []).slice(0, 30).join(', ')}
 
-CODE QUALITY: ${projectReview.codeQuality?.overall || 0}/100
+═══════════════════════════════════════════════════════════
+              STAGE 1: PROJECT REVIEW RESULTS
+═══════════════════════════════════════════════════════════
+Overall Code Quality: ${projectReview?.codeQuality?.overall ?? 'N/A'}/100
+  ├─ Readability:      ${projectReview?.codeQuality?.readability ?? 'N/A'}/100
+  ├─ Maintainability:  ${projectReview?.codeQuality?.maintainability ?? 'N/A'}/100
+  ├─ Error Handling:   ${projectReview?.codeQuality?.errorHandling ?? 'N/A'}/100
+  ├─ Security:         ${projectReview?.codeQuality?.security ?? 'N/A'}/100
+  ├─ Performance:      ${projectReview?.codeQuality?.performance ?? 'N/A'}/100
+  └─ Documentation:    ${projectReview?.codeQuality?.documentation ?? 'N/A'}/100
 
-KEY ARCHITECTURAL PATTERNS:
-${intelligenceReport.systemArchitecture?.architecturalPatterns?.map((p: any) => `- ${p.name}: ${p.description}`).join('\n') || 'None'}
+Architecture Clarity: ${projectReview?.architectureClarity?.score ?? 'N/A'}/100
+Design Patterns: ${projectReview?.architectureClarity?.designPatterns?.join(', ') ?? 'None'}
+Anti-Patterns: ${projectReview?.architectureClarity?.antiPatterns?.join(', ') ?? 'None'}
 
-CODE SAMPLE:
+Employability: ${projectReview?.employabilitySignal?.overall ?? 'N/A'}/100
+  ├─ Complexity: ${projectReview?.employabilitySignal?.complexity ?? 'N/A'}
+  ├─ Production Readiness: ${projectReview?.employabilitySignal?.productionReadiness ?? 'N/A'}/100
+  └─ Big Tech Match: ${projectReview?.employabilitySignal?.companyTierMatch?.bigTech ?? 'N/A'}%
+
+STRENGTHS:
+${(projectReview?.strengths || []).slice(0, 5).map((s: any) => `  ✓ ${s.pattern}: ${s.description}`).join('\n') || '  None'}
+
+WEAKNESSES:
+${(projectReview?.weaknesses || []).slice(0, 5).map((w: any) => `  ✗ [${w.severity}] ${w.issue}`).join('\n') || '  None'}
+
+CRITICAL ISSUES:
+${(projectReview?.criticalIssues || []).slice(0, 3).map((c: any) => `  ⚠ [${c.category}] ${c.description}`).join('\n') || '  None'}
+
+═══════════════════════════════════════════════════════════
+          STAGE 2: INTELLIGENCE REPORT HIGHLIGHTS
+═══════════════════════════════════════════════════════════
+Architectural Patterns:
+${intelligenceReport?.systemArchitecture?.architecturalPatterns?.map((p: any) => `  • ${p.name}: ${p.description || ''}`).join('\n') || '  None detected'}
+
+Key Design Decisions:
+${(intelligenceReport?.designDecisions || []).slice(0, 5).map((d: any, i: number) => `  ${i + 1}. ${d.title}: ${d.decision || ''}`).join('\n') || '  None'}
+
+Technical Tradeoffs:
+${(intelligenceReport?.technicalTradeoffs || []).slice(0, 4).map((t: any) => `  • ${t.aspect}: Chose ${t.chosenApproach || 'N/A'}`).join('\n') || '  None'}
+
+Scalability Bottlenecks:
+${(intelligenceReport?.scalabilityAnalysis?.bottlenecks || []).slice(0, 3).map((b: any) => `  • [${b.severity}] ${b.area}: ${b.description || ''}`).join('\n') || '  None'}
+
+Security Issues:
+${(intelligenceReport?.securityPosture?.vulnerabilities || []).slice(0, 3).map((v: any) => `  • [${v.severity}] ${v.description || v.category || ''}`).join('\n') || '  None'}
+
+═══════════════════════════════════════════════════════════
+                     SOURCE CODE
+═══════════════════════════════════════════════════════════
 ${codeContext}
 
-GENERATE 50 QUESTIONS (Architecture: 12, Implementation: 12, Trade-offs: 10, Scalability: 8, Design Patterns: 4, Security: 4).
+═══════════════════════════════════════════════════════════
+                     QUESTION GENERATION TASK
+═══════════════════════════════════════════════════════════
+Generate 50 QUESTIONS with this distribution:
+• Architecture (12): System design, layer interactions, component relationships, data flow
+• Implementation (12): Specific code choices, algorithms, data structures, logic
+• Trade-offs (10): Why X over Y, consequences of decisions, alternative approaches
+• Scalability (8): Performance bottlenecks, horizontal scaling, caching, database optimization
+• Design Patterns (4): Design patterns used/missing, SOLID principles, DRY/KISS
+• Security (4): Auth, input validation, data protection, vulnerability awareness
 
-Return ONLY valid JSON array. Each question must include questionId, question (referencing specific files), category, difficulty, context, expectedAnswer, followUpQuestions, evaluationCriteria.`;
+QUESTION QUALITY GUIDELINES:
+- Every question MUST reference specific files, functions, or code patterns from the codebase
+- Questions should test UNDERSTANDING, not memorization
+- Include "Why did you...?" and "What would happen if...?" style questions
+- Mix difficulty levels: 40% mid-level, 40% senior, 20% staff-level
+- Each question must have complete expectedAnswer with keyPoints, acceptableApproaches, and redFlags
+
+Return ONLY valid JSON array. Each question must include:
+questionId, question (referencing specific files/code), category, difficulty, context (with fileReferences and relatedConcepts), expectedAnswer (with keyPoints, acceptableApproaches, redFlags), followUpQuestions (2-3 per question), evaluationCriteria (weights summing to 1.0), tags.`;
 }
 
 /**

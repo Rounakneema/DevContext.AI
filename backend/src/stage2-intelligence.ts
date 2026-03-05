@@ -181,63 +181,111 @@ async function runArchitectureAgent(
   analysisId: string
 ): Promise<any> {
 
-  const prompt = `You are a Staff Software Architect analyzing a codebase to understand its system architecture.
+  const prompt = `You are a Principal Software Architect at a FAANG company. You have 20+ years of experience and are conducting an in-depth architecture review of a candidate's codebase. Your analysis must be evidence-based, referencing specific files and code patterns you observe.
 
-REPOSITORY CONTEXT:
+═══════════════════════════════════════════════════════════
+                    REPOSITORY METADATA
+═══════════════════════════════════════════════════════════
 Languages: ${JSON.stringify(contextMap.languages || {})}
-Frameworks: ${contextMap.frameworks.join(', ') || 'None'}
-Entry Points: ${contextMap.entryPoints.join(', ') || 'None'}
-Total Files: ${contextMap.userCodeFiles.length}
+Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None detected'}
+Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None detected'}
+Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None detected'}
+Total User Code Files: ${(contextMap.userCodeFiles || []).length}
+File List: ${(contextMap.userCodeFiles || []).slice(0, 30).join(', ')}${(contextMap.userCodeFiles || []).length > 30 ? ` ... and ${(contextMap.userCodeFiles || []).length - 30} more` : ''}
 
-CODE SAMPLE:
+═══════════════════════════════════════════════════════════
+              STAGE 1 PROJECT REVIEW RESULTS
+═══════════════════════════════════════════════════════════
+Overall Code Quality: ${projectReview?.codeQuality?.overall ?? 'N/A'}/100
+  ├─ Readability:      ${projectReview?.codeQuality?.readability ?? 'N/A'}/100
+  ├─ Maintainability:  ${projectReview?.codeQuality?.maintainability ?? 'N/A'}/100
+  ├─ Error Handling:   ${projectReview?.codeQuality?.errorHandling ?? 'N/A'}/100
+  ├─ Security:         ${projectReview?.codeQuality?.security ?? 'N/A'}/100
+  ├─ Performance:      ${projectReview?.codeQuality?.performance ?? 'N/A'}/100
+  └─ Documentation:    ${projectReview?.codeQuality?.documentation ?? 'N/A'}/100
+Quality Justification: ${projectReview?.codeQuality?.justification ?? 'None'}
+
+Architecture Clarity Score: ${projectReview?.architectureClarity?.score ?? 'N/A'}/100
+  ├─ Component Organization: ${projectReview?.architectureClarity?.componentOrganization ?? 'N/A'}
+  ├─ Separation of Concerns: ${projectReview?.architectureClarity?.separationOfConcerns ?? 'N/A'}
+  ├─ Design Patterns Found: ${projectReview?.architectureClarity?.designPatterns?.join(', ') ?? 'None'}
+  └─ Anti-Patterns Detected: ${projectReview?.architectureClarity?.antiPatterns?.join(', ') ?? 'None'}
+
+Employability Signal: ${projectReview?.employabilitySignal?.overall ?? 'N/A'}/100
+  ├─ Complexity Level: ${projectReview?.employabilitySignal?.complexity ?? 'N/A'}
+  ├─ Production Readiness: ${projectReview?.employabilitySignal?.productionReadiness ?? 'N/A'}/100
+  └─ Company Tier Match: Big Tech=${projectReview?.employabilitySignal?.companyTierMatch?.bigTech ?? 'N/A'}% | Product=${projectReview?.employabilitySignal?.companyTierMatch?.productCompanies ?? 'N/A'}% | Startup=${projectReview?.employabilitySignal?.companyTierMatch?.startups ?? 'N/A'}%
+
+KEY STRENGTHS IDENTIFIED:
+${(projectReview?.strengths || []).slice(0, 5).map((s: any) => `  ✓ [${s.impact?.toUpperCase() || 'MEDIUM'}] ${s.pattern}: ${s.description}`).join('\n') || '  None identified'}
+
+KEY WEAKNESSES IDENTIFIED:
+${(projectReview?.weaknesses || []).slice(0, 5).map((w: any) => `  ✗ [${w.severity?.toUpperCase() || 'MEDIUM'}] ${w.issue}: ${w.impact}`).join('\n') || '  None identified'}
+
+CRITICAL ISSUES:
+${(projectReview?.criticalIssues || []).slice(0, 3).map((c: any) => `  ⚠ [${c.category}] ${c.description}`).join('\n') || '  None found'}
+
+═══════════════════════════════════════════════════════════
+                     SOURCE CODE
+═══════════════════════════════════════════════════════════
 ${codeContext}
 
-PROJECT REVIEW SUMMARY (from previous analysis):
-Code Quality: ${projectReview.codeQuality?.overall || 'N/A'}/100
-Architecture Clarity: ${projectReview.architectureClarity?.score || 'N/A'}/100
-Design Patterns Found: ${projectReview.architectureClarity?.designPatterns?.map((p: any) => p.name).join(', ') || 'None'}
+═══════════════════════════════════════════════════════════
+                     YOUR ANALYSIS TASK
+═══════════════════════════════════════════════════════════
+Perform a comprehensive architecture deep-dive. You must:
 
-YOUR TASK: Deep dive into the system architecture.
+1. LAYER IDENTIFICATION: Identify every architectural layer (Presentation, API, Business Logic, Data Access, Infrastructure). For each layer, identify specific components, their responsibilities, and which files implement them.
 
-Analyze and return ONLY valid JSON in this exact format:
+2. ARCHITECTURAL PATTERNS: Detect all architectural patterns (MVC, MVP, MVVM, Clean Architecture, Hexagonal, Event-Driven, Microservices, Monolith, Serverless, etc.). Explain exactly HOW each pattern is implemented with file-level evidence.
+
+3. DATA FLOW: Trace the complete data flow from user input to database and back. Identify how data transforms at each layer.
+
+4. COMPONENT DIAGRAM: Describe relationships between all major components. Which components depend on which? Are there circular dependencies?
+
+5. TECHNOLOGY STACK: Catalog every technology used — languages, frameworks, databases, message queues, caching layers, dev tools, CI/CD tools, containerization.
+
+Return ONLY valid JSON in this exact format:
 
 {
   "systemArchitecture": {
-    "overview": "2-3 sentence high-level description of the architecture",
+    "overview": "3-5 sentence comprehensive description of the overall architecture",
     "layers": [
       {
-        "name": "Layer name (e.g., Presentation, Business Logic, Data Access)",
-        "components": ["Component 1", "Component 2"],
-        "responsibilities": ["What this layer does", "Key responsibilities"],
+        "name": "Layer name (e.g., Presentation, API Gateway, Business Logic, Data Access, Infrastructure)",
+        "components": ["Specific component names found in code"],
+        "responsibilities": ["Detailed responsibility 1", "Detailed responsibility 2"],
         "fileReferences": [{"file": "exact/path/to/file.ext"}]
       }
     ],
-    "componentDiagram": "Text description of component relationships (e.g., Client -> API -> Database)",
-    "dataFlowDiagram": "Text description of data flow through the system",
+    "componentDiagram": "Detailed text description of component relationships (e.g., React Frontend -> Express API Gateway -> Auth Middleware -> Business Logic Services -> PostgreSQL / Redis Cache)",
+    "dataFlowDiagram": "Step-by-step data flow description through the system",
     "architecturalPatterns": [
       {
-        "name": "Pattern name (e.g., MVC, Microservices, Event-Driven)",
-        "description": "How this pattern is implemented",
-        "implementation": "Specific details of implementation",
+        "name": "Pattern name",
+        "description": "How this pattern is implemented in this specific codebase",
+        "implementation": "Specific implementation details with file references",
         "fileReferences": [{"file": "path/to/file"}]
       }
     ],
     "technologyStack": {
       "languages": ${JSON.stringify(contextMap.languages || {})},
       "frameworks": ${JSON.stringify(contextMap.frameworks || [])},
-      "databases": ["List databases detected"],
-      "libraries": {"library-name": "version if known"},
-      "devTools": ["Docker", "Make", etc.]
+      "databases": ["List all databases detected from code, imports, config files"],
+      "libraries": {"library-name": "version if known from package.json"},
+      "devTools": ["Docker", "Makefile", "ESLint", "Prettier", etc.],
+      "infrastructure": ["AWS Lambda", "S3", "DynamoDB", etc.]
     }
   }
 }
 
-CRITICAL RULES:
-1. Only reference files from the code provided
-2. Be specific about what you see, not what you assume
-3. If you see a pattern, prove it with file references
-4. Return ONLY valid JSON, no markdown, no explanation
-5. Keep descriptions concise but informative`;
+GROUNDING RULES (MANDATORY):
+1. ONLY reference files that appear in the File List or CODE section above
+2. Every claim must be backed by specific file evidence
+3. If you're unsure about a pattern, mark it clearly and explain your reasoning
+4. Prefer specificity over generality — "Express.js REST API with JWT middleware" beats "Backend API"
+5. Return ONLY valid JSON, no markdown fences, no explanation text`;
+
 
   const response = await callBedrockConverse(prompt, MODEL_ID, { temperature: 0.4, maxTokens: 3000 });
 
@@ -267,23 +315,59 @@ async function runDesignDecisionsAgent(
   analysisId: string
 ): Promise<any> {
 
-  const prompt = `You are a Principal Engineer analyzing design decisions made in this codebase.
+  const prompt = `You are a Distinguished Engineer at a top-tier tech company analyzing the key design decisions embedded in a codebase. You specialize in reverse-engineering architectural intent from code artifacts. Your goal is to identify the WHY behind every significant technical choice.
 
-REPOSITORY CONTEXT:
-Frameworks: ${contextMap.frameworks.join(', ') || 'None'}
+═══════════════════════════════════════════════════════════
+                    REPOSITORY METADATA
+═══════════════════════════════════════════════════════════
+Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None detected'}
 Languages: ${JSON.stringify(contextMap.languages || {})}
+Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None detected'}
+Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None detected'}
+File List: ${(contextMap.userCodeFiles || []).slice(0, 25).join(', ')}
 
-CODE SAMPLE:
+═══════════════════════════════════════════════════════════
+              STAGE 1 PROJECT REVIEW CONTEXT
+═══════════════════════════════════════════════════════════
+Overall Code Quality: ${projectReview?.codeQuality?.overall ?? 'N/A'}/100
+Architecture Clarity: ${projectReview?.architectureClarity?.score ?? 'N/A'}/100
+Design Patterns Found: ${projectReview?.architectureClarity?.designPatterns?.join(', ') ?? 'None'}
+Anti-Patterns Detected: ${projectReview?.architectureClarity?.antiPatterns?.join(', ') ?? 'None'}
+Complexity Level: ${projectReview?.employabilitySignal?.complexity ?? 'N/A'}
+Production Readiness: ${projectReview?.employabilitySignal?.productionReadiness ?? 'N/A'}/100
+
+KEY STRENGTHS:
+${(projectReview?.strengths || []).slice(0, 5).map((s: any) => `  ✓ ${s.pattern}: ${s.description}`).join('\n') || '  None identified'}
+
+KEY WEAKNESSES:
+${(projectReview?.weaknesses || []).slice(0, 5).map((w: any) => `  ✗ [${w.severity}] ${w.issue}: ${w.impact}`).join('\n') || '  None identified'}
+
+═══════════════════════════════════════════════════════════
+                     SOURCE CODE
+═══════════════════════════════════════════════════════════
 ${codeContext}
 
-YOUR TASK: Identify 5-8 key design decisions made by the engineer.
+═══════════════════════════════════════════════════════════
+                     YOUR ANALYSIS TASK
+═══════════════════════════════════════════════════════════
+Identify 6-10 key design decisions made by the engineer. For each decision, provide:
 
-For each decision, answer:
-- What was the context/problem?
-- What decision was made?
-- Why was this approach chosen?
-- What are the consequences (pros/cons)?
-- What alternatives could have been considered?
+1. CONTEXT: What problem or requirement drove this decision?
+2. DECISION: What specific approach/technology/pattern was chosen?
+3. RATIONALE: Why was this the best choice given the constraints?
+4. CONSEQUENCES: What are the positive AND negative implications?
+5. ALTERNATIVES: What other approaches could have been taken, and why weren't they?
+6. EVIDENCE: Which specific files/code prove this decision was made?
+
+Look for decisions about:
+- Database choice (SQL vs NoSQL, which specific DB)
+- Authentication strategy (JWT, sessions, OAuth)
+- API design (REST vs GraphQL, versioning)
+- State management approach
+- Error handling strategy
+- Dependency injection / service patterns
+- Caching strategy
+- Deployment architecture
 
 Return ONLY valid JSON:
 
@@ -291,28 +375,35 @@ Return ONLY valid JSON:
   "designDecisions": [
     {
       "decisionId": "dec-01",
-      "title": "Short title (e.g., 'Use of Redis for Caching')",
-      "context": "What problem needed solving",
-      "decision": "What was chosen",
-      "rationale": "Why this was chosen",
+      "title": "Short descriptive title",
+      "context": "What problem needed solving — be specific",
+      "decision": "What was chosen and how it's implemented",
+      "rationale": "Why this was chosen over alternatives",
       "consequences": {
-        "positive": ["Pro 1", "Pro 2"],
-        "negative": ["Con 1", "Con 2"],
-        "mitigations": ["How cons are addressed"]
+        "positive": ["Specific advantage 1", "Specific advantage 2"],
+        "negative": ["Specific cost/limitation 1"],
+        "mitigations": ["How the negatives are addressed"]
       },
-      "alternativesConsidered": ["Alternative 1", "Alternative 2"],
+      "alternativesConsidered": [
+        {
+          "approach": "Alternative approach name",
+          "pros": ["Why it could work"],
+          "cons": ["Why it wasn't chosen"],
+          "whyNotChosen": "Primary reason this was rejected"
+        }
+      ],
       "fileReferences": [{"file": "path/to/file"}],
       "confidence": "high|medium|low",
-      "groundingEvidence": ["What in the code proves this decision was made"]
+      "groundingEvidence": ["What in the code specifically proves this decision"]
     }
   ]
 }
 
-CRITICAL RULES:
-1. Only analyze decisions YOU CAN SEE in the code
-2. Don't invent decisions that aren't evident
-3. Provide file references as proof
-4. Focus on architectural/technical decisions, not trivial ones
+GROUNDING RULES:
+1. Only analyze decisions YOU CAN SEE in the code — never speculate
+2. Provide file references as proof for every decision
+3. Focus on significant architectural/technical decisions, not trivial style choices
+4. If a decision is implicit (no explicit comment), mark confidence as 'medium'
 5. Return ONLY JSON, no markdown`;
 
   const response = await callBedrockConverse(prompt, MODEL_ID, { temperature: 0.5, maxTokens: 3000 });
@@ -343,14 +434,53 @@ async function runTradeoffsAgent(
   analysisId: string
 ): Promise<any> {
 
-  const prompt = `You are a Tech Lead analyzing technical tradeoffs in this codebase.
+  const prompt = `You are a VP of Engineering at a scale-up evaluating the technical tradeoffs embedded in this codebase. A tradeoff is where the engineer chose X over Y, gaining some benefits but accepting some costs. Your job is to identify these tradeoffs, assess their merit, and evaluate their impact on the system.
 
-CODE SAMPLE:
+═══════════════════════════════════════════════════════════
+                    REPOSITORY METADATA
+═══════════════════════════════════════════════════════════
+Languages: ${JSON.stringify(contextMap.languages || {})}
+Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None'}
+File Count: ${(contextMap.userCodeFiles || []).length}
+
+═══════════════════════════════════════════════════════════
+              STAGE 1 REVIEW CONTEXT
+═══════════════════════════════════════════════════════════
+Code Quality: ${projectReview?.codeQuality?.overall ?? 'N/A'}/100
+Performance: ${projectReview?.codeQuality?.performance ?? 'N/A'}/100
+Maintainability: ${projectReview?.codeQuality?.maintainability ?? 'N/A'}/100
+Security: ${projectReview?.codeQuality?.security ?? 'N/A'}/100
+
+Strengths: ${(projectReview?.strengths || []).slice(0, 3).map((s: any) => s.pattern).join(', ') || 'None'}
+Weaknesses: ${(projectReview?.weaknesses || []).slice(0, 3).map((w: any) => w.issue).join(', ') || 'None'}
+
+═══════════════════════════════════════════════════════════
+                     SOURCE CODE
+═══════════════════════════════════════════════════════════
 ${codeContext}
 
-YOUR TASK: Identify 3-5 significant technical tradeoffs made in this project.
+═══════════════════════════════════════════════════════════
+                     YOUR ANALYSIS TASK
+═══════════════════════════════════════════════════════════
+Identify 4-6 significant technical tradeoffs. Common tradeoff categories:
 
-A tradeoff is where the engineer chose X over Y, gaining some benefits but accepting some costs.
+- REST vs GraphQL API design
+- SQL vs NoSQL database choice
+- Monolith vs Microservices
+- Server-side rendering vs Client-side rendering
+- Synchronous vs Asynchronous processing
+- Strong typing vs Dynamic typing
+- Normalization vs Denormalization
+- Build-vs-Buy (custom code vs library)
+- Security vs Usability
+- Performance vs Readability
+
+For each tradeoff, assess:
+1. What was the specific choice point?
+2. What was chosen and what was sacrificed?
+3. Is this the RIGHT tradeoff for the project's context?
+4. What's the impact on performance, maintainability, scalability, and cost?
 
 Return ONLY valid JSON:
 
@@ -359,10 +489,10 @@ Return ONLY valid JSON:
     {
       "tradeoffId": "trd-01",
       "aspect": "What aspect (e.g., 'REST vs GraphQL', 'SQL vs NoSQL')",
-      "chosenApproach": "What was chosen",
-      "tradeoffRationale": "Why this choice makes sense",
-      "pros": ["Advantage 1", "Advantage 2"],
-      "cons": ["Disadvantage 1", "Disadvantage 2"],
+      "chosenApproach": "What was chosen and why",
+      "tradeoffRationale": "Why this choice makes sense given project constraints",
+      "pros": ["Specific advantage 1", "Specific advantage 2"],
+      "cons": ["Specific disadvantage 1", "Specific disadvantage 2"],
       "impact": {
         "performance": "positive|negative|neutral",
         "maintainability": "positive|negative|neutral",
@@ -374,9 +504,9 @@ Return ONLY valid JSON:
   ]
 }
 
-CRITICAL RULES:
+GROUNDING RULES:
 1. Only analyze tradeoffs you can actually see in the code
-2. Be balanced - every choice has pros AND cons
+2. Be balanced — every choice has pros AND cons
 3. Focus on significant tradeoffs, not trivial ones
 4. Provide evidence with file references
 5. Return ONLY JSON`;
@@ -409,32 +539,71 @@ async function runScalabilityAgent(
   analysisId: string
 ): Promise<any> {
 
-  const prompt = `You are a Staff Engineer analyzing scalability characteristics of this system.
+  const prompt = `You are a Site Reliability Engineer (SRE) and Application Security Lead at a top-tier tech company. You are evaluating this codebase for production readiness, scalability bottlenecks, and security vulnerabilities.
 
-CODE SAMPLE:
+═══════════════════════════════════════════════════════════
+                    REPOSITORY METADATA
+═══════════════════════════════════════════════════════════
+Languages: ${JSON.stringify(contextMap.languages || {})}
+Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None'}
+File Count: ${(contextMap.userCodeFiles || []).length}
+
+═══════════════════════════════════════════════════════════
+              STAGE 1 REVIEW CONTEXT
+═══════════════════════════════════════════════════════════
+Code Quality: ${projectReview?.codeQuality?.overall ?? 'N/A'}/100
+Performance Score: ${projectReview?.codeQuality?.performance ?? 'N/A'}/100
+Security Score: ${projectReview?.codeQuality?.security ?? 'N/A'}/100
+Error Handling Score: ${projectReview?.codeQuality?.errorHandling ?? 'N/A'}/100
+Complexity Level: ${projectReview?.employabilitySignal?.complexity ?? 'N/A'}
+Production Readiness: ${projectReview?.employabilitySignal?.productionReadiness ?? 'N/A'}/100
+
+CRITICAL ISSUES:
+${(projectReview?.criticalIssues || []).map((c: any) => `  ⚠ [${c.category}] ${c.description} — Severity: ${c.severity || 'unknown'}`).join('\n') || '  None found'}
+
+WEAKNESSES:
+${(projectReview?.weaknesses || []).filter((w: any) => w.severity === 'critical' || w.severity === 'high').map((w: any) => `  ✗ ${w.issue}: ${w.impact}`).join('\n') || '  None critical'}
+
+═══════════════════════════════════════════════════════════
+                     SOURCE CODE
+═══════════════════════════════════════════════════════════
 ${codeContext}
 
-PROJECT REVIEW:
-Performance Score: ${projectReview.codeQuality?.performance || 'N/A'}/100
+═══════════════════════════════════════════════════════════
+                     YOUR ANALYSIS TASK
+═══════════════════════════════════════════════════════════
+Perform two analyses:
 
-YOUR TASK: Analyze scalability - bottlenecks, limitations, and improvement opportunities.
+PART 1 — SCALABILITY ANALYSIS:
+1. Estimate current capacity (users, RPS, data volume)
+2. Identify ALL bottlenecks (database queries, N+1 problems, missing indexes, blocking I/O, memory leaks, connection pooling issues)
+3. Identify architectural constraints that limit horizontal scaling
+4. Provide actionable improvement recommendations ranked by impact/effort
+
+PART 2 — SECURITY POSTURE:
+1. Identify vulnerabilities (injection, XSS, CSRF, exposed secrets, insecure auth, missing input validation)
+2. Assess authentication mechanism (JWT, sessions, OAuth)
+3. Assess authorization patterns (RBAC, ABAC, middleware guards)
+4. Check sensitive data handling (encryption, hashing, environment variables)
+5. List security best practices followed AND missing
 
 Return ONLY valid JSON:
 
 {
   "scalabilityAnalysis": {
     "currentCapacity": {
-      "estimatedUsers": "Rough estimate based on architecture",
-      "estimatedRPS": "Requests per second estimate",
-      "dataVolumeGB": "Data volume the system can handle"
+      "estimatedUsers": 1000,
+      "estimatedRPS": 50,
+      "dataVolumeGB": 5
     },
     "bottlenecks": [
       {
         "bottleneckId": "bot-01",
-        "area": "Where the bottleneck is",
+        "area": "Where the bottleneck is (e.g., Database Queries, API Layer, File I/O)",
         "description": "Detailed description of the bottleneck",
         "severity": "critical|high|medium|low",
-        "estimatedImpact": "What happens when hit",
+        "estimatedImpact": "What happens when this bottleneck is hit at scale",
         "fileReferences": [{"file": "path/to/file"}]
       }
     ],
@@ -445,34 +614,43 @@ Return ONLY valid JSON:
         "recommendation": "What to do",
         "impact": "high|medium|low",
         "effort": "high|medium|low",
-        "priority": 1-5,
-        "implementation": "How to implement",
-        "estimatedGain": "Expected improvement"
+        "priority": 1,
+        "implementation": "Step-by-step implementation guidance",
+        "estimatedGain": "Expected improvement (e.g., '10x RPS increase')"
       }
     ],
     "architecturalConstraints": ["Constraint 1", "Constraint 2"]
   },
   "securityPosture": {
-    "overallScore": ${projectReview.codeQuality?.security || 65},
-    "vulnerabilities": [],
+    "overallScore": ${projectReview?.codeQuality?.security ?? 65},
+    "vulnerabilities": [
+      {
+        "vulnerabilityId": "vuln-01",
+        "category": "injection|authentication|exposure|configuration|cryptography",
+        "severity": "critical|high|medium|low",
+        "description": "What the vulnerability is",
+        "remediation": "How to fix it",
+        "fileReferences": [{"file": "path/to/file"}]
+      }
+    ],
     "bestPractices": {
       "followed": ["Practice 1", "Practice 2"],
       "missing": ["Missing 1", "Missing 2"]
     },
-    "sensitiveDataHandling": "How sensitive data is handled",
-    "authenticationMechanism": "What auth is used",
-    "authorizationPattern": "How authorization works"
+    "sensitiveDataHandling": "How sensitive data (passwords, tokens, PII) is handled",
+    "authenticationMechanism": "What authentication is used and how it's implemented",
+    "authorizationPattern": "How authorization and access control work"
   }
 }
 
-CRITICAL RULES:
-1. Be realistic about capacity estimates
-2. Only flag bottlenecks you can see in the code
+GROUNDING RULES:
+1. Be realistic about capacity estimates based on the actual architecture
+2. Only flag bottlenecks and vulnerabilities you can see in the code
 3. Prioritize high-impact improvements
 4. Provide file references as evidence
 5. Return ONLY JSON`;
 
-  const response = await callBedrockConverse(prompt, MODEL_ID, { temperature: 0.4, maxTokens: 2500 });
+  const response = await callBedrockConverse(prompt, MODEL_ID, { temperature: 0.4, maxTokens: 4000 });
 
   await CostTracker.trackAiCall({
     analysisId,
@@ -500,30 +678,69 @@ async function runResumeBulletsAgent(
   analysisId: string
 ): Promise<any> {
 
-  const prompt = `You are a career coach writing resume bullets for a software engineer.
+  const prompt = `You are a Senior Career Coach and Technical Recruiter at Google who specializes in crafting ATS-optimized resume bullets. You are reviewing an engineer's codebase to generate compelling, quantified resume achievements based on what they actually built.
 
-PROJECT CONTEXT:
+═══════════════════════════════════════════════════════════
+                    PROJECT CONTEXT
+═══════════════════════════════════════════════════════════
 Languages: ${JSON.stringify(contextMap.languages || {})}
-Frameworks: ${contextMap.frameworks.join(', ') || 'None'}
-Code Quality: ${projectReview.codeQuality?.overall || 'N/A'}/100
-Complexity: ${projectReview.employabilitySignal?.complexity || 'moderate'}
+Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None'}
+Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None'}
+Total Files: ${(contextMap.userCodeFiles || []).length}
 
-CODE SAMPLE:
+═══════════════════════════════════════════════════════════
+              STAGE 1 REVIEW CONTEXT
+═══════════════════════════════════════════════════════════
+Code Quality: ${projectReview?.codeQuality?.overall ?? 'N/A'}/100
+Architecture Clarity: ${projectReview?.architectureClarity?.score ?? 'N/A'}/100
+Complexity Level: ${projectReview?.employabilitySignal?.complexity ?? 'moderate'}
+Production Readiness: ${projectReview?.employabilitySignal?.productionReadiness ?? 'N/A'}/100
+Design Patterns: ${projectReview?.architectureClarity?.designPatterns?.join(', ') ?? 'None'}
+
+Company Tier Match:
+  Big Tech Readiness: ${projectReview?.employabilitySignal?.companyTierMatch?.bigTech ?? 'N/A'}%
+  Product Companies: ${projectReview?.employabilitySignal?.companyTierMatch?.productCompanies ?? 'N/A'}%
+  Startups: ${projectReview?.employabilitySignal?.companyTierMatch?.startups ?? 'N/A'}%
+
+KEY STRENGTHS (base bullets on these):
+${(projectReview?.strengths || []).map((s: any) => `  ✓ [${s.impact}] ${s.pattern}: ${s.description}`).join('\n') || '  None identified'}
+
+═══════════════════════════════════════════════════════════
+                     SOURCE CODE
+═══════════════════════════════════════════════════════════
 ${codeContext}
 
-YOUR TASK: Generate 10-15 resume bullets based on what this engineer actually built.
+═══════════════════════════════════════════════════════════
+                     YOUR TASK
+═══════════════════════════════════════════════════════════
+Generate 12-18 ATS-optimized resume bullets based on what this engineer actually built.
 
-Resume bullet formula:
-[Action Verb] + [What You Built] + [Technologies Used] + [Quantified Impact/Scale]
+RESUME BULLET FORMULA:
+[Strong Action Verb] + [What You Built/Did] + [Technologies Used] + [Quantified Impact/Scale]
 
-Examples of GOOD bullets:
-- "Architected microservices-based e-commerce platform using Node.js and PostgreSQL, handling 50K+ daily transactions"
-- "Engineered real-time data pipeline processing 2M events/day with Apache Kafka and Python"
+CATEGORIES TO COVER:
+- architecture: System design, infrastructure, architectural decisions
+- technical: Specific features, implementations, integrations
+- performance: Optimizations, scaling, caching, query optimization
+- leadership: Code organization, best practices, documentation
 
-Examples of BAD bullets:
-- "Built a website" (too vague)
-- "Used React and Node.js" (just tech list, no achievement)
-- "Implemented features" (no specifics)
+EXAMPLES OF EXCELLENT BULLETS:
+✓ "Architected event-driven microservices platform using Node.js, RabbitMQ, and PostgreSQL, processing 50K+ daily transactions with 99.9% uptime"
+✓ "Engineered real-time WebSocket notification system reducing client polling by 85% and decreasing server load from 2000 RPS to 300 RPS"
+✓ "Designed and implemented RBAC authorization middleware protecting 45+ API endpoints, reducing unauthorized access incidents by 100%"
+✓ "Built CI/CD pipeline using GitHub Actions with automated testing achieving 92% code coverage, reducing deployment time from 2 hours to 8 minutes"
+
+EXAMPLES OF BAD BULLETS (AVOID THESE):
+✗ "Built a website using React" (too vague, no impact)
+✗ "Used Node.js and MongoDB" (just a tech list)
+✗ "Implemented features" (no specifics)
+✗ "Worked on the backend" (generic)
+
+KEYWORD GUIDANCE:
+- Include ATS keywords: ${(contextMap.frameworks || []).concat(Object.keys(contextMap.languages || {})).join(', ')}
+- Use quantified metrics whenever possible (even reasonable estimates)
+- Vary action verbs: Architected, Engineered, Designed, Implemented, Optimized, Automated, Integrated, Migrated, Refactored, Streamlined
 
 Return ONLY valid JSON:
 
@@ -531,20 +748,20 @@ Return ONLY valid JSON:
   "resumeBullets": [
     {
       "bulletId": "res-01",
-      "text": "Complete resume bullet text",
+      "text": "Complete, polished resume bullet text",
       "category": "architecture|technical|performance|leadership",
-      "keywords": ["keyword1", "keyword2"],
+      "keywords": ["keyword1", "keyword2", "keyword3"],
       "verified": true
     }
   ]
 }
 
-CRITICAL RULES:
-1. Base bullets on ACTUAL code evidence
-2. Include specific technologies used
-3. Quantify when possible (users, RPS, data volume)
-4. Use strong action verbs (Architected, Engineered, Designed, Optimized)
-5. Make it sound impressive but honest
+GROUNDING RULES:
+1. Base EVERY bullet on ACTUAL code evidence — no fabrication
+2. Include specific technologies from the codebase
+3. Quantify when possible (users, RPS, data volume, file count, endpoints)
+4. Use strong action verbs — never start with "Helped" or "Assisted"
+5. Make it impressive but HONEST — exaggeration will be caught
 6. Return ONLY JSON`;
 
   const response = await callBedrockConverse(prompt, MODEL_ID, { temperature: 0.6, maxTokens: 2000 });
