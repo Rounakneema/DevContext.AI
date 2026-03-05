@@ -6,9 +6,7 @@ import ResumeBulletsPanel from "./ResumeBulletsPanel";
 import EmployabilitySignalPanel from "./EmployabilitySignalPanel";
 import ExportDropdown from "./ExportDropdown";
 
-interface OverviewTabProps {
-  analysisId: string;
-}
+import { useOutletContext } from "react-router-dom";
 
 const ScoreColor = (score: number) =>
   score >= 70 ? "#27AE60" : score >= 50 ? "#E67E22" : "#E74C3C";
@@ -19,7 +17,8 @@ const MiniBar = ({ score }: { score: number }) => (
   </div>
 );
 
-const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
+const OverviewPage: React.FC = () => {
+  const { analysisId } = useOutletContext<{ analysisId: string }>();
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -309,4 +308,4 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ analysisId }) => {
   );
 };
 
-export default OverviewTab;
+export default OverviewPage;

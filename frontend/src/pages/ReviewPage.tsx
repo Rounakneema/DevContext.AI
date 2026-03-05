@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from "react";
-import api from "../../services/api";
-import GapAnalysisPanel from "./GapAnalysisPanel";
-import CodeDNAPanel from "./CodeDNAPanel";
+import { useOutletContext } from "react-router-dom";
+import api from "../services/api";
+import GapAnalysisPanel from "../components/dashboard/GapAnalysisPanel";
+import CodeDNAPanel from "../components/dashboard/CodeDNAPanel";
 
-interface ReviewTabProps {
-  analysisId: string;
-}
-
-const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
+const ReviewPage: React.FC = () => {
+  const { analysisId } = useOutletContext<{ analysisId: string }>();
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,4 +187,4 @@ const ReviewTab: React.FC<ReviewTabProps> = ({ analysisId }) => {
   );
 };
 
-export default ReviewTab;
+export default ReviewPage;

@@ -570,6 +570,7 @@ export interface InterviewSession {
   GSI1PK: string;          // USER#<userId>
   GSI1SK: string;          // SESSION#<createdAt>
 
+  questions?: any[];       // Attached for frontend via get/create handlers
   ttl: number;             // 90 days
 }
 

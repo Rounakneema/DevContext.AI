@@ -109,7 +109,7 @@ const InterviewPage: React.FC = () => {
                         : ["technical", "system-design"];
             const newSession = await createInterviewSession({ analysisId: effectiveAnalysisId, config: { questionCount: count, questionTypes: types, targetRole: role } });
             setSession(newSession);
-            setCurrentQuestion(newSession.questions[0]);
+            setCurrentQuestion(newSession.questions?.[0] || null);
             setAnswer(""); setPhase("active");
         } catch (e: any) {
             setError(e.message || "Failed to start interview."); setPhase("config");

@@ -1111,7 +1111,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
     };
   }
 
-  const session = await DB.createInterviewSession({
+  const sessionData = {
     userId,
     analysisId,
     config: config || {
@@ -1121,10 +1121,15 @@ async function handleCreateInterviewSession(event: any, context: any) {
       feedbackMode: 'immediate'
     },
     totalQuestions: questions.length
-  });
+  };
 
-  // Store the mode in the session if possible, or handle it via analysis ref
-  // For now, the session will refer to the questions we found.
+  const dbSession = await DB.createInterviewSession(sessionData);
+
+  // Frontend expects the questions array inside the session object
+  const session = {
+    ...dbSession,
+    questions: questions
+  };
 
   await DB.logAnalysisEvent(analysisId, 'interview_session_created', {
     sessionId: session.sessionId
@@ -1159,6 +1164,18 @@ async function handleGetInterviewSession(event: any) {
       headers: CORS_HEADERS,
       body: JSON.stringify({ error: 'Session not found' })
     };
+  }
+
+  // Frontend expects the questions array inside the session object!
+  const analysis = await DB.getFullAnalysis(session.analysisId);
+  if (analysis && analysis.interviewSimulation) {
+    const questions = analysis.interviewSimulation.mode === 'live'
+      ? analysis.interviewSimulation.coreQuestions
+      : analysis.interviewSimulation.questions;
+
+    session.questions = questions || [];
+  } else {
+    session.questions = [];
   }
 
   return {
