@@ -96,8 +96,8 @@ const InterviewPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [phase, currentQuestion?.questionId]);
 
-    const currentIndex = session ? session.questions.findIndex(q => q.questionId === currentQuestion?.questionId) : 0;
-    const totalQuestions = session?.questions.length ?? count;
+    const currentIndex = session && session.questions ? session.questions.findIndex(q => q.questionId === currentQuestion?.questionId) : 0;
+    const totalQuestions = session?.questions?.length ?? count;
 
     const startSession = useCallback(async () => {
         if (!effectiveAnalysisId) { setError("No analysis ID. Please run an analysis first."); return; }
@@ -135,7 +135,9 @@ const InterviewPage: React.FC = () => {
     const nextQuestion = useCallback(async () => {
         if (!session) return;
         const nextIdx = currentIndex + 1;
-        if (nextIdx >= session.questions.length) {
+        const questionsLength = session.questions?.length || 0;
+
+        if (nextIdx >= questionsLength) {
             setPhase("loading");
             try {
                 const sum = await completeInterviewSession(session.sessionId);
@@ -144,7 +146,7 @@ const InterviewPage: React.FC = () => {
                 setSummary(null); setPhase("done");
             }
         } else {
-            setCurrentQuestion(session.questions[nextIdx]);
+            setCurrentQuestion(session.questions?.[nextIdx] || null);
             setAnswer(""); setCurrentEval(null); setPhase("active");
             setTimeout(() => textareaRef.current?.focus(), 100);
         }
