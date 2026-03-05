@@ -43,6 +43,17 @@ const AWS_SERVICES = [
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
+const dateInputStyle: React.CSSProperties = {
+  background: '#0f1117',
+  border: '1px solid #2d3748',
+  color: '#e2e8f0',
+  padding: '6px 10px',
+  borderRadius: '6px',
+  fontSize: '13px',
+  fontFamily: 'inherit',
+  colorScheme: 'dark'
+};
+
 /** Show full precision including tiny values like $0.00004 */
 function formatCost(usd: number): string {
   if (usd === 0) return '$0.00';
