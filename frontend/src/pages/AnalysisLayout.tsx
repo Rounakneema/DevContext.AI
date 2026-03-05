@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import OverviewTab from "../components/dashboard/OverviewTab";
-import ReviewTab from "../components/dashboard/ReviewTab";
-import ReportTab from "../components/dashboard/ReportTab";
-import InterviewTab from "../components/dashboard/InterviewTab";
-import HistoryTab from "../components/dashboard/HistoryTab";
+import { useNavigate, useLocation, Outlet, useParams } from "react-router-dom";
 import FileExplorer from "../components/dashboard/FileExplorer";
-import EvaluationFrameworkPage from "./EvaluationFrameworkPage";
 import api from "../services/api";
 
 type Tab = "overview" | "review" | "report" | "interview" | "history" | "framework";
@@ -25,13 +19,17 @@ const getRepoName = (item: AnalysisSummary) => {
   return parts[parts.length - 1] || 'Unknown';
 };
 
-const DashboardPage: React.FC = () => {
+const AnalysisLayout: React.FC = () => {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<Tab>(
-    (searchParams.get("tab") as Tab) || "overview",
-  );
-  const analysisId = searchParams.get("id") || undefined;
+  const location = useLocation();
+  const { id: analysisId } = useParams();
+
+  // Calculate active tab based on path
+  const pathParts = location.pathname.split('/');
+  const lastPart = pathParts[pathParts.length - 1];
+  const activeTab = ["history", "framework", "overview", "review", "report", "interview"].includes(lastPart)
+    ? lastPart as Tab
+    : "overview";
 
   // Analysis selector state
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
@@ -50,10 +48,10 @@ const DashboardPage: React.FC = () => {
           ? res
           : (res as any).items || [];
         setAnalyses(items);
-        // Auto-select first completed analysis if no id in URL
-        if (!analysisId && items.length > 0) {
+        // Auto-select first completed analysis if no id in URL and we are not on a global page
+        if (!analysisId && items.length > 0 && activeTab !== "history" && activeTab !== "framework") {
           const first = items.find(a => a.status === 'completed') || items[0];
-          setSearchParams({ id: first.analysisId, tab: activeTab });
+          navigate(`/app/dashboard/${first.analysisId}/overview`, { replace: true });
         }
       } catch (e) {
         console.error('Failed to load analyses:', e);
@@ -76,8 +74,8 @@ const DashboardPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const switchAnalysis = (id: string) => {
-    setSearchParams({ id, tab: activeTab });
+  const switchAnalysis = (newId: string) => {
+    navigate(`/app/dashboard/${newId}/${activeTab === 'history' || activeTab === 'framework' ? 'overview' : activeTab}`);
     setSelectorOpen(false);
   };
 
@@ -147,6 +145,13 @@ const DashboardPage: React.FC = () => {
 
   const practiceTabIds = ["interview", "history"];
   const metaTabIds = ["framework"];
+
+  const handleTabClick = (tabId: Tab) => {
+    if (tabId === 'history') navigate('/app/dashboard/history');
+    else if (tabId === 'framework') navigate('/app/dashboard/framework');
+    else if (tabId === 'interview' && analysisId) navigate(`/app/interview/${analysisId}`);
+    else if (analysisId) navigate(`/app/dashboard/${analysisId}/${tabId}`);
+  };
 
   return (
     <div className="dashboard-page">
@@ -243,7 +248,7 @@ const DashboardPage: React.FC = () => {
             <div
               key={tab.id}
               className={`ds-nav-item ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabClick(tab.id as Tab)}
             >
               {tab.icon}
               {tab.label}
@@ -257,7 +262,7 @@ const DashboardPage: React.FC = () => {
             <div
               key={tab.id}
               className={`ds-nav-item ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabClick(tab.id as Tab)}
             >
               {tab.icon}
               {tab.label}
@@ -273,7 +278,7 @@ const DashboardPage: React.FC = () => {
             <div
               key={tab.id}
               className={`ds-nav-item ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabClick(tab.id as Tab)}
               style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '4px' }}
             >
               {tab.icon}
@@ -302,36 +307,14 @@ const DashboardPage: React.FC = () => {
         />
       )}
 
-      {/* Dash Main Content */}
+      {/* Dash Main Content - Routed dynamically by Outlet! */}
       <div className="dash-main">
-        <div className={`tab-view ${activeTab === "overview" ? "active" : ""}`}>
-          {analysisId ? <OverviewTab analysisId={analysisId} /> : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '300px', gap: '12px', color: 'var(--text3)' }}>
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ opacity: 0.4 }}>
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <div style={{ fontSize: '14px' }}>Select an analysis from the sidebar dropdown to get started</div>
-            </div>
-          )}
-        </div>
-        <div className={`tab-view ${activeTab === "review" ? "active" : ""}`}>
-          {analysisId ? <ReviewTab analysisId={analysisId} /> : <div />}
-        </div>
-        <div className={`tab-view ${activeTab === "report" ? "active" : ""}`}>
-          {analysisId ? <ReportTab analysisId={analysisId} /> : <div />}
-        </div>
-        <div className={`tab-view ${activeTab === "interview" ? "active" : ""}`}>
-          <InterviewTab analysisId={analysisId} />
-        </div>
-        <div className={`tab-view ${activeTab === "history" ? "active" : ""}`}>
-          <HistoryTab />
-        </div>
-        <div className={`tab-view ${activeTab === "framework" ? "active" : ""}`}>
-          <EvaluationFrameworkPage />
+        <div className="tab-view active">
+          <Outlet context={{ analysisId }} />
         </div>
       </div>
     </div>
   );
 };
 
-export default DashboardPage;
+export default AnalysisLayout;

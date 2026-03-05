@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import api from "../../services/api";
+import { useOutletContext } from "react-router-dom";
+import api from "../services/api";
 
-interface ReportTabProps {
-  analysisId: string;
-}
-
-const ReportTab: React.FC<ReportTabProps> = ({ analysisId }) => {
+const ReportPage: React.FC = () => {
+  const { analysisId } = useOutletContext<{ analysisId: string }>();
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -254,4 +252,4 @@ const ReportTab: React.FC<ReportTabProps> = ({ analysisId }) => {
   );
 };
 
-export default ReportTab;
+export default ReportPage;

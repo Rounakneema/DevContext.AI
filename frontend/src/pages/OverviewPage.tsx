@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import api from "../../services/api";
-import CareerImpactHero from "./CareerImpactHero";
-import EngineeringLevelPanel from "./EngineeringLevelPanel";
-import ResumeBulletsPanel from "./ResumeBulletsPanel";
-import EmployabilitySignalPanel from "./EmployabilitySignalPanel";
-import ExportDropdown from "./ExportDropdown";
+import api from "../services/api";
+import CareerImpactHero from "../components/dashboard/CareerImpactHero";
+import EngineeringLevelPanel from "../components/dashboard/EngineeringLevelPanel";
+import ResumeBulletsPanel from "../components/dashboard/ResumeBulletsPanel";
+import EmployabilitySignalPanel from "../components/dashboard/EmployabilitySignalPanel";
+import ExportDropdown from "../components/dashboard/ExportDropdown";
 
 import { useOutletContext } from "react-router-dom";
 

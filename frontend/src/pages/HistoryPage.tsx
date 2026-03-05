@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../../services/api";
-import SkillProgressionPanel from "./SkillProgressionPanel";
+import api from "../services/api";
+import SkillProgressionPanel from "../components/dashboard/SkillProgressionPanel";
 
 interface AnalysisItem {
   analysisId: string;
@@ -11,7 +11,7 @@ interface AnalysisItem {
   createdAt: string;
 }
 
-const HistoryTab: React.FC = () => {
+const HistoryPage: React.FC = () => {
   const navigate = useNavigate();
   const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
   const [progress, setProgress] = useState<any>(null);
@@ -141,7 +141,7 @@ const HistoryTab: React.FC = () => {
                 e.currentTarget.style.borderColor = "var(--border)";
               }}
               onClick={() => {
-                navigate(`/app/dashboard?id=${item.analysisId}&tab=overview`);
+                navigate(`/app/analysis/${item.analysisId}/overview`);
               }}
             >
               <div
@@ -207,5 +207,5 @@ const HistoryTab: React.FC = () => {
   );
 };
 
-export default HistoryTab;
+export default HistoryPage;
 
