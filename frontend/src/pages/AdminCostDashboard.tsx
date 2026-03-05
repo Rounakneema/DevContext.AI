@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 
@@ -99,16 +99,7 @@ const AdminCostDashboard: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'perAnalysis' | 'aws'>('overview');
 
-  useEffect(() => { if (isAdmin) loadDashboardData(); }, [isAdmin]);
-  useEffect(() => {
-    if (isAdmin && autoRefresh) {
-      const iv = setInterval(loadDashboardData, 30_000);
-      return () => clearInterval(iv);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, autoRefresh]);
-
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     setLoading(true);
     try {
       const realtimeData = await api.getCostRealtime();
@@ -120,7 +111,15 @@ const AdminCostDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateRange.start, dateRange.end]);
+
+  useEffect(() => { if (isAdmin) loadDashboardData(); }, [isAdmin, loadDashboardData]);
+  useEffect(() => {
+    if (isAdmin && autoRefresh) {
+      const iv = setInterval(loadDashboardData, 30_000);
+      return () => clearInterval(iv);
+    }
+  }, [isAdmin, autoRefresh, loadDashboardData]);
 
   const exportToCSV = async () => {
     try {
