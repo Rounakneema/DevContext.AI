@@ -40,7 +40,7 @@ interface DailyCost {
 const AdminCostDashboard: React.FC = () => {
   const { user, isAdmin } = useAuth();
   const [loading, setLoading] = useState(false);
-  
+
   const [metrics, setMetrics] = useState<CostMetrics | null>(null);
   const [dailyCosts, setDailyCosts] = useState<DailyCost[]>([]);
   const [dateRange, setDateRange] = useState({
@@ -89,7 +89,7 @@ const AdminCostDashboard: React.FC = () => {
     try {
       const days = Math.ceil((new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime()) / (1000 * 60 * 60 * 24));
       const csvData = await api.exportCostData('csv', days);
-      
+
       // Create download link
       const blob = new Blob([csvData], { type: 'text/csv' });
       const url = window.URL.createObjectURL(blob);
@@ -195,15 +195,15 @@ const AdminCostDashboard: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
           <MetricCard
             title="Today's Cost"
-            value={`$${metrics?.today.totalCost.toFixed(2) || '0.00'}`}
-            subtitle={`${metrics?.today.totalCalls || 0} API calls`}
+            value={`$${(Number(metrics?.today?.totalCost) || 0).toFixed(2)}`}
+            subtitle={`${metrics?.today?.totalCalls || 0} API calls`}
             icon="💵"
             color="#48bb78"
           />
           <MetricCard
             title="This Month"
-            value={`$${metrics?.thisMonth.totalCost.toFixed(2) || '0.00'}`}
-            subtitle={`Projected: $${metrics?.thisMonth.projectedEndOfMonth.toFixed(2) || '0.00'}`}
+            value={`$${(Number(metrics?.thisMonth?.totalCost) || 0).toFixed(2)}`}
+            subtitle={`Projected: $${(Number(metrics?.thisMonth?.projectedEndOfMonth) || 0).toFixed(2)}`}
             icon="📊"
             color="#4299e1"
           />
@@ -248,10 +248,10 @@ const AdminCostDashboard: React.FC = () => {
                       {model.callCount}
                     </td>
                     <td style={{ padding: '12px', textAlign: 'right', fontSize: '14px', fontWeight: '600', color: '#2d3748' }}>
-                      ${model.totalCost.toFixed(2)}
+                      ${(Number(model.totalCost) || 0).toFixed(2)}
                     </td>
                     <td style={{ padding: '12px', textAlign: 'right', fontSize: '14px', color: '#718096' }}>
-                      ${model.avgCostPerCall.toFixed(3)}
+                      ${(Number(model.avgCostPerCall) || 0).toFixed(3)}
                     </td>
                   </tr>
                 ))}
@@ -324,7 +324,7 @@ const AdminCostDashboard: React.FC = () => {
                       {analysis.analysisId.substring(0, 8)}...
                     </td>
                     <td style={{ padding: '12px', textAlign: 'right', fontSize: '14px', fontWeight: '600', color: '#2d3748' }}>
-                      ${analysis.totalCost.toFixed(2)}
+                      ${(Number(analysis.totalCost) || 0).toFixed(2)}
                     </td>
                     <td style={{ padding: '12px', textAlign: 'right', fontSize: '14px', color: '#718096' }}>
                       {new Date(analysis.createdAt).toLocaleDateString()}
@@ -420,7 +420,7 @@ const SimpleBarChart: React.FC<{ data: DailyCost[] }> = ({ data }) => {
                 cursor: 'pointer',
                 transition: 'opacity 0.2s'
               }}
-              title={`${day.date}: $${day.totalCost.toFixed(2)} (${day.callCount} calls)`}
+              title={`${day.date}: $${(Number(day.totalCost) || 0).toFixed(2)} (${day.callCount ?? 0} calls)`}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
             >
@@ -434,7 +434,7 @@ const SimpleBarChart: React.FC<{ data: DailyCost[] }> = ({ data }) => {
                 color: '#2d3748',
                 whiteSpace: 'nowrap'
               }}>
-                ${day.totalCost.toFixed(2)}
+                ${(Number(day.totalCost) || 0).toFixed(2)}
               </div>
             </div>
             <div style={{ fontSize: '11px', color: '#718096', transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
