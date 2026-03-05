@@ -14,6 +14,7 @@ import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import ProfileSetupPage from "./pages/ProfileSetupPage";
 import AdminCostDashboard from "./pages/AdminCostDashboard";
+import InterviewPage from "./pages/InterviewPage";
 import "./styles.css";
 
 function App() {
@@ -22,12 +23,12 @@ function App() {
       <AuthProvider>
         <Router>
           <Routes>
-            {/* Public Routes - Only Landing, Login, Signup */}
+            {/* ── Public ── */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
 
-            {/* Admin Route - Cognito Protected */}
+            {/* ── Admin ── */}
             <Route
               path="/admin/cost-analytics"
               element={
@@ -37,7 +38,7 @@ function App() {
               }
             />
 
-            {/* Profile Setup - Protected but no onboarding check */}
+            {/* ── Profile Setup (protected, skip onboarding check) ── */}
             <Route
               path="/setup"
               element={
@@ -47,7 +48,25 @@ function App() {
               }
             />
 
-            {/* Main App Routes with Sidebar - Protected */}
+            {/* ── Full-screen Interview (no sidebar) ── */}
+            <Route
+              path="/app/interview"
+              element={
+                <ProtectedRoute>
+                  <InterviewPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/interview/:analysisId"
+              element={
+                <ProtectedRoute>
+                  <InterviewPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* ── Main App (with Sidebar) ── */}
             <Route
               path="/app/*"
               element={
@@ -61,6 +80,8 @@ function App() {
                         <Route path="/dashboard" element={<DashboardPage />} />
                         <Route path="/settings" element={<SettingsPage />} />
                         <Route path="/account" element={<AccountPage />} />
+                        {/* Catch-all inside /app/* */}
+                        <Route path="*" element={<Navigate to="/app" replace />} />
                       </Routes>
                     </div>
                   </div>
@@ -68,7 +89,7 @@ function App() {
               }
             />
 
-            {/* Catch all - redirect to login */}
+            {/* ── Global catch-all ── */}
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </Router>

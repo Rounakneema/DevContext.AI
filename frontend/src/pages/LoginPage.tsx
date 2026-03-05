@@ -2,421 +2,279 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
+const GH_ICON = (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+  </svg>
+);
+
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   const { login, logout, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // Auto-redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
-      const redirectTo = searchParams.get('redirect');
-      navigate(redirectTo || "/app", { replace: true });
+      navigate(searchParams.get("redirect") || "/app", { replace: true });
     }
   }, [user, authLoading, navigate, searchParams]);
-
-  const handleLogout = async () => {
-    setLoading(true);
-    try {
-      await logout();
-      setError("");
-    } catch (err) {
-      console.error("Logout error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-
     try {
       await login(email, password);
-      // Check for redirect parameter
-      const redirectTo = searchParams.get('redirect');
-      navigate(redirectTo || "/app");
+      navigate(searchParams.get("redirect") || "/app");
     } catch (err: any) {
-      setError(
-        err.message || "Failed to login. Please check your credentials.",
-      );
+      setError(err.message || "Invalid credentials. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGitHubLogin = () => {
-    // TODO: Implement GitHub OAuth
-    console.log("GitHub login clicked");
+  const handleReset = () => {
+    if (!resetEmail.trim()) return;
+    setResetSent(true);
+    setTimeout(() => { setResetSent(false); setShowForgot(false); }, 4000);
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 24px",
-      }}
-    >
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "16px",
-          padding: "40px",
-          width: "100%",
-          maxWidth: "400px",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.12)",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "17px",
-            fontWeight: "700",
-            letterSpacing: "-0.3px",
-            marginBottom: "6px",
-          }}
-        >
-          DevContext<span style={{ color: "var(--accent)" }}>.ai</span>
-        </div>
-        <div
-          style={{
-            fontSize: "12.5px",
-            color: "var(--text3)",
-            marginBottom: "24px",
-          }}
-        >
-          Welcome back.
+    <div style={root}>
+      {/* Background blobs */}
+      <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+        <div style={blob("#7C5CDB", 460, -80, -100)} />
+        <div style={blob("#2980b9", 320, "auto", -80, "auto", 20)} />
+        <div style={grid} />
+      </div>
+
+      <div style={card}>
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={logoBox}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
+              <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+            </svg>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5, marginBottom: 4 }}>
+            DevContext<span style={{ color: "#7C5CDB" }}>.ai</span>
+          </div>
+          <div style={{ fontSize: 13, color: "rgba(232,232,240,0.5)" }}>AI-powered code interview prep</div>
         </div>
 
-        {/* Show logged-in user banner if exists */}
         {user && (
-          <div
-            style={{
-              background: "var(--accent-light)",
-              border: "1px solid var(--accent)",
-              borderRadius: "8px",
-              padding: "14px 16px",
-              marginBottom: "16px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-            }}
-          >
+          <div style={banner("#7C5CDB")}>
             <div>
-              <div style={{ fontSize: "13px", fontWeight: "500", color: "var(--text)" }}>
-                Already signed in
-              </div>
-              <div style={{ fontSize: "12px", color: "var(--text2)", marginTop: "2px" }}>
-                {user.email}
-              </div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>Already signed in</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{user.email}</div>
             </div>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                onClick={() => navigate("/app")}
-                style={{
-                  background: "var(--accent)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "8px 14px",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  cursor: "pointer",
-                  fontFamily: "Geist, sans-serif",
-                }}
-              >
-                Go to App
-              </button>
-              <button
-                onClick={handleLogout}
-                disabled={loading}
-                style={{
-                  background: "transparent",
-                  color: "var(--accent)",
-                  border: "1px solid var(--accent)",
-                  borderRadius: "6px",
-                  padding: "8px 14px",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  cursor: "pointer",
-                  fontFamily: "Geist, sans-serif",
-                }}
-              >
-                {loading ? "..." : "Sign Out"}
-              </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <AuthBtn onClick={() => navigate("/app")} accent>Go to App</AuthBtn>
+              <AuthBtn onClick={async () => { await logout(); }}>Sign Out</AuthBtn>
             </div>
           </div>
         )}
 
-        <button
-          onClick={handleGitHubLogin}
-          type="button"
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            background: "var(--text)",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            padding: "11px",
-            fontFamily: "Geist, sans-serif",
-            fontSize: "13px",
-            fontWeight: "500",
-            cursor: "pointer",
-            transition: "all 0.15s",
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-          </svg>
-          Continue with GitHub
+        {/* GitHub SSO */}
+        <button onClick={() => { }} style={githubBtn} type="button">
+          {GH_ICON} Continue with GitHub
         </button>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            color: "var(--text3)",
-            fontSize: "11.5px",
-            margin: "18px 0",
-          }}
-        >
-          <div
-            style={{ flex: 1, height: "1px", background: "var(--border)" }}
-          ></div>
-          or sign in with email
-          <div
-            style={{ flex: 1, height: "1px", background: "var(--border)" }}
-          ></div>
-        </div>
+        <div style={divider}>or sign in with email</div>
 
-        {error && (
-          <div
-            style={{
-              background: "#FDECEC",
-              border: "1px solid #F5C6C6",
-              borderRadius: "7px",
-              padding: "10px 12px",
-              fontSize: "12.5px",
-              color: "#C0392B",
-              marginBottom: "12px",
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {error && <div style={errBox}>{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "12px" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "12px",
-                fontWeight: "500",
-                color: "var(--text2)",
-                marginBottom: "5px",
-              }}
-            >
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              style={{
-                width: "100%",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: "7px",
-                padding: "10px 12px",
-                fontFamily: "Geist, sans-serif",
-                fontSize: "13px",
-                color: "var(--text)",
-                outline: "none",
-                transition: "border-color 0.15s",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
+          <Field label="Email">
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="you@example.com" required autoComplete="email" style={input} />
+          </Field>
 
-          <div style={{ marginBottom: "12px" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "12px",
-                fontWeight: "500",
-                color: "var(--text2)",
-                marginBottom: "5px",
-              }}
-            >
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your password"
-              autoComplete="current-password"
-              required
-              style={{
-                width: "100%",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: "7px",
-                padding: "10px 12px",
-                fontFamily: "Geist, sans-serif",
-                fontSize: "13px",
-                color: "var(--text)",
-                outline: "none",
-                transition: "border-color 0.15s",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
+          <Field label="Password" action={
+            <span onClick={() => setShowForgot(f => !f)} style={forgotLink}>Forgot password?</span>
+          }>
+            <div style={{ position: "relative" }}>
+              <input type={showPass ? "text" : "password"} value={password}
+                onChange={e => setPassword(e.target.value)} placeholder="Your password"
+                required autoComplete="current-password" style={{ ...input, paddingRight: 40 }} />
+              <button type="button" onClick={() => setShowPass(s => !s)} style={eyeBtn}>
+                {showPass ? "🙈" : "👁"}
+              </button>
+            </div>
+          </Field>
 
-          {/* Forgot Password Link */}
-          <div style={{ textAlign: 'right', marginBottom: '12px' }}>
-            <span
-              onClick={() => setShowForgotPassword(!showForgotPassword)}
-              style={{
-                fontSize: '12px',
-                color: 'var(--accent)',
-                cursor: 'pointer',
-                fontWeight: '500',
-              }}
-            >
-              Forgot password?
-            </span>
-          </div>
-
-          {/* Forgot Password Form */}
-          {showForgotPassword && (
-            <div
-              style={{
-                background: 'var(--surface2)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                padding: '14px',
-                marginBottom: '12px',
-              }}
-            >
+          {showForgot && (
+            <div style={forgotBox}>
               {resetSent ? (
-                <div style={{ fontSize: '12.5px', color: '#27AE60', textAlign: 'center' }}>
-                  ✓ Password reset instructions sent to {resetEmail}
+                <div style={{ fontSize: 13, color: "#6fcf97", textAlign: "center" }}>
+                  ✓ Reset link sent to <strong>{resetEmail}</strong>
                 </div>
               ) : (
-                <>
-                  <div style={{ fontSize: '12px', color: 'var(--text2)', marginBottom: '8px' }}>
-                    Enter your email to receive a password reset link
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="email"
-                      value={resetEmail}
-                      onChange={(e) => setResetEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      style={{
-                        flex: 1,
-                        background: 'var(--surface)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '7px',
-                        padding: '8px 10px',
-                        fontFamily: 'Geist, sans-serif',
-                        fontSize: '12.5px',
-                        color: 'var(--text)',
-                        outline: 'none',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (resetEmail.trim()) {
-                          setResetSent(true);
-                          setTimeout(() => {
-                            setResetSent(false);
-                            setShowForgotPassword(false);
-                          }, 4000);
-                        }
-                      }}
-                      style={{
-                        background: 'var(--accent)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '7px',
-                        padding: '8px 14px',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        fontFamily: 'Geist, sans-serif',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Send Reset
-                    </button>
-                  </div>
-                </>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)}
+                    placeholder="your@email.com" style={{ ...input, flex: 1, marginBottom: 0 }} />
+                  <button type="button" onClick={handleReset} style={smallAccentBtn}>Send</button>
+                </div>
               )}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-accent"
-            style={{
-              width: "100%",
-              justifyContent: "center",
-              padding: "11px",
-              marginTop: "4px",
-            }}
-          >
-            {loading ? "Signing In..." : "Sign In →"}
+          <button type="submit" disabled={loading} style={submitBtn}>
+            {loading ? <Spinner /> : null}
+            {loading ? "Signing in…" : "Sign In →"}
           </button>
         </form>
 
-        <div
-          style={{
-            textAlign: "center",
-            fontSize: "12px",
-            color: "var(--text3)",
-            marginTop: "16px",
-          }}
-        >
+        <div style={{ textAlign: "center", fontSize: 12, color: "rgba(232,232,240,0.4)", marginTop: 20 }}>
           Don't have an account?{" "}
-          <span
-            onClick={() => navigate("/signup")}
-            style={{
-              color: "var(--accent)",
-              cursor: "pointer",
-              fontWeight: "500",
-            }}
-          >
-            Sign up free
-          </span>
+          <span onClick={() => navigate("/signup")} style={linkText}>Sign up free</span>
         </div>
       </div>
     </div>
   );
 };
+
+/* ── Styles & helpers ───────────────────────────────────────── */
+
+const root: React.CSSProperties = {
+  minHeight: "100vh",
+  background: "#0d0d12",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "40px 24px",
+  fontFamily: "Geist, -apple-system, sans-serif",
+};
+
+const card: React.CSSProperties = {
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 20,
+  padding: "40px 36px",
+  width: "100%",
+  maxWidth: 420,
+  backdropFilter: "blur(12px)",
+  WebkitBackdropFilter: "blur(12px)",
+  boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+  position: "relative",
+  zIndex: 1,
+};
+
+const logoBox: React.CSSProperties = {
+  width: 44, height: 44, borderRadius: 12,
+  background: "linear-gradient(135deg, #7C5CDB, #5a3db5)",
+  display: "flex", alignItems: "center", justifyContent: "center",
+  margin: "0 auto 12px",
+};
+
+const githubBtn: React.CSSProperties = {
+  width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+  gap: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 10, padding: "11px 16px", fontFamily: "Geist, sans-serif",
+  fontSize: 14, fontWeight: 600, color: "#e8e8f0", cursor: "pointer",
+  transition: "all 0.15s",
+};
+
+const divider: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 12, color: "rgba(232,232,240,0.3)",
+  fontSize: 12, margin: "20px 0", whiteSpace: "nowrap",
+};
+
+const input: React.CSSProperties = {
+  width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 9, padding: "11px 14px", fontFamily: "Geist, monospace",
+  fontSize: 14, color: "#e8e8f0", outline: "none", boxSizing: "border-box",
+  marginBottom: 14, transition: "border-color 0.2s",
+};
+
+const submitBtn: React.CSSProperties = {
+  width: "100%", background: "linear-gradient(135deg, #7C5CDB, #5a3db5)",
+  border: "none", borderRadius: 10, padding: "13px", fontFamily: "Geist, sans-serif",
+  fontSize: 15, fontWeight: 700, color: "#fff", cursor: "pointer",
+  transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+  marginTop: 4,
+};
+
+const smallAccentBtn: React.CSSProperties = {
+  background: "#7C5CDB", border: "none", borderRadius: 8, padding: "0 14px",
+  color: "#fff", fontFamily: "Geist, sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const eyeBtn: React.CSSProperties = {
+  position: "absolute", right: 12, top: "50%", transform: "translateY(calc(-50% - 7px))",
+  background: "none", border: "none", cursor: "pointer", fontSize: 14,
+};
+
+const forgotLink: React.CSSProperties = {
+  fontSize: 12, color: "#7C5CDB", cursor: "pointer", fontWeight: 500,
+};
+
+const forgotBox: React.CSSProperties = {
+  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 10, padding: "12px 14px", marginBottom: 14,
+};
+
+const errBox: React.CSSProperties = {
+  background: "rgba(231,76,60,0.12)", border: "1px solid rgba(231,76,60,0.3)",
+  borderRadius: 9, padding: "10px 14px", fontSize: 13, color: "#fc8181", marginBottom: 14,
+};
+
+const linkText: React.CSSProperties = {
+  color: "#7C5CDB", cursor: "pointer", fontWeight: 600,
+};
+
+function blob(color: string, size: number, top?: number | string, left?: number | string, bottom?: number | string, right?: number | string): React.CSSProperties {
+  return {
+    position: "absolute",
+    width: size, height: size, borderRadius: "50%",
+    background: `radial-gradient(circle, ${color}22 0%, transparent 70%)`,
+    top, left, bottom, right, filter: "blur(60px)",
+  };
+}
+
+const grid: React.CSSProperties = {
+  position: "absolute", inset: 0,
+  backgroundImage: "linear-gradient(rgba(124,92,219,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,219,0.05) 1px, transparent 1px)",
+  backgroundSize: "48px 48px",
+};
+
+function banner(color: string): React.CSSProperties {
+  return {
+    background: `${color}22`, border: `1px solid ${color}55`, borderRadius: 10,
+    padding: "14px 16px", marginBottom: 20, display: "flex",
+    alignItems: "center", justifyContent: "space-between", gap: 12,
+  };
+}
+
+const Field: React.FC<{ label: string; action?: React.ReactNode; children: React.ReactNode }> = ({ label, action, children }) => (
+  <div style={{ marginBottom: 4 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+      <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(232,232,240,0.6)", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</label>
+      {action}
+    </div>
+    {children}
+  </div>
+);
+
+const AuthBtn: React.FC<{ onClick: () => void; accent?: boolean; children: React.ReactNode }> = ({ onClick, accent, children }) => (
+  <button onClick={onClick} style={{
+    background: accent ? "#7C5CDB" : "rgba(255,255,255,0.1)", color: "#fff", border: "none",
+    borderRadius: 7, padding: "7px 13px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "Geist, sans-serif",
+  }}>{children}</button>
+);
+
+const Spinner = () => (
+  <div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+);
 
 export default LoginPage;

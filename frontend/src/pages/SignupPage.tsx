@@ -2,240 +2,145 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
+const input: React.CSSProperties = {
+  width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 9, padding: "11px 14px", fontFamily: "Geist, monospace",
+  fontSize: 14, color: "#e8e8f0", outline: "none", boxSizing: "border-box",
+  marginBottom: 14, transition: "border-color 0.2s",
+};
+
+const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div style={{ marginBottom: 4 }}>
+    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(232,232,240,0.6)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>{label}</label>
+    {children}
+  </div>
+);
+
+const PasswordStrength: React.FC<{ password: string }> = ({ password }) => {
+  const score = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(r => r.test(password)).length;
+  const labels = ["", "Weak", "Fair", "Good", "Strong"];
+  const colors = ["", "#fc8181", "#f6ad55", "#68d391", "#7C5CDB"];
+  return password.length > 0 ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: -8, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 3, flex: 1 }}>
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= score ? colors[score] : "rgba(255,255,255,0.1)", transition: "background 0.3s" }} />
+        ))}
+      </div>
+      <span style={{ fontSize: 11, color: colors[score], fontWeight: 600, width: 38 }}>{labels[score]}</span>
+    </div>
+  ) : null;
+};
+
 const SignupPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [needsConfirmation, setNeedsConfirmation] = useState(false);
-  const [resendMessage, setResendMessage] = useState("");
+  const [step, setStep] = useState<"signup" | "verify">("signup");
+  const [resendMsg, setResendMsg] = useState("");
 
   const { signup, confirmSignup, login, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Auto-redirect if already logged in
   useEffect(() => {
-    if (!authLoading && user) {
-      navigate("/app", { replace: true });
-    }
+    if (!authLoading && user) navigate("/app", { replace: true });
   }, [user, authLoading, navigate]);
 
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
-
+    if (password !== confirm) { setError("Passwords don't match."); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     setLoading(true);
-
     try {
       await signup(email, password);
-      setNeedsConfirmation(true);
+      setStep("verify");
     } catch (err: any) {
       if (err.message === "CONFIRMATION_REQUIRED") {
-        setNeedsConfirmation(true);
-      } else if (err.name === 'UsernameExistsException' || err.message.includes('already exists')) {
-        // User exists but may not be verified - show error and suggest login
-        setError("An account with this email already exists. Please login or use a different email.");
+        setStep("verify");
+      } else if (err.name === "UsernameExistsException" || err.message?.includes("already exists")) {
+        setError("An account with this email already exists.");
       } else {
-        setError(err.message || "Failed to sign up");
+        setError(err.message || "Failed to create account.");
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleConfirmation = async (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setLoading(true);
-
+    setError(""); setLoading(true);
     try {
-      await confirmSignup(email, verificationCode);
-      // Auto-login after confirmation
+      await confirmSignup(email, code);
       await login(email, password);
       navigate("/setup");
     } catch (err: any) {
-      setError(err.message || "Failed to confirm signup");
+      setError(err.message || "Invalid code. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResendCode = async () => {
-    setResendMessage("");
-    setError("");
+  const handleResend = async () => {
     try {
-      // Resend by calling signup again
       await signup(email, password);
-      setResendMessage("Verification code resent! Check your email.");
-      setTimeout(() => setResendMessage(""), 5000);
-    } catch (err: any) {
-      setError("Failed to resend code. Please try again.");
-    }
+      setResendMsg("Code resent! Check your inbox.");
+      setTimeout(() => setResendMsg(""), 5000);
+    } catch { setError("Failed to resend. Please try again."); }
   };
 
-  const handleGitHubLogin = () => {
-    // TODO: Implement GitHub OAuth
-    console.log("GitHub signup clicked");
+  const root: React.CSSProperties = {
+    minHeight: "100vh", background: "#0d0d12",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "40px 24px", fontFamily: "Geist, -apple-system, sans-serif",
   };
 
-  const inputStyle = {
-    width: "100%",
-    background: "var(--surface2)",
-    border: "1px solid var(--border)",
-    borderRadius: "7px",
-    padding: "10px 12px",
-    fontFamily: "Geist, sans-serif",
-    fontSize: "13px",
-    color: "var(--text)",
-    outline: "none",
-    transition: "border-color 0.15s",
-    boxSizing: "border-box" as const,
+  const card: React.CSSProperties = {
+    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 420,
+    backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+    boxShadow: "0 24px 64px rgba(0,0,0,0.5)", position: "relative", zIndex: 1,
   };
 
-  if (needsConfirmation) {
+  if (step === "verify") {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "var(--bg)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "40px 24px",
-        }}
-      >
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "16px",
-            padding: "40px",
-            width: "100%",
-            maxWidth: "400px",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.12)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "17px",
-              fontWeight: "700",
-              letterSpacing: "-0.3px",
-              marginBottom: "6px",
-            }}
-          >
-            DevContext<span style={{ color: "var(--accent)" }}>.ai</span>
-          </div>
-          <div
-            style={{
-              fontSize: "12.5px",
-              color: "var(--text3)",
-              marginBottom: "24px",
-            }}
-          >
-            We sent a verification code to {email}
+      <div style={root}>
+        <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+          <div style={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #7C5CDB22 0%, transparent 70%)", top: -100, right: -100, filter: "blur(60px)" }} />
+        </div>
+        <div style={card}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(124,92,219,0.15)", border: "1px solid rgba(124,92,219,0.3)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 24 }}>📧</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 6 }}>Check your email</div>
+            <div style={{ fontSize: 13, color: "rgba(232,232,240,0.5)", lineHeight: 1.6 }}>
+              We sent a 6-digit code to<br /><strong style={{ color: "#a78bfa" }}>{email}</strong>
+            </div>
           </div>
 
-          {error && (
-            <div
-              style={{
-                background: "#FDECEC",
-                border: "1px solid #F5C6C6",
-                borderRadius: "7px",
-                padding: "10px 12px",
-                fontSize: "12.5px",
-                color: "#C0392B",
-                marginBottom: "12px",
-              }}
-            >
-              {error}
-            </div>
-          )}
+          {error && <div style={{ background: "rgba(231,76,60,0.12)", border: "1px solid rgba(231,76,60,0.3)", borderRadius: 9, padding: "10px 14px", fontSize: 13, color: "#fc8181", marginBottom: 14 }}>{error}</div>}
+          {resendMsg && <div style={{ background: "rgba(39,174,96,0.12)", border: "1px solid rgba(39,174,96,0.3)", borderRadius: 9, padding: "10px 14px", fontSize: 13, color: "#6fcf97", marginBottom: 14 }}>{resendMsg}</div>}
 
-          {resendMessage && (
-            <div
-              style={{
-                background: "#D4EDDA",
-                border: "1px solid #C3E6CB",
-                borderRadius: "7px",
-                padding: "10px 12px",
-                fontSize: "12.5px",
-                color: "#155724",
-                marginBottom: "12px",
-              }}
-            >
-              {resendMessage}
-            </div>
-          )}
-
-          <form onSubmit={handleConfirmation}>
-            <div style={{ marginBottom: "12px" }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  color: "var(--text2)",
-                  marginBottom: "5px",
-                }}
-              >
-                Verification Code
-              </label>
-              <input
-                type="text"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-                placeholder="123456"
-                required
-                style={inputStyle}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-accent"
-              style={{
-                width: "100%",
-                justifyContent: "center",
-                padding: "11px",
-                marginTop: "4px",
-              }}
-            >
-              {loading ? "Verifying..." : "Verify Email →"}
+          <form onSubmit={handleVerify}>
+            <Field label="Verification Code">
+              <input type="text" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456" required style={{ ...input, fontSize: 22, letterSpacing: 8, textAlign: "center", fontFamily: "Geist, monospace" }} />
+            </Field>
+            <button type="submit" disabled={loading || code.length < 6} style={{
+              width: "100%", background: "linear-gradient(135deg, #7C5CDB, #5a3db5)", border: "none",
+              borderRadius: 10, padding: 13, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700,
+              color: "#fff", cursor: loading ? "not-allowed" : "pointer", opacity: code.length < 6 ? 0.5 : 1,
+            }}>
+              {loading ? "Verifying…" : "Verify & Continue →"}
             </button>
           </form>
 
-          <div
-            style={{
-              textAlign: "center",
-              fontSize: "12px",
-              color: "var(--text3)",
-              marginTop: "16px",
-            }}
-          >
-            Didn't receive the code?{" "}
-            <span
-              onClick={handleResendCode}
-              style={{
-                color: "var(--accent)",
-                cursor: "pointer",
-                fontWeight: "500",
-              }}
-            >
-              Resend
-            </span>
+          <div style={{ textAlign: "center", fontSize: 12, color: "rgba(232,232,240,0.4)", marginTop: 20 }}>
+            Didn't receive it?{" "}
+            <span onClick={handleResend} style={{ color: "#7C5CDB", cursor: "pointer", fontWeight: 600 }}>Resend code</span>
           </div>
         </div>
       </div>
@@ -243,212 +148,58 @@ const SignupPage: React.FC = () => {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 24px",
-      }}
-    >
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "16px",
-          padding: "40px",
-          width: "100%",
-          maxWidth: "400px",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.12)",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "17px",
-            fontWeight: "700",
-            letterSpacing: "-0.3px",
-            marginBottom: "6px",
-          }}
-        >
-          DevContext<span style={{ color: "var(--accent)" }}>.ai</span>
-        </div>
-        <div
-          style={{
-            fontSize: "12.5px",
-            color: "var(--text3)",
-            marginBottom: "24px",
-          }}
-        >
-          Create your free account to save analyses and track progress.
+    <div style={root}>
+      <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", width: 460, height: 460, borderRadius: "50%", background: "radial-gradient(circle, #7C5CDB22 0%, transparent 70%)", top: -120, left: -120, filter: "blur(60px)" }} />
+        <div style={{ position: "absolute", width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle, #2980b922 0%, transparent 70%)", bottom: "10%", right: "-5%", filter: "blur(60px)" }} />
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(124,92,219,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,219,0.05) 1px, transparent 1px)", backgroundSize: "48px 48px" }} />
+      </div>
+
+      <div style={card}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg, #7C5CDB, #5a3db5)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5, marginBottom: 4 }}>
+            DevContext<span style={{ color: "#7C5CDB" }}>.ai</span>
+          </div>
+          <div style={{ fontSize: 13, color: "rgba(232,232,240,0.5)" }}>Create your free account</div>
         </div>
 
-        <button
-          onClick={handleGitHubLogin}
-          type="button"
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            background: "var(--text)",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            padding: "11px",
-            fontFamily: "Geist, sans-serif",
-            fontSize: "13px",
-            fontWeight: "500",
-            cursor: "pointer",
-            transition: "all 0.15s",
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-          </svg>
+        <button style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "11px 16px", fontFamily: "Geist, sans-serif", fontSize: 14, fontWeight: 600, color: "#e8e8f0", cursor: "pointer", marginBottom: 20 }} type="button">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
           Continue with GitHub
         </button>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            color: "var(--text3)",
-            fontSize: "11.5px",
-            margin: "18px 0",
-          }}
-        >
-          <div
-            style={{ flex: 1, height: "1px", background: "var(--border)" }}
-          ></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, color: "rgba(232,232,240,0.3)", fontSize: 12, marginBottom: 20 }}>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
           or sign up with email
-          <div
-            style={{ flex: 1, height: "1px", background: "var(--border)" }}
-          ></div>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
         </div>
 
-        {error && (
-          <div
-            style={{
-              background: "#FDECEC",
-              border: "1px solid #F5C6C6",
-              borderRadius: "7px",
-              padding: "10px 12px",
-              fontSize: "12.5px",
-              color: "#C0392B",
-              marginBottom: "12px",
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {error && <div style={{ background: "rgba(231,76,60,0.12)", border: "1px solid rgba(231,76,60,0.3)", borderRadius: 9, padding: "10px 14px", fontSize: 13, color: "#fc8181", marginBottom: 14 }}>{error}</div>}
 
         <form onSubmit={handleSignup}>
-          <div style={{ marginBottom: "12px" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "12px",
-                fontWeight: "500",
-                color: "var(--text2)",
-                marginBottom: "5px",
-              }}
-            >
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              style={inputStyle}
-            />
-          </div>
+          <Field label="Email">
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required style={input} />
+          </Field>
+          <Field label="Password">
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Create a strong password" required autoComplete="new-password" style={input} />
+          </Field>
+          <PasswordStrength password={password} />
+          <Field label="Confirm Password">
+            <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Repeat your password" required autoComplete="new-password"
+              style={{ ...input, borderColor: confirm && confirm !== password ? "rgba(231,76,60,0.5)" : "rgba(255,255,255,0.1)" }} />
+          </Field>
 
-          <div style={{ marginBottom: "12px" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "12px",
-                fontWeight: "500",
-                color: "var(--text2)",
-                marginBottom: "5px",
-              }}
-            >
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Create a password"
-              autoComplete="new-password"
-              required
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={{ marginBottom: "12px" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "12px",
-                fontWeight: "500",
-                color: "var(--text2)",
-                marginBottom: "5px",
-              }}
-            >
-              Confirm Password
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm your password"
-              autoComplete="new-password"
-              required
-              style={inputStyle}
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-accent"
-            style={{
-              width: "100%",
-              justifyContent: "center",
-              padding: "11px",
-              marginTop: "4px",
-            }}
-          >
-            {loading ? "Creating Account..." : "Create Account →"}
+          <button type="submit" disabled={loading} style={{ width: "100%", background: "linear-gradient(135deg, #7C5CDB, #5a3db5)", border: "none", borderRadius: 10, padding: 13, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "#fff", cursor: "pointer", marginTop: 4 }}>
+            {loading ? "Creating Account…" : "Create Account →"}
           </button>
         </form>
 
-        <div
-          style={{
-            textAlign: "center",
-            fontSize: "12px",
-            color: "var(--text3)",
-            marginTop: "16px",
-          }}
-        >
+        <div style={{ textAlign: "center", fontSize: 12, color: "rgba(232,232,240,0.4)", marginTop: 20 }}>
           Already have an account?{" "}
-          <span
-            onClick={() => navigate("/login")}
-            style={{
-              color: "var(--accent)",
-              cursor: "pointer",
-              fontWeight: "500",
-            }}
-          >
-            Sign in
-          </span>
+          <span onClick={() => navigate("/login")} style={{ color: "#7C5CDB", cursor: "pointer", fontWeight: 600 }}>Sign in</span>
         </div>
       </div>
     </div>

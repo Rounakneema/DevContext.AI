@@ -1,0 +1,48 @@
+﻿
+================================================================================
+DevContext AI - Complete End-to-End Test Suite
+================================================================================
+
+[0.01s] Γä╣∩╕Å API Base URL: https://2jhc5i9ex2.execute-api.ap-southeast-1.amazonaws.com/prod
+[0.01s] Γä╣∩╕Å Test Repository: https://github.com/pg-sharding/spqr
+[0.01s] Γä╣∩╕Å Starting tests...
+
+[0.01s] ≡ƒöä TEST 1: User Authentication
+[0.01s] Γä╣∩╕Å Authenticating user: neemarounak9171@gmail.com
+[0.84s] Γ£à Authentication successful! User: neemarounak9171@gmail.com
+[1.85s] ≡ƒöä TEST 2: Submit Analysis Request
+[1.85s] Γä╣∩╕Å Submitting repository: https://github.com/pg-sharding/spqr
+[3.74s] Γ£à Analysis submitted! ID: 79a395b5-8e09-4a76-82df-49c374d8bea3
+[5.74s] ≡ƒöä TEST 3: Waiting for Stage 1 (Project Review)
+[5.74s] Γä╣∩╕Å Checking Stage 1 status... (attempt 1)
+[6.15s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[11.15s] Γä╣∩╕Å Checking Stage 1 status... (attempt 2)
+[12.98s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[17.98s] Γä╣∩╕Å Checking Stage 1 status... (attempt 3)
+[20.05s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[25.06s] Γä╣∩╕Å Checking Stage 1 status... (attempt 4)
+[28.71s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[33.72s] Γä╣∩╕Å Checking Stage 1 status... (attempt 5)
+[36.14s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[41.16s] Γä╣∩╕Å Checking Stage 1 status... (attempt 6)
+[42.73s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[47.73s] Γä╣∩╕Å Checking Stage 1 status... (attempt 7)
+[49.77s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[54.77s] Γä╣∩╕Å Checking Stage 1 status... (attempt 8)
+[56.05s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[61.05s] Γä╣∩╕Å Checking Stage 1 status... (attempt 9)
+[63.45s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[68.45s] Γä╣∩╕Å Checking Stage 1 status... (attempt 10)
+[69.99s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[75.00s] Γä╣∩╕Å Checking Stage 1 status... (attempt 11)
+[79.45s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[84.45s] Γä╣∩╕Å Checking Stage 1 status... (attempt 12)
+[89.64s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[94.64s] Γä╣∩╕Å Checking Stage 1 status... (attempt 13)
+[96.52s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[101.53s] Γä╣∩╕Å Checking Stage 1 status... (attempt 14)
+[104.42s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[109.44s] Γä╣∩╕Å Checking Stage 1 status... (attempt 15)
+[112.26s] Γä╣∩╕Å Status: processing, Stage 1: pending
+[117.26s] Γä╣∩╕Å Checking Stage 1 status... (attempt 16)
+[119.28s] Γä╣∩╕Å Status: processing, Stage 1: pending
