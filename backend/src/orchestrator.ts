@@ -821,6 +821,12 @@ async function processStage2(analysisId: string, context: any) {
       }
     }
 
+    // Load the Stage 1 project review from DynamoDB (needed by Stage 2 agents)
+    const projectReview = await DB.getProjectReview(analysisId);
+    if (!projectReview) {
+      console.warn('⚠️ No projectReview found for Stage 2, agents will use fallback values');
+    }
+
     const startTime = Date.now();
 
     const stage2Result = await invokeAsync(STAGE2_FUNCTION!, {
@@ -830,9 +836,10 @@ async function processStage2(analysisId: string, context: any) {
         frameworks: repoMetadata.frameworks,
         entryPoints: repoMetadata.entryPoints,
         coreModules: repoMetadata.coreModules,
-        userCodeFiles: userCodeFiles, // Now properly loaded from S3
+        userCodeFiles: userCodeFiles,
         languages: repoMetadata.languages
       },
+      projectReview: projectReview || {}, // Pass Stage 1 results to Stage 2
       s3Key: repoMetadata.s3Key
     });
 
@@ -900,6 +907,16 @@ async function processStage3(analysisId: string, mode: string, context: any) {
       }
     }
 
+    // Load Stage 1 project review and Stage 2 intelligence report from DynamoDB
+    const projectReview = await DB.getProjectReview(analysisId);
+    const intelligenceReport = await DB.getIntelligenceReport(analysisId);
+    if (!projectReview) {
+      console.warn('⚠️ No projectReview found for Stage 3');
+    }
+    if (!intelligenceReport) {
+      console.warn('⚠️ No intelligenceReport found for Stage 3');
+    }
+
     const startTime = Date.now();
 
     const stage3Result = await invokeAsync(STAGE3_FUNCTION!, {
@@ -912,6 +929,8 @@ async function processStage3(analysisId: string, mode: string, context: any) {
         userCodeFiles: userCodeFiles,
         languages: repoMetadata.languages
       },
+      projectReview: projectReview || {},
+      intelligenceReport: intelligenceReport || {},
       s3Key: repoMetadata.s3Key,
       mode // Pass mode to Stage 3
     });

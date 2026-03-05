@@ -689,6 +689,34 @@ export async function getRepositoryMetadata(analysisId: string): Promise<any | n
 }
 
 // ============================================================================
+// PROJECT REVIEW & INTELLIGENCE REPORT RETRIEVAL
+// ============================================================================
+
+export async function getProjectReview(analysisId: string): Promise<any | null> {
+  const result = await dynamoClient.send(new GetCommand({
+    TableName: MAIN_TABLE,
+    Key: {
+      PK: `ANALYSIS#${analysisId}`,
+      SK: 'PROJECT_REVIEW'
+    }
+  }));
+
+  return result.Item || null;
+}
+
+export async function getIntelligenceReport(analysisId: string): Promise<any | null> {
+  const result = await dynamoClient.send(new GetCommand({
+    TableName: MAIN_TABLE,
+    Key: {
+      PK: `ANALYSIS#${analysisId}`,
+      SK: 'INTELLIGENCE_REPORT'
+    }
+  }));
+
+  return result.Item || null;
+}
+
+// ============================================================================
 // INTERVIEW ATTEMPT FUNCTIONS
 // ============================================================================
 
