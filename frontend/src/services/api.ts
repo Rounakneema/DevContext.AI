@@ -297,8 +297,14 @@ export interface InterviewSession {
     averageScore: number;
     totalTimeSpentSeconds: number;
     activeTopicId?: string;
-    currentPhase?: 'warmup' | 'deep_dive' | 'stretch';
+    currentPhase?: 'warmup' | 'deep_dive' | 'stretch' | 'completed';
+    currentQuestionOverride?: string;
     signals?: Record<string, PerformanceSignal>;
+    topicState?: Record<string, {
+      currentFulfillment: number;
+      isCompleted: boolean;
+      followUpsAsked: number;
+    }>;
   };
   totalQuestions: number;
   currentQuestionIndex: number;
