@@ -5,7 +5,9 @@ import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import * as Types from './types';
 
-const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
+  marshallOptions: { removeUndefinedValues: true }
+});
 const MAIN_TABLE = process.env.MAIN_TABLE || 'devcontext-main';
 
 // ============================================================================
