@@ -12,21 +12,21 @@ const S = {
   page: { padding: '0' } as React.CSSProperties,
   inner: { maxWidth: 760, margin: '0 auto', padding: '32px 28px' } as React.CSSProperties,
   header: { marginBottom: 32 } as React.CSSProperties,
-  h1: { fontSize: 26, fontWeight: 800, color: '#fff', letterSpacing: -0.5, marginBottom: 4 } as React.CSSProperties,
-  sub: { fontSize: 14, color: 'rgba(232,232,240,0.45)' } as React.CSSProperties,
-  section: { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, marginBottom: 16, overflow: 'hidden' } as React.CSSProperties,
-  sectionHeader: { padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', fontSize: 13, fontWeight: 700, color: 'rgba(232,232,240,0.7)', textTransform: 'uppercase' as const, letterSpacing: 0.6 },
-  field: { padding: '18px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)' } as React.CSSProperties,
-  label: { fontSize: 14, fontWeight: 600, color: '#e8e8f0', marginBottom: 4, display: 'block' } as React.CSSProperties,
-  hint: { fontSize: 12, color: 'rgba(232,232,240,0.35)', marginBottom: 12 } as React.CSSProperties,
-  select: { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '10px 14px', fontFamily: 'Geist, sans-serif', fontSize: 13, color: '#e8e8f0', width: '100%', outline: 'none', cursor: 'pointer', colorScheme: 'dark' } as React.CSSProperties,
-  toggleRow: { padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 } as React.CSSProperties,
-  saveBtn: { background: 'linear-gradient(135deg, #7C5CDB, #5a3db5)', border: 'none', borderRadius: 10, padding: '12px 28px', fontFamily: 'Geist, sans-serif', fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer', transition: 'all 0.15s' } as React.CSSProperties,
+  h1: { fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: -0.5, marginBottom: 4 } as React.CSSProperties,
+  sub: { fontSize: 14, color: 'var(--text2)' } as React.CSSProperties,
+  section: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, marginBottom: 16, overflow: 'hidden' } as React.CSSProperties,
+  sectionHeader: { padding: '16px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase' as const, letterSpacing: 0.6 },
+  field: { padding: '18px 20px', borderBottom: '1px solid var(--border)' } as React.CSSProperties,
+  label: { fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } as React.CSSProperties,
+  hint: { fontSize: 12, color: 'var(--text3)', marginBottom: 12 } as React.CSSProperties,
+  select: { background: 'var(--surface)', border: '1px solid var(--border2)', borderRadius: 8, padding: '10px 14px', fontFamily: 'Geist, sans-serif', fontSize: 13, color: 'var(--text)', width: '100%', outline: 'none', cursor: 'pointer', colorScheme: 'light' } as React.CSSProperties,
+  toggleRow: { padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 } as React.CSSProperties,
+  saveBtn: { background: 'var(--accent)', border: 'none', borderRadius: 10, padding: '12px 28px', fontFamily: 'Geist, sans-serif', fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer', transition: 'all 0.15s' } as React.CSSProperties,
   toast: (type: 'success' | 'error'): React.CSSProperties => ({
-    background: type === 'success' ? 'rgba(39,174,96,0.12)' : 'rgba(231,76,60,0.12)',
-    border: `1px solid ${type === 'success' ? 'rgba(39,174,96,0.3)' : 'rgba(231,76,60,0.3)'}`,
+    background: type === 'success' ? 'var(--success-light)' : 'var(--danger-light)',
+    border: `1px solid ${type === 'success' ? 'var(--success)' : 'var(--danger)'}`,
     borderRadius: 10, padding: '12px 16px', fontSize: 13,
-    color: type === 'success' ? '#6fcf97' : '#fc8181',
+    color: type === 'success' ? 'var(--success)' : 'var(--danger)',
     display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
   }),
 };
@@ -35,8 +35,8 @@ const Toggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = (
   <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
     <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ display: 'none' }} />
     <div onClick={() => onChange(!checked)} style={{
-      width: 46, height: 26, borderRadius: 13, background: checked ? '#7C5CDB' : 'rgba(255,255,255,0.1)',
-      border: `1px solid ${checked ? '#7C5CDB' : 'rgba(255,255,255,0.15)'}`,
+      width: 46, height: 26, borderRadius: 13, background: checked ? 'var(--accent)' : 'var(--border2)',
+      border: `1px solid ${checked ? 'var(--accent)' : 'var(--border2)'}`,
       position: 'relative', cursor: 'pointer', transition: 'all 0.2s',
     }}>
       <div style={{
@@ -77,12 +77,12 @@ const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="main page active" style={{ background: '#0d0d12', minHeight: '100vh', color: '#e8e8f0', fontFamily: 'Geist, sans-serif' }}>
+    <div className="main page active" style={{ background: 'var(--bg)', minHeight: '100vh', color: 'var(--text)', fontFamily: 'Geist, sans-serif' }}>
       <div style={S.inner}>
         {loading ? (
           <div style={{ textAlign: 'center', paddingTop: 100 }}>
-            <div style={{ width: 36, height: 36, border: '3px solid rgba(124,92,219,0.3)', borderTopColor: '#7C5CDB', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 16px' }} />
-            <div style={{ color: 'rgba(232,232,240,0.4)', fontSize: 14 }}>Loading settings…</div>
+            <div style={{ width: 36, height: 36, border: '3px solid var(--accent-light)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 16px' }} />
+            <div style={{ color: 'var(--text3)', fontSize: 14 }}>Loading settings…</div>
           </div>
         ) : (
           <>
@@ -124,15 +124,15 @@ const SettingsPage: React.FC = () => {
               <div style={S.sectionHeader}>Notifications</div>
               <div style={S.toggleRow}>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e8e8f0', marginBottom: 3 }}>Analysis Complete Alerts</div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,232,240,0.35)' }}>Get notified when your analysis finishes</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Analysis Complete Alerts</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>Get notified when your analysis finishes</div>
                 </div>
                 <Toggle checked={profile.notifications} onChange={v => setProfile(p => ({ ...p, notifications: v }))} />
               </div>
               <div style={{ ...S.toggleRow, borderBottom: 'none' }}>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e8e8f0', marginBottom: 3 }}>Weekly Progress Digest</div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,232,240,0.35)' }}>Email summary of your interview performance</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Weekly Progress Digest</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>Email summary of your interview performance</div>
                 </div>
                 <Toggle checked={profile.emailDigest} onChange={v => setProfile(p => ({ ...p, emailDigest: v }))} />
               </div>
@@ -143,10 +143,10 @@ const SettingsPage: React.FC = () => {
               <div style={S.sectionHeader}>AI Model</div>
               <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e8e8f0', marginBottom: 3 }}>🌪️ Mistral Large 3</div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,232,240,0.35)' }}>128K context · $0.50 input / $1.50 output per 1M tokens</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>🌪️ Mistral Large 3</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>128K context · $0.50 input / $1.50 output per 1M tokens</div>
                 </div>
-                <div style={{ fontSize: 11, background: 'rgba(124,92,219,0.2)', color: '#a78bfa', borderRadius: 6, padding: '4px 10px', fontWeight: 600 }}>Active</div>
+                <div style={{ fontSize: 11, background: 'var(--accent-light)', color: 'var(--accent)', borderRadius: 6, padding: '4px 10px', fontWeight: 600 }}>Active</div>
               </div>
             </div>
 

@@ -207,6 +207,7 @@ Resources:
           STAGE1_FUNCTION: !Ref Stage1Function
           STAGE2_FUNCTION: !Ref Stage2Function
           STAGE3_FUNCTION: !Ref Stage3Function
+          FOLLOWUP_FUNCTION: !GetAtt FollowUpFunction.Arn
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MainTable
@@ -216,6 +217,7 @@ Resources:
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
+                - bedrock:InvokeModel
               Resource: "*"
       Events:
         Analyze:
@@ -453,6 +455,22 @@ Resources:
             RestApiId: !Ref DevContextApi
             Path: /interview/{sessionId}
             Method: get
+
+  FollowUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: live-interview-followup.handler
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MainTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
 
   CostApiFunction:
     Type: AWS::Serverless::Function

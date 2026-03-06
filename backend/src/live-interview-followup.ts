@@ -145,42 +145,37 @@ ${answerGiven}
 
 ANSWER EVALUATION:
 Score: ${evaluation.overallScore}/100
-Strengths: ${evaluation.strengths?.join(', ') || 'None'}
-Weaknesses: ${evaluation.weaknesses?.join(', ') || 'None'}
-Missed Key Points: ${evaluation.missedKeyPoints?.join(', ') || 'None'}
+Strengths: ${(evaluation.strengths || []).join(', ') || 'None'}
+Weaknesses: ${(evaluation.weaknesses || []).join(', ') || 'None'}
+Missed Key Points: ${(evaluation.missedKeyPoints || []).join(', ') || 'None'}
 
 GAPS IDENTIFIED:
 ${gaps.join('\n')}
 
-INTERVIEW CONTEXT:
-Category: ${originalQuestion.category}
-Difficulty: ${originalQuestion.difficulty}
-Related Concepts: ${originalQuestion.context?.relatedConcepts?.join(', ') || 'None'}
-
 YOUR TASK:
-Generate 1-3 follow-up questions that probe gaps or explore interesting points.
+Generate 1-3 follow-up questions that probe the gaps identified above.
 
-Return ONLY valid JSON array:
+Return ONLY a valid JSON array with no extra text before or after it:
 [
   {
-    "questionId": "FOLLOW-${originalQuestion.questionId}-01",
-    "question": "Follow-up question text",
-    "type": "clarification|deep_dive|alternative|edge_case|tradeoff",
-    "difficulty": "${originalQuestion.difficulty}",
-    "category": "${originalQuestion.category}",
+    "questionId": "FOLLOW-01",
+    "question": "Your follow-up question text here",
+    "type": "clarification",
+    "difficulty": "medium",
+    "category": "technical",
     "expectedDuration": 3,
     "probesGap": "which gap this addresses",
-    "context": {
-      "parentQuestionId": "${originalQuestion.questionId}",
-      "relevantToAnswer": "what part of answer this follows up on"
-    }
+    "isFollowUp": true,
+    "parentQuestionId": "PARENT_ID"
   }
-]`;
+]
+
+IMPORTANT: Output ONLY the JSON array. No preamble, no explanation, no markdown fences.`;
 
     const { text: content, inferenceTimeMs, inputTokens, outputTokens } = await callBedrockConverse(
         prompt,
         MODEL_ID,
-        { maxTokens: 2000, temperature: 0.6 }
+        { maxTokens: 3000, temperature: 0.6 }
     );
 
     await CostTracker.trackAiCall({

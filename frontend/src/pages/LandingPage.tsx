@@ -90,7 +90,7 @@ const LandingPage: React.FC = () => {
         <div className="lp-nav-inner">
           <div className="lp-logo">
             <div className="lp-logo-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <polyline points="16 18 22 12 16 6" />
                 <polyline points="8 6 2 12 8 18" />
               </svg>
@@ -195,19 +195,19 @@ const LandingPage: React.FC = () => {
           {/* Metric chips */}
           <div className="lp-metric-chips">
             <div className="lp-chip">
-              <span className="lp-chip-icon" style={{ color: "#7C5CDB" }}>📊</span>
+              <span className="lp-chip-icon" style={{ color: "var(--accent)" }}>📊</span>
               Code Quality Score
             </div>
             <div className="lp-chip">
-              <span className="lp-chip-icon" style={{ color: "#27ae60" }}>🏗️</span>
+              <span className="lp-chip-icon" style={{ color: "var(--success)" }}>🏗️</span>
               Architecture Map
             </div>
             <div className="lp-chip">
-              <span className="lp-chip-icon" style={{ color: "#e67e22" }}>🎤</span>
+              <span className="lp-chip-icon" style={{ color: "var(--warning)" }}>🎤</span>
               50 Interview Questions
             </div>
             <div className="lp-chip">
-              <span className="lp-chip-icon" style={{ color: "#2980b9" }}>📝</span>
+              <span className="lp-chip-icon" style={{ color: "var(--info)" }}>📝</span>
               Resume Bullets
             </div>
           </div>
@@ -225,28 +225,28 @@ const LandingPage: React.FC = () => {
             <div className="lp-score-row">
               <span className="lp-score-label">Code Quality</span>
               <div className="lp-score-bar-wrap">
-                <div className="lp-score-bar" style={{ width: "82%", "--bar-color": "#7C5CDB" } as React.CSSProperties} />
+                <div className="lp-score-bar" style={{ width: "82%", "--bar-color": "var(--accent)" } as React.CSSProperties} />
               </div>
               <span className="lp-score-val">82</span>
             </div>
             <div className="lp-score-row">
               <span className="lp-score-label">Architecture</span>
               <div className="lp-score-bar-wrap">
-                <div className="lp-score-bar" style={{ width: "75%", "--bar-color": "#27ae60" } as React.CSSProperties} />
+                <div className="lp-score-bar" style={{ width: "75%", "--bar-color": "var(--success)" } as React.CSSProperties} />
               </div>
               <span className="lp-score-val">75</span>
             </div>
             <div className="lp-score-row">
               <span className="lp-score-label">Security</span>
               <div className="lp-score-bar-wrap">
-                <div className="lp-score-bar" style={{ width: "68%", "--bar-color": "#e67e22" } as React.CSSProperties} />
+                <div className="lp-score-bar" style={{ width: "68%", "--bar-color": "var(--warning)" } as React.CSSProperties} />
               </div>
               <span className="lp-score-val">68</span>
             </div>
             <div className="lp-score-row">
               <span className="lp-score-label">Employability</span>
               <div className="lp-score-bar-wrap">
-                <div className="lp-score-bar" style={{ width: "90%", "--bar-color": "#2980b9" } as React.CSSProperties} />
+                <div className="lp-score-bar" style={{ width: "90%", "--bar-color": "var(--info)" } as React.CSSProperties} />
               </div>
               <span className="lp-score-val">90</span>
             </div>
@@ -337,7 +337,7 @@ const LandingPage: React.FC = () => {
 
           <div className="lp-caps-grid">
             <div className="lp-cap">
-              <div className="lp-cap-icon" style={{ background: "rgba(124,92,219,0.1)", color: "#7C5CDB" }}>
+              <div className="lp-cap-icon" style={{ background: "var(--accent-light)", color: "var(--accent)" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
@@ -347,7 +347,7 @@ const LandingPage: React.FC = () => {
             </div>
 
             <div className="lp-cap">
-              <div className="lp-cap-icon" style={{ background: "rgba(39,174,96,0.1)", color: "#27ae60" }}>
+              <div className="lp-cap-icon" style={{ background: "var(--success-light)", color: "var(--success)" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <rect x="2" y="3" width="20" height="14" rx="2" />
                   <line x1="8" y1="21" x2="16" y2="21" />
@@ -359,7 +359,7 @@ const LandingPage: React.FC = () => {
             </div>
 
             <div className="lp-cap">
-              <div className="lp-cap-icon" style={{ background: "rgba(230,126,34,0.1)", color: "#e67e22" }}>
+              <div className="lp-cap-icon" style={{ background: "rgba(247, 144, 9, 0.1)", color: "var(--warning)" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
@@ -369,7 +369,7 @@ const LandingPage: React.FC = () => {
             </div>
 
             <div className="lp-cap">
-              <div className="lp-cap-icon" style={{ background: "rgba(41,128,185,0.1)", color: "#2980b9" }}>
+              <div className="lp-cap-icon" style={{ background: "rgba(41, 128, 185, 0.1)", color: "var(--info)" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
@@ -381,7 +381,7 @@ const LandingPage: React.FC = () => {
             </div>
 
             <div className="lp-cap">
-              <div className="lp-cap-icon" style={{ background: "rgba(231,76,60,0.1)", color: "#e74c3c" }}>
+              <div className="lp-cap-icon" style={{ background: "var(--danger-light)", color: "var(--danger)" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
@@ -393,7 +393,7 @@ const LandingPage: React.FC = () => {
             </div>
 
             <div className="lp-cap">
-              <div className="lp-cap-icon" style={{ background: "rgba(124,92,219,0.1)", color: "#7C5CDB" }}>
+              <div className="lp-cap-icon" style={{ background: "var(--accent-light)", color: "var(--accent)" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                   <circle cx="9" cy="7" r="4" />

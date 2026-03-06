@@ -166,7 +166,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
 
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Not found' })
     };
 
@@ -175,7 +175,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
 
     return {
       statusCode: 500,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -191,7 +191,7 @@ async function handleAnalyze(event: any, context: any) {
   if (!repositoryUrl) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'repositoryUrl is required' })
     };
   }
@@ -205,7 +205,7 @@ async function handleAnalyze(event: any, context: any) {
   if (!userProfile) {
     return {
       statusCode: 401,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'User profile not found' })
     };
   }
@@ -214,7 +214,7 @@ async function handleAnalyze(event: any, context: any) {
   if (userProfile.subscription.analysisUsed >= userProfile.subscription.analysisQuota) {
     return {
       statusCode: 429,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         error: 'Analysis quota exceeded',
         quota: userProfile.subscription.analysisQuota,
@@ -231,7 +231,7 @@ async function handleAnalyze(event: any, context: any) {
   if (hasActiveAnalysis) {
     return {
       statusCode: 429,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         error: 'You already have an analysis in progress. Please wait for it to complete.'
       })
@@ -262,7 +262,7 @@ async function handleAnalyze(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       analysisId: analysis.analysisId,
       status: 'initiated',
@@ -420,7 +420,7 @@ async function handleListAnalyses(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(result)
   };
 }
@@ -431,7 +431,7 @@ async function handleGetAnalysis(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -441,14 +441,14 @@ async function handleGetAnalysis(event: any) {
   if (!result) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(result)
   };
 }
@@ -459,7 +459,7 @@ async function handleGetStatus(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -469,7 +469,7 @@ async function handleGetStatus(event: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -481,7 +481,7 @@ async function handleGetStatus(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       analysisId: analysis.analysisId,
       status: analysis.status,
@@ -521,7 +521,7 @@ async function handleGetEvents(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -530,7 +530,7 @@ async function handleGetEvents(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({ events })
   };
 }
@@ -541,7 +541,7 @@ async function handleGetCost(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -551,14 +551,14 @@ async function handleGetCost(event: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(analysis.cost)
   };
 }
@@ -569,7 +569,7 @@ async function handleDeleteAnalysis(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -579,7 +579,7 @@ async function handleDeleteAnalysis(event: any) {
 
     return {
       statusCode: 204,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: ''
     };
   } catch (error) {
@@ -587,7 +587,7 @@ async function handleDeleteAnalysis(event: any) {
 
     return {
       statusCode: 500,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         error: 'Failed to delete analysis',
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -668,7 +668,7 @@ async function handleContinueStage2(event: any, context: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -678,7 +678,7 @@ async function handleContinueStage2(event: any, context: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -687,7 +687,7 @@ async function handleContinueStage2(event: any, context: any) {
   if (analysis.stages.project_review.status !== 'completed') {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Stage 1 must be completed first' })
     };
   }
@@ -696,7 +696,7 @@ async function handleContinueStage2(event: any, context: any) {
   if (analysis.stages.intelligence_report.status === 'completed') {
     return {
       statusCode: 200,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         message: 'Stage 2 already completed',
         status: 'completed'
@@ -712,7 +712,7 @@ async function handleContinueStage2(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       analysisId,
       message: 'Stage 2 (Intelligence Report) started',
@@ -732,7 +732,7 @@ async function handleContinueStage3(event: any, context: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -742,7 +742,7 @@ async function handleContinueStage3(event: any, context: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -751,7 +751,7 @@ async function handleContinueStage3(event: any, context: any) {
   if (analysis.stages.intelligence_report.status !== 'completed') {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Stage 2 must be completed first' })
     };
   }
@@ -760,7 +760,7 @@ async function handleContinueStage3(event: any, context: any) {
   if (analysis.stages.interview_simulation.status === 'completed') {
     return {
       statusCode: 200,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         message: 'Stage 3 already completed',
         status: 'completed'
@@ -778,7 +778,7 @@ async function handleContinueStage3(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       analysisId,
       message: `Stage 3 (Interview Questions - ${mode} mode) started`,
@@ -982,14 +982,14 @@ async function handleGetUserProfile(event: any) {
   if (!profile) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'User profile not found' })
     };
   }
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(profile)
   };
 }
@@ -1015,7 +1015,7 @@ async function handleCreateUserProfile(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(profile)
   };
 }
@@ -1031,7 +1031,7 @@ async function handleUpdatePreferences(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(updated)
   };
 }
@@ -1046,7 +1046,7 @@ async function handleGetUserStats(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(stats)
   };
 }
@@ -1061,7 +1061,7 @@ async function handleGetUserProgress(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(progress)
   };
 }
@@ -1080,7 +1080,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -1093,7 +1093,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   if (!analysis || !analysis.interviewSimulation) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Interview questions not found. Complete Stage 3 first.' })
     };
   }
@@ -1106,7 +1106,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   if (!questions || !Array.isArray(questions)) {
     return {
       statusCode: 500,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Interview questions array not found in analysis' })
     };
   }
@@ -1137,7 +1137,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(session)
   };
 }
@@ -1151,7 +1151,7 @@ async function handleGetInterviewSession(event: any) {
   if (!sessionId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'sessionId is required' })
     };
   }
@@ -1161,7 +1161,7 @@ async function handleGetInterviewSession(event: any) {
   if (!session) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Session not found' })
     };
   }
@@ -1180,7 +1180,7 @@ async function handleGetInterviewSession(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(session)
   };
 }
@@ -1196,7 +1196,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (!sessionId || !questionId || !answer) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'sessionId, questionId, and answer are required' })
     };
   }
@@ -1207,7 +1207,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (!session) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Session not found' })
     };
   }
@@ -1216,7 +1216,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (session.status !== 'active') {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         error: 'Session is not active',
         status: session.status
@@ -1230,23 +1230,27 @@ async function handleSubmitAnswer(event: any, context: any) {
   if (!analysis || !analysis.interviewSimulation) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Interview questions not found' })
     };
   }
 
-  const question = analysis.interviewSimulation.questions.find((q: any) => q.questionId === questionId);
+  const questionsArray = analysis.interviewSimulation.mode === 'live'
+    ? analysis.interviewSimulation.coreQuestions || []
+    : analysis.interviewSimulation.questions || [];
+
+  const question = questionsArray.find((q: any) => q.questionId === questionId);
 
   if (!question) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Question not found' })
     };
   }
 
-  // Evaluate answer using AI (call answer evaluation Lambda)
-  const evaluation = await evaluateAnswer(question, answer);
+  // Evaluate answer using AI (call Bedrock answer evaluation logic)
+  const evaluation = await evaluateAnswerComprehensive(question, answer, timeSpentSeconds || 0);
 
   // Get previous attempts for this question to calculate improvement
   const allAttempts = await DB.getSessionAttempts(sessionId);
@@ -1275,7 +1279,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   let followUpQuestions = [];
   if (analysis.interviewSimulation?.mode === 'live') {
     try {
-      // Invoke follow-up Lambda
+      // Invoke dedicated FollowUp Lambda
       const followUpResult = await invokeAsync(process.env.FOLLOWUP_FUNCTION || 'live-interview-followup', {
         analysisId: session.analysisId,
         sessionId,
@@ -1286,9 +1290,8 @@ async function handleSubmitAnswer(event: any, context: any) {
         interviewContext: session.config
       });
 
-      if (followUpResult.success && followUpResult.followUpQuestions?.length > 0) {
+      if (followUpResult?.success && followUpResult.followUpQuestions?.length > 0) {
         followUpQuestions = followUpResult.followUpQuestions;
-        // Optionally update session with these follow-ups
       }
     } catch (err) {
       console.warn('Follow-up generation skipped due to error:', err);
@@ -1304,7 +1307,7 @@ async function handleSubmitAnswer(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       attemptId: attempt.attemptId,
       questionId,
@@ -1336,7 +1339,7 @@ async function handleFollowUpQuestion(event: any, context: any) {
 
   return {
     statusCode: result.success ? 200 : 500,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(result)
   };
 }
@@ -1350,7 +1353,7 @@ async function handleCompleteSession(event: any, context: any) {
   if (!sessionId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'sessionId is required' })
     };
   }
@@ -1360,7 +1363,7 @@ async function handleCompleteSession(event: any, context: any) {
   if (!session) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Session not found' })
     };
   }
@@ -1393,7 +1396,7 @@ async function handleCompleteSession(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify(completedSession)
   };
 }
@@ -1402,69 +1405,7 @@ async function handleCompleteSession(event: any, context: any) {
 // HELPER FUNCTIONS
 // ============================================================================
 
-async function evaluateAnswer(question: any, answer: string): Promise<any> {
-  const { callGemini, extractJson } = await import('./gemini-client');
 
-  const expectedTopics = question.expectedTopics || [];
-
-  const prompt = `You are an expert technical interviewer evaluating a candidate's answer.
-
-Question: ${question.questionText}
-Expected Topics: ${expectedTopics.join(', ')}
-
-Candidate Answer: ${answer}
-
-Task: Evaluate the answer and provide:
-1. Overall Score (0-100): Based on technical accuracy, completeness, clarity
-2. Criteria Scores: Technical accuracy, completeness, clarity, depth
-3. Strengths: Specific points the candidate explained well
-4. Weaknesses: Missing concepts or incorrect statements
-5. Missing Points: Key topics not addressed
-6. Comparison: Weak vs strong answer examples
-7. Feedback: Specific suggestions for improvement
-
-Respond in JSON format:
-{
-  "overallScore": 75,
-  "criteriaScores": {
-    "technicalAccuracy": 80,
-    "completeness": 70,
-    "clarity": 75,
-    "depthOfUnderstanding": 70
-  },
-  "strengths": ["Mentioned key concept X", "Explained Y clearly"],
-  "weaknesses": ["Missed important aspect Z"],
-  "missingKeyPoints": ["Should have discussed A", "Didn't mention B"],
-  "comparison": {
-    "weakAnswer": "A weak answer would just say...",
-    "strongAnswer": "A strong answer would explain...",
-    "yourAnswerCategory": "acceptable"
-  },
-  "feedback": "Your answer shows good understanding of... However, consider...",
-  "improvementSuggestions": ["Study X", "Practice Y"]
-}`;
-
-  try {
-    const startTime = Date.now();
-    const { text, inferenceTimeMs } = await callGemini(prompt, {
-      temperature: 0.3,
-      maxOutputTokens: 1500,
-    });
-
-    const evaluation = extractJson(text);
-
-    // Add metadata
-    evaluation.modelId = 'gemini-2.0-flash';
-    evaluation.inferenceTimeMs = inferenceTimeMs;
-
-    return evaluation;
-  } catch (error) {
-    console.error('Gemini evaluation failed:', error);
-
-    // DO NOT return fake scores - throw error so user knows evaluation failed
-    throw new Error(`Answer evaluation unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
 
 function calculateAverageScore(session: any, newScore: number): number {
   const totalAnswered = session.progress.questionsAnswered;
@@ -1539,7 +1480,7 @@ async function handleGetFiles(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -1550,7 +1491,7 @@ async function handleGetFiles(event: any) {
   if (!repoMetadata) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Repository metadata not found' })
     };
   }
@@ -1563,7 +1504,7 @@ async function handleGetFiles(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       analysisId,
       totalFiles: allFiles.length,
@@ -1591,7 +1532,7 @@ async function handleUpdateFileSelection(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -1638,7 +1579,7 @@ async function handleUpdateFileSelection(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       analysisId,
       selectedFiles: fileSelection.selectedFiles.length,
@@ -1660,7 +1601,7 @@ async function handleReorderFiles(event: any) {
   if (!analysisId || !customOrder || !Array.isArray(customOrder)) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId and customOrder array are required' })
     };
   }
@@ -1687,7 +1628,7 @@ async function handleReorderFiles(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       analysisId,
       customOrder: fileSelection.customOrder.length,
@@ -1706,7 +1647,7 @@ async function handleReprocess(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -1717,7 +1658,7 @@ async function handleReprocess(event: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -1726,7 +1667,7 @@ async function handleReprocess(event: any) {
   if (analysis.status === 'processing') {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis is currently processing' })
     };
   }
@@ -1737,7 +1678,7 @@ async function handleReprocess(event: any) {
   if (!fileSelection || fileSelection.selectedFiles.length === 0) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'No files selected for reprocessing' })
     };
   }
@@ -1754,7 +1695,7 @@ async function handleReprocess(event: any) {
 
   return {
     statusCode: 200,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
       analysisId,
       status: 'processing',
@@ -1896,7 +1837,7 @@ async function handleExportAnalysis(event: any) {
   if (!analysisId) {
     return {
       statusCode: 400,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'analysisId is required' })
     };
   }
@@ -1907,7 +1848,7 @@ async function handleExportAnalysis(event: any) {
   if (!analysis) {
     return {
       statusCode: 404,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
@@ -1959,7 +1900,7 @@ async function handleExportAnalysis(event: any) {
     // Return the data directly for client-side download
     return {
       statusCode: 200,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         analysisId,
         format,
@@ -1973,7 +1914,7 @@ async function handleExportAnalysis(event: any) {
 
     return {
       statusCode: 500,
-      headers: CORS_HEADERS,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         error: 'Export failed',
         message: error instanceof Error ? error.message : 'Unknown error'
