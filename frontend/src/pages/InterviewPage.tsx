@@ -167,7 +167,7 @@ const InterviewPage: React.FC = () => {
         } catch (e: any) {
             setError(e.message || "Failed to submit answer."); setPhase("active");
         }
-    }, [session, currentQuestion, answer, startTime, effectiveAnalysisId]);
+    }, [session, currentQuestion, answer, startTime]);
 
     const nextQuestion = useCallback(async () => {
         if (!session) return;
@@ -365,10 +365,6 @@ const InterviewPage: React.FC = () => {
 
     /* ── ACTIVE / EVALUATING ── */
     if (!currentQuestion) return null;
-
-    const qType = (currentQuestion as any).type || (currentQuestion as any).questionType || "technical";
-    const gradient = GRADIENTS[qType] || GRADIENTS.technical;
-    const qProgress = ((currentIndex + 1) / totalQuestions) * 100;
 
     return (
         <div style={pageStyle}>
