@@ -65,17 +65,17 @@ const LoginPage: React.FC = () => {
               <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
             </svg>
           </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5, marginBottom: 4 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#1a1a1a", letterSpacing: -0.5, marginBottom: 4 }}>
             DevContext<span style={{ color: "#7C5CDB" }}>.ai</span>
           </div>
-          <div style={{ fontSize: 13, color: "rgba(232,232,240,0.5)" }}>AI-powered code interview prep</div>
+          <div style={{ fontSize: 13, color: "#6b6b6b" }}>AI-powered code interview prep</div>
         </div>
 
         {user && (
           <div style={banner("#7C5CDB")}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>Already signed in</div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{user.email}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a" }}>Already signed in</div>
+              <div style={{ fontSize: 12, color: "#6b6b6b", marginTop: 2 }}>{user.email}</div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <AuthBtn onClick={() => navigate("/app")} accent>Go to App</AuthBtn>
@@ -134,7 +134,7 @@ const LoginPage: React.FC = () => {
           </button>
         </form>
 
-        <div style={{ textAlign: "center", fontSize: 12, color: "rgba(232,232,240,0.4)", marginTop: 20 }}>
+        <div style={{ textAlign: "center", fontSize: 12, color: "#ababab", marginTop: 20 }}>
           Don't have an account?{" "}
           <span onClick={() => navigate("/signup")} style={linkText}>Sign up free</span>
         </div>
@@ -147,7 +147,7 @@ const LoginPage: React.FC = () => {
 
 const root: React.CSSProperties = {
   minHeight: "100vh",
-  background: "#0d0d12",
+  background: "#ECEBED",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -156,15 +156,13 @@ const root: React.CSSProperties = {
 };
 
 const card: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.1)",
+  background: "#ffffff",
+  border: "1px solid #e0dfe3",
   borderRadius: 20,
   padding: "40px 36px",
   width: "100%",
   maxWidth: 420,
-  backdropFilter: "blur(12px)",
-  WebkitBackdropFilter: "blur(12px)",
-  boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+  boxShadow: "0 20px 60px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)",
   position: "relative",
   zIndex: 1,
 };
@@ -178,26 +176,26 @@ const logoBox: React.CSSProperties = {
 
 const githubBtn: React.CSSProperties = {
   width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-  gap: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
+  gap: 10, background: "#f5f5f4", border: "1px solid #e0dfe3",
   borderRadius: 10, padding: "11px 16px", fontFamily: "Geist, sans-serif",
-  fontSize: 14, fontWeight: 600, color: "#e8e8f0", cursor: "pointer",
+  fontSize: 14, fontWeight: 600, color: "#1a1a1a", cursor: "pointer",
   transition: "all 0.15s",
 };
 
 const divider: React.CSSProperties = {
-  display: "flex", alignItems: "center", gap: 12, color: "rgba(232,232,240,0.3)",
+  display: "flex", alignItems: "center", gap: 12, color: "#ababab",
   fontSize: 12, margin: "20px 0", whiteSpace: "nowrap",
 };
 
 const input: React.CSSProperties = {
-  width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: 9, padding: "11px 14px", fontFamily: "Geist, monospace",
-  fontSize: 14, color: "#e8e8f0", outline: "none", boxSizing: "border-box",
+  width: "100%", background: "#f5f5f4", border: "1px solid #e0dfe3",
+  borderRadius: 9, padding: "11px 14px", fontFamily: "Geist, sans-serif",
+  fontSize: 14, color: "#1a1a1a", outline: "none", boxSizing: "border-box",
   marginBottom: 14, transition: "border-color 0.2s",
 };
 
 const submitBtn: React.CSSProperties = {
-  width: "100%", background: "linear-gradient(135deg, #7C5CDB, #5a3db5)",
+  width: "100%", background: "#7C5CDB",
   border: "none", borderRadius: 10, padding: "13px", fontFamily: "Geist, sans-serif",
   fontSize: 15, fontWeight: 700, color: "#fff", cursor: "pointer",
   transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -220,13 +218,13 @@ const forgotLink: React.CSSProperties = {
 };
 
 const forgotBox: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+  background: "#f5f5f4", border: "1px solid #e0dfe3",
   borderRadius: 10, padding: "12px 14px", marginBottom: 14,
 };
 
 const errBox: React.CSSProperties = {
-  background: "rgba(231,76,60,0.12)", border: "1px solid rgba(231,76,60,0.3)",
-  borderRadius: 9, padding: "10px 14px", fontSize: 13, color: "#fc8181", marginBottom: 14,
+  background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)",
+  borderRadius: 9, padding: "10px 14px", fontSize: 13, color: "#e74c3c", marginBottom: 14,
 };
 
 const linkText: React.CSSProperties = {
@@ -237,20 +235,18 @@ function blob(color: string, size: number, top?: number | string, left?: number 
   return {
     position: "absolute",
     width: size, height: size, borderRadius: "50%",
-    background: `radial-gradient(circle, ${color}22 0%, transparent 70%)`,
+    background: `radial-gradient(circle, ${color}12 0%, transparent 70%)`,
     top, left, bottom, right, filter: "blur(60px)",
   };
 }
 
 const grid: React.CSSProperties = {
-  position: "absolute", inset: 0,
-  backgroundImage: "linear-gradient(rgba(124,92,219,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,219,0.05) 1px, transparent 1px)",
-  backgroundSize: "48px 48px",
+  display: "none",
 };
 
 function banner(color: string): React.CSSProperties {
   return {
-    background: `${color}22`, border: `1px solid ${color}55`, borderRadius: 10,
+    background: `${color}12`, border: `1px solid ${color}33`, borderRadius: 10,
     padding: "14px 16px", marginBottom: 20, display: "flex",
     alignItems: "center", justifyContent: "space-between", gap: 12,
   };
@@ -259,7 +255,7 @@ function banner(color: string): React.CSSProperties {
 const Field: React.FC<{ label: string; action?: React.ReactNode; children: React.ReactNode }> = ({ label, action, children }) => (
   <div style={{ marginBottom: 4 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-      <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(232,232,240,0.6)", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</label>
+      <label style={{ fontSize: 12, fontWeight: 600, color: "#6b6b6b", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</label>
       {action}
     </div>
     {children}
@@ -268,13 +264,13 @@ const Field: React.FC<{ label: string; action?: React.ReactNode; children: React
 
 const AuthBtn: React.FC<{ onClick: () => void; accent?: boolean; children: React.ReactNode }> = ({ onClick, accent, children }) => (
   <button onClick={onClick} style={{
-    background: accent ? "#7C5CDB" : "rgba(255,255,255,0.1)", color: "#fff", border: "none",
+    background: accent ? "#7C5CDB" : "#f5f5f4", color: accent ? "#fff" : "#1a1a1a", border: accent ? "none" : "1px solid #e0dfe3",
     borderRadius: 7, padding: "7px 13px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "Geist, sans-serif",
   }}>{children}</button>
 );
 
 const Spinner = () => (
-  <div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+  <div style={{ width: 16, height: 16, border: "2px solid rgba(124,92,219,0.3)", borderTopColor: "#7C5CDB", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
 );
 
 export default LoginPage;
