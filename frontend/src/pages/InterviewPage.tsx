@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
     createInterviewSession,
+    getInterviewSession,
     submitAnswer as apiSubmitAnswer,
     completeInterviewSession,
     InterviewQuestion,
