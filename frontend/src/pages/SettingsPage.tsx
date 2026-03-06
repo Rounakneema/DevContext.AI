@@ -10,7 +10,7 @@ interface ProfileData {
 
 const S = {
   page: { padding: '0' } as React.CSSProperties,
-  inner: { maxWidth: 760, margin: '0 auto', padding: '32px 28px' } as React.CSSProperties,
+  inner: { width: '60%', padding: '32px 48px', boxSizing: 'border-box' as const, margin: '0 auto'} as React.CSSProperties,
   header: { marginBottom: 32 } as React.CSSProperties,
   h1: { fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: -0.5, marginBottom: 4 } as React.CSSProperties,
   sub: { fontSize: 14, color: 'var(--text2)' } as React.CSSProperties,
