@@ -351,13 +351,19 @@ export interface AnswerEvaluation {
   };
   strengths: string[];
   weaknesses: string[];
-  missingKeyPoints: string[];
+  missingKeyPoints: string[]; /* legacy */
+  keyPointsCoverage?: {
+    covered: string[];
+    partiallyCovered: string[];
+    missed: string[];
+  };
   comparison: {
     weakAnswer: string;
     strongAnswer: string;
     yourAnswerCategory: 'weak' | 'acceptable' | 'strong' | 'excellent';
   };
-  feedback: string;
+  feedback: string; /* legacy */
+  detailedFeedback?: string;
   improvementSuggestions: string[];
 }
 
