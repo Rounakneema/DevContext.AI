@@ -110,9 +110,10 @@ const InterviewPage: React.FC = () => {
 
     useEffect(() => {
         if (phase === "active" && currentQuestion) {
-            setStartTime(Date.now());
+            const start = Date.now();
+            setStartTime(start);
             setElapsed(0);
-            timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
+            timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
         }
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -481,13 +482,13 @@ const InterviewPage: React.FC = () => {
                                     ))}
                                 </div>
                                 <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px 24px", marginBottom: 24 }}>
-                                    <p style={{ fontSize: 15, color: "var(--text)", lineHeight: 1.7, margin: "0 0 16px 0" }}>{currentEval.feedback}</p>
+                                    <p style={{ fontSize: 15, color: "var(--text)", lineHeight: 1.7, margin: "0 0 16px 0" }}>{currentEval.detailedFeedback || currentEval.feedback}</p>
 
-                                    {currentEval.missingKeyPoints && currentEval.missingKeyPoints.length > 0 && (
+                                    {((currentEval.keyPointsCoverage?.missed && currentEval.keyPointsCoverage.missed.length > 0) || (currentEval.missingKeyPoints && currentEval.missingKeyPoints.length > 0)) && (
                                         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
                                             <div style={{ fontSize: 12, fontWeight: 800, color: "var(--danger)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>What was missing:</div>
                                             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, color: "var(--text2)", lineHeight: 1.6 }}>
-                                                {currentEval.missingKeyPoints.map((p, i) => <li key={i}>{p}</li>)}
+                                                {(currentEval.keyPointsCoverage?.missed || currentEval.missingKeyPoints || []).map((p: string, i: number) => <li key={i}>{p}</li>)}
                                             </ul>
                                         </div>
                                     )}
