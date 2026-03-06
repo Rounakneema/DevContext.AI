@@ -21,12 +21,7 @@ function scoreColor(score: number) {
     return "var(--danger)";
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const GRADIENTS: Record<string, string> = {
-    technical: "linear-gradient(135deg, var(--accent) 0%, #5a3db5 100%)",
-    behavioral: "linear-gradient(135deg, #27ae60 0%, #1a7a42 100%)",
-    architecture: "linear-gradient(135deg, #2980b9 0%, #1a5c8a 100%)",
-};
+
 
 const SignalBar: React.FC<{ label: string; score: number }> = ({ label, score }) => (
     <div style={{ marginBottom: 16 }}>
@@ -123,8 +118,6 @@ const InterviewPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [phase, currentQuestion?.questionId]);
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const currentIndex = session && session.questions ? session.questions.findIndex(q => q.questionId === currentQuestion?.questionId) : 0;
     const totalQuestions = session?.questions?.length ?? count;
 
     const startSession = useCallback(async () => {
@@ -367,11 +360,6 @@ const InterviewPage: React.FC = () => {
 
     /* ── ACTIVE / EVALUATING ── */
     if (!currentQuestion) return null;
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const qType = (currentQuestion as any).type || (currentQuestion as any).questionType || "technical";
-    // const gradient = GRADIENTS[qType] || GRADIENTS.technical;
-    // const qProgress = ((currentIndex + 1) / totalQuestions) * 100;
 
     return (
         <div style={pageStyle}>
