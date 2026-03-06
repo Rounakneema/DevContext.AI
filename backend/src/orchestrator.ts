@@ -1109,25 +1109,91 @@ async function handleCreateInterviewSession(event: any, context: any) {
     };
   }
 
-  const warmupTopics = interviewPlan.phases.warmup;
-  const firstTopicId = warmupTopics[0];
-  const firstTopic = interviewPlan.allTopics[firstTopicId];
+  // 1. Level Calibration & Intensity Mapping
+  const intensity = config?.intensity || 'normal';
+  const role = config?.targetRole || interviewPlan.targetRole || 'Full Stack Developer';
+
+  const topicsArray = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>);
+  const archBuckets = topicsArray.filter(t => t.category === 'architecture');
+  const implBuckets = topicsArray.filter(t => t.category === 'implementation');
+  const eqBuckets = topicsArray.filter(t => t.category === 'engineering_quality');
+
+  const shuffle = (array: any[]) => array.sort(() => Math.random() - 0.5);
+  shuffle(archBuckets);
+  shuffle(implBuckets);
+  shuffle(eqBuckets);
+
+  const popTopic = (buckets: Types.InterviewTopic[][]): Types.InterviewTopic | undefined => {
+    for (const bucket of buckets) {
+      if (bucket.length > 0) return bucket.pop();
+    }
+    if (topicsArray.length > 0) return topicsArray.pop();
+    return undefined;
+  };
+
+  const selectedWarmup = [
+    popTopic([implBuckets, eqBuckets, archBuckets]),
+    popTopic([eqBuckets, implBuckets, archBuckets])
+  ].filter(Boolean) as Types.InterviewTopic[];
+
+  const selectedDeepDive = [
+    popTopic([archBuckets, implBuckets, eqBuckets]),
+    popTopic([implBuckets, archBuckets, eqBuckets])
+  ].filter(Boolean) as Types.InterviewTopic[];
+
+  const selectedStretch = [
+    popTopic([archBuckets, eqBuckets, implBuckets])
+  ].filter(Boolean) as Types.InterviewTopic[];
+
+  let globalMaxFollowUps = 1;
+  let fulfillmentMod = 0;
+
+  if (intensity === 'fast') {
+    globalMaxFollowUps = 0;
+    fulfillmentMod = -15;
+  } else if (intensity === 'deep') {
+    globalMaxFollowUps = 3;
+    fulfillmentMod = 10;
+  }
+
+  const finalTopics = [...selectedWarmup, ...selectedDeepDive, ...selectedStretch];
+  const newAllTopics: Record<string, Types.InterviewTopic> = {};
+
+  finalTopics.forEach(t => {
+    t.maxFollowUps = globalMaxFollowUps;
+    t.fulfillmentThreshold = Math.max(10, Math.min(100, (t.fulfillmentThreshold || 70) + fulfillmentMod));
+    newAllTopics[t.topicId] = t;
+  });
+
+  const customInterviewPlan = {
+    ...interviewPlan,
+    phases: {
+      warmup: selectedWarmup.map(t => t.topicId),
+      deep_dive: selectedDeepDive.map(t => t.topicId),
+      stretch: selectedStretch.map(t => t.topicId)
+    },
+    allTopics: newAllTopics
+  };
+
+  const firstTopicId = customInterviewPlan.phases.warmup[0] || finalTopics[0]?.topicId;
+  const firstTopic = newAllTopics[firstTopicId];
 
   const sessionData = {
     userId,
     analysisId,
-    config: config || {
-      targetRole: interviewPlan.targetRole || 'Full Stack Developer',
+    config: {
+      targetRole: role,
       difficulty: interviewPlan.candidateLevel || 'mixed',
-      timeLimit: 60,
-      feedbackMode: 'immediate'
+      timeLimit: intensity === 'fast' ? 15 : intensity === 'deep' ? 60 : 30,
+      feedbackMode: 'immediate' as const,
+      intensity
     },
-    totalQuestions: Object.keys(interviewPlan.allTopics).length * 2 // heuristic total questions (topics * avg followups)
+    totalQuestions: finalTopics.length * (globalMaxFollowUps + 1)
   };
 
   const dbSession = await DB.createInterviewSession(sessionData);
 
-  const firstQuestionText = `Let's discuss ${firstTopic.title}. ${firstTopic.description}`;
+  const firstQuestionText = firstTopic ? `Let's discuss ${firstTopic.title}. ${firstTopic.description}` : "Let's begin the interview.";
 
   // Initialize first topic
   const initialProgress: Types.SessionProgress = {
@@ -1143,9 +1209,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   await DB.updateSessionProgress(dbSession.sessionId, initialProgress);
 
-  // Frontend expects the questions array inside the session object (Legacy compat)
-  // We'll map topics to "questions" for the V1 UI
-  const questions = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>).map(t => ({
+  const questions = finalTopics.map(t => ({
     questionId: t.topicId,
     question: t.topicId === firstTopicId ? firstQuestionText : `Let's discuss ${t.title}`,
     category: t.category,
@@ -1156,7 +1220,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
     ...dbSession,
     progress: initialProgress,
     questions,
-    interviewPlan: interviewPlan // Include full plan for frontend
+    interviewPlan: customInterviewPlan
   };
 
   await DB.logAnalysisEvent(analysisId, 'interview_session_created', {
@@ -1237,7 +1301,7 @@ async function handleGetInterviewSession(event: any) {
 async function handleSubmitAnswer(event: any, context: any) {
   const sessionId = event.pathParameters?.sessionId;
   const body = JSON.parse(event.body || '{}');
-  const { questionId, answer, timeSpentSeconds } = body;
+  const { questionId, answer, timeSpentSeconds, action } = body;
 
   const session = await DB.getInterviewSession(sessionId);
   if (!session || session.status !== 'active') {
@@ -1255,19 +1319,74 @@ async function handleSubmitAnswer(event: any, context: any) {
   const activeTopicId = progress.activeTopicId;
   const topic = { ...plan.allTopics[activeTopicId], ...(progress.topicState?.[activeTopicId] || {}) } as Types.InterviewTopic;
 
-  // 1. Evaluate answer with topic context
-  // Map the current questionId to a question object (if it were a follow-up or core)
-  // For simplicity, we create a context-rich question object for the LLM
-  const currentQuestion = {
-    questionId,
-    topicId: activeTopicId,
-    question: body.questionText || `Let's discuss ${topic.title}`, // Frontend should pass question text
-    category: topic.category,
-    difficulty: topic.difficulty,
-    expectedAnswer: { keyPoints: [topic.description] }
-  };
+  if (action === 'end_early') {
+    topic.isCompleted = true;
+    topic.followUpsAsked = topic.maxFollowUps;
+    const endTopicState = {
+      currentFulfillment: topic.currentFulfillment || 0,
+      isCompleted: true,
+      followUpsAsked: topic.followUpsAsked
+    };
 
-  const evaluation = await evaluateAnswerComprehensive(currentQuestion, answer, timeSpentSeconds || 0, topic);
+    const endProgress: Types.SessionProgress = {
+      ...progress,
+      topicState: {
+        ...(progress.topicState || {}),
+        [activeTopicId]: endTopicState
+      },
+      currentPhase: 'completed',
+      questionsAnswered: progress.questionsAnswered + 1,
+      totalTimeSpentSeconds: progress.totalTimeSpentSeconds + (timeSpentSeconds || 0)
+    };
+
+    await DB.updateSessionProgress(sessionId, endProgress);
+    await DB.completeInterviewSession(sessionId, { averageScore: endProgress.averageScore || 0 });
+
+    return {
+      statusCode: 200,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+      body: JSON.stringify({
+        attemptId: `${Date.now()}`,
+        evaluation: {
+          overallScore: 0,
+          criteriaScores: { technicalAccuracy: 0, completeness: 0, clarity: 0, depthOfUnderstanding: 0 },
+          strengths: [], weaknesses: [], missingKeyPoints: [], comparison: { weakAnswer: '', strongAnswer: '', yourAnswerCategory: 'weak' },
+          feedback: "You chose to end the interview early.",
+          improvementSuggestions: []
+        },
+        followUpQuestions: [],
+        nextTopic: null,
+        isPhaseTransition: false,
+        isCompleted: true
+      })
+    };
+  }
+
+  let evaluation: any;
+
+  if (action === 'skip_question') {
+    topic.isCompleted = true;
+    topic.followUpsAsked = topic.maxFollowUps;
+    evaluation = {
+      overallScore: 0,
+      criteriaScores: { technicalAccuracy: 0, completeness: 0, clarity: 0, depthOfUnderstanding: 0 },
+      strengths: [], weaknesses: [], missingKeyPoints: [], comparison: { weakAnswer: '', strongAnswer: '', yourAnswerCategory: 'weak' },
+      feedback: "You chose to skip this question.",
+      improvementSuggestions: []
+    };
+  } else {
+    // 1. Evaluate answer with topic context
+    const currentQuestion = {
+      questionId,
+      topicId: activeTopicId,
+      question: body.questionText || `Let's discuss ${topic.title}`,
+      category: topic.category,
+      difficulty: topic.difficulty,
+      expectedAnswer: { keyPoints: [topic.description] }
+    };
+
+    evaluation = await evaluateAnswerComprehensive(currentQuestion, answer, timeSpentSeconds || 0, topic);
+  }
 
   // 2. Update Performance Signals
   const updatedSignals = { ...(progress.signals || {}) };

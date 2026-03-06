@@ -648,9 +648,10 @@ export interface SessionProgress {
 
 export interface SessionConfig {
   targetRole: string;
-  difficulty: 'junior' | 'mid-level' | 'senior' | 'mixed';
+  difficulty: 'junior' | 'mid-level' | 'senior' | 'staff' | 'mixed';
   timeLimit?: number;      // minutes
   feedbackMode: 'immediate' | 'end_of_session';
+  intensity?: 'fast' | 'normal' | 'deep';
 }
 
 // ============================================================================
