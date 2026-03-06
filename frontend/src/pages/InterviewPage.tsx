@@ -169,16 +169,6 @@ const InterviewPage: React.FC = () => {
         }
     }, [session, currentQuestion, answer, startTime]);
 
-    const handleContinueFromEval = useCallback(() => {
-        if (!session) return;
-        const activeTopic = session.interviewPlan?.allTopics[session.progress?.activeTopicId || ""];
-        if (activeTopic?.isCompleted) {
-            setPhase("topic_review");
-        } else {
-            nextQuestion();
-        }
-    }, [session, nextQuestion]);
-
     const nextQuestion = useCallback(async () => {
         if (!session) return;
 
@@ -224,6 +214,16 @@ const InterviewPage: React.FC = () => {
         setAnswer(""); setCurrentEval(null); setPhase("active");
         setTimeout(() => textareaRef.current?.focus(), 100);
     }, [session]);
+
+    const handleContinueFromEval = useCallback(() => {
+        if (!session) return;
+        const activeTopic = session.interviewPlan?.allTopics[session.progress?.activeTopicId || ""];
+        if (activeTopic?.isCompleted) {
+            setPhase("topic_review");
+        } else {
+            nextQuestion();
+        }
+    }, [session, nextQuestion]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); submitAnswer(); }
