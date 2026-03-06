@@ -431,6 +431,58 @@ export interface BestPractices {
   missing: string[];
 }
 
+// ============================================================================
+// TOPIC-DRIVEN INTERVIEW TYPES
+// ============================================================================
+
+export interface InterviewTopic {
+  topicId: string;
+  title: string;
+  category: 'architecture' | 'implementation' | 'engineering_quality' | 'behavioral' | 'dsa';
+  description: string;
+  sourceCodeContext?: {
+    files: string[];
+    lineRanges?: Record<string, { start: number; end: number }>;
+  };
+  evaluationSignals: string[]; // Keys in PerformanceSignal map
+  fulfillmentThreshold: number; // 0-100, e.g., 70 for Mid-level
+  maxFollowUps: number; // usually 2
+  difficulty: 'junior' | 'mid-level' | 'senior' | 'staff';
+
+  // Dynamic state during session
+  currentFulfillment: number;
+  followUpsAsked: number;
+  isCompleted: boolean;
+}
+
+export interface PerformanceSignal {
+  signalId: string;
+  name: string;
+  category: 'technical' | 'communication' | 'reasoning' | 'curiosity';
+  score: number; // 0-100
+  evidence: string[]; // Quotes or descriptions from answers
+  confidence: number; // 0-1 (e.g., 0.8)
+}
+
+export interface InterviewPlan {
+  PK: string; // ANALYSIS#<analysisId>
+  SK: string; // INTERVIEW_PLAN
+  analysisId: string;
+  candidateLevel: 'junior' | 'mid-level' | 'senior' | 'staff';
+  targetRole: string;
+
+  phases: {
+    warmup: string[]; // topicIds
+    deep_dive: string[];
+    stretch: string[];
+  };
+
+  allTopics: Record<string, InterviewTopic>;
+  requiredSignals: string[];
+
+  generatedAt: string;
+}
+
 export interface ResumeBullet {
   bulletId: string;
   text: string;
@@ -580,6 +632,12 @@ export interface SessionProgress {
   averageScore: number;
   totalTimeSpentSeconds: number;
   coverageMap?: Record<string, boolean>; // Track which topics were covered
+
+  // New Topic-Driven Progress
+  activeTopicId?: string;
+  currentPhase?: 'warmup' | 'deep_dive' | 'stretch' | 'completed';
+  fulfillmentHistory: Array<{ topicId: string; score: number; timestamp: string }>;
+  signals: Record<string, PerformanceSignal>;
 }
 
 export interface SessionConfig {
@@ -728,6 +786,7 @@ export interface AnalysisResponse {
   projectReview: ProjectReview;
   intelligenceReport?: IntelligenceReport;
   interviewSimulation?: InterviewSimulation;
+  interviewPlan?: InterviewPlan;
 
   _metadata: {
     version: string;

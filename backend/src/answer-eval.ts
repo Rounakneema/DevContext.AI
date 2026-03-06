@@ -14,7 +14,8 @@ const MODEL_ID = MISTRAL_LARGE_MODEL;
 export async function evaluateAnswerComprehensive(
   question: any,
   userAnswer: string,
-  timeSpent: number
+  timeSpent: number,
+  topic?: any // NEW: Optional topic context
 ): Promise<any> {
   const expectedKeyPoints = question.expectedAnswer?.keyPoints || [];
   const redFlags = question.expectedAnswer?.redFlags || [];
@@ -166,10 +167,21 @@ REQUIRED OUTPUT (STRICT JSON FORMAT)
       "Touched on security but didn't explain token expiration strategy"
     ],
     "missed": [
-      "Token revocation challenges",
       "Refresh token patterns",
       "Storage security (localStorage vs httpOnly cookies)"
     ]
+  },
+
+  "topicFulfillment": 85, 
+  "signalScores": {
+    "architecture_thinking": 80,
+    "implementation_depth": 70,
+    "code_quality": 90
+  },
+  "signalEvidence": {
+    "architecture_thinking": ["Identified the need for statelessness in JWT for vertical scaling."],
+    "implementation_depth": ["Failed to explain the refresh token flow in detail."],
+    "code_quality": ["Highlighted the security benefits of httpOnly cookies."]
   },
   
   "strengths": [
@@ -251,6 +263,8 @@ CRITICAL INSTRUCTIONS:
 3. Compare to the provided "acceptableAnswer" and "strongAnswer" for calibration.
 4. Your evaluation determines hiring decisions - take this seriously.
 5. If you see ANY red flags, score must be <60 and explain why in detailedFeedback.
+6. topicFulfillment must be 0-100 reflecting how much of the current topic (${topic?.title || 'this topic'}) has been satisfied.
+7. signalScores and signalEvidence MUST cover the signals: ${topic?.evaluationSignals?.join(', ') || 'architecture_thinking, implementation_depth, code_quality, tradeoffs'}.
 
 Before finishing the response:
 1. Validate that the JSON is syntactically correct.

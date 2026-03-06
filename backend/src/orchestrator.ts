@@ -4,6 +4,7 @@ import { evaluateAnswerComprehensive } from './answer-eval';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import * as DB from './db-utils';
+import * as Types from './types';
 
 const lambdaClient = new LambdaClient({});
 const s3Client = new S3Client({});
@@ -1087,48 +1088,72 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
 
-  // Get interview questions from analysis
-  const analysis = await DB.getFullAnalysis(analysisId);
+  // Get interview questions/plan from analysis
+  const fullAnalysis = await DB.getFullAnalysis(analysisId);
 
-  if (!analysis || !analysis.interviewSimulation) {
+  if (!fullAnalysis) {
     return {
       statusCode: 404,
       headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({ error: 'Interview questions not found. Complete Stage 3 first.' })
+      body: JSON.stringify({ error: 'Analysis not found' })
     };
   }
 
-  // Use either questions (sheet) or coreQuestions (live)
-  const questions = analysis.interviewSimulation.mode === 'live'
-    ? analysis.interviewSimulation.coreQuestions
-    : analysis.interviewSimulation.questions;
+  const interviewPlan = fullAnalysis.interviewPlan;
 
-  if (!questions || !Array.isArray(questions)) {
+  if (!interviewPlan) {
     return {
-      statusCode: 500,
+      statusCode: 404,
       headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({ error: 'Interview questions array not found in analysis' })
+      body: JSON.stringify({ error: 'Interview plan not found. Complete Stage 3 first.' })
     };
   }
+
+  const warmupTopics = interviewPlan.phases.warmup;
+  const firstTopicId = warmupTopics[0];
+  const firstTopic = interviewPlan.allTopics[firstTopicId];
 
   const sessionData = {
     userId,
     analysisId,
     config: config || {
-      targetRole: 'Full Stack Developer',
-      difficulty: 'mixed',
+      targetRole: interviewPlan.targetRole || 'Full Stack Developer',
+      difficulty: interviewPlan.candidateLevel || 'mixed',
       timeLimit: 60,
       feedbackMode: 'immediate'
     },
-    totalQuestions: questions.length
+    totalQuestions: Object.keys(interviewPlan.allTopics).length * 2 // heuristic total questions (topics * avg followups)
   };
 
   const dbSession = await DB.createInterviewSession(sessionData);
 
-  // Frontend expects the questions array inside the session object
+  // Initialize first topic
+  const initialProgress = {
+    ...dbSession.progress,
+    activeTopicId: firstTopicId,
+    currentPhase: 'warmup',
+    signals: interviewPlan.requiredSignals.reduce((acc: any, s: string) => ({
+      ...acc,
+      [s]: { signalId: s, name: s.replace(/_/g, ' '), score: 50, evidence: [], confidence: 0 }
+    }), {})
+  };
+
+  await DB.updateSessionProgress(dbSession.sessionId, initialProgress);
+
+  // Frontend expects the questions array inside the session object (Legacy compat)
+  // We'll map topics to "questions" for the V1 UI
+  const questions = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>).map(t => ({
+    questionId: t.topicId,
+    question: `Let's talk about ${t.title}. ${t.description}`,
+    category: t.category,
+    difficulty: t.difficulty
+  }));
+
   const session = {
     ...dbSession,
-    questions: questions
+    progress: initialProgress,
+    questions,
+    interviewPlan: interviewPlan // Include full plan for frontend
   };
 
   await DB.logAnalysisEvent(analysisId, 'interview_session_created', {
@@ -1166,25 +1191,31 @@ async function handleGetInterviewSession(event: any) {
     };
   }
 
-  // Frontend expects the questions array inside the session object!
-  const analysis = await DB.getFullAnalysis(session.analysisId);
-  if (analysis && analysis.interviewSimulation) {
-    const questions = analysis.interviewSimulation.mode === 'live'
-      ? analysis.interviewSimulation.coreQuestions
-      : analysis.interviewSimulation.questions;
+  // Get interview plan to attach topics/questions
+  const fullAnalysis = await DB.getFullAnalysis(session.analysisId);
+  const interviewPlan = fullAnalysis?.interviewPlan;
 
-    session.questions = questions || [];
-  } else {
-    session.questions = [];
+  // Map topics to questions for compatibility
+  let questions: any[] = [];
+  if (interviewPlan) {
+    questions = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>).map(t => ({
+      questionId: t.topicId,
+      question: `Let's discuss ${t.title}`,
+      category: t.category,
+      difficulty: t.difficulty
+    }));
   }
 
   return {
     statusCode: 200,
     headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-    body: JSON.stringify(session)
+    body: JSON.stringify({
+      ...session,
+      questions,
+      interviewPlan
+    })
   };
 }
-
 /**
  * POST /interview/sessions/{sessionId}/answer
  */
@@ -1193,81 +1224,88 @@ async function handleSubmitAnswer(event: any, context: any) {
   const body = JSON.parse(event.body || '{}');
   const { questionId, answer, timeSpentSeconds } = body;
 
-  if (!sessionId || !questionId || !answer) {
-    return {
-      statusCode: 400,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({ error: 'sessionId, questionId, and answer are required' })
-    };
-  }
-
-  // Get session and question
   const session = await DB.getInterviewSession(sessionId);
-
-  if (!session) {
-    return {
-      statusCode: 404,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({ error: 'Session not found' })
-    };
+  if (!session || session.status !== 'active') {
+    return { statusCode: 404, headers: getCorsHeaders(event.headers?.origin), body: JSON.stringify({ error: 'Session not found or inactive' }) };
   }
 
-  // Validate session is active
-  if (session.status !== 'active') {
-    return {
-      statusCode: 400,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({
-        error: 'Session is not active',
-        status: session.status
-      })
-    };
+  const fullAnalysis = await DB.getFullAnalysis(session.analysisId);
+  const plan = fullAnalysis?.interviewPlan;
+
+  if (!plan) {
+    return { statusCode: 500, headers: getCorsHeaders(event.headers?.origin), body: JSON.stringify({ error: 'Interview plan missing' }) };
   }
 
-  // Get the question from analysis
-  const analysis = await DB.getFullAnalysis(session.analysisId);
+  const progress = session.progress as any;
+  const activeTopicId = progress.activeTopicId;
+  const topic = plan.allTopics[activeTopicId] as Types.InterviewTopic;
 
-  if (!analysis || !analysis.interviewSimulation) {
-    return {
-      statusCode: 404,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({ error: 'Interview questions not found' })
-    };
+  // 1. Evaluate answer with topic context
+  // Map the current questionId to a question object (if it were a follow-up or core)
+  // For simplicity, we create a context-rich question object for the LLM
+  const currentQuestion = {
+    questionId,
+    topicId: activeTopicId,
+    question: body.questionText || `Let's discuss ${topic.title}`, // Frontend should pass question text
+    category: topic.category,
+    difficulty: topic.difficulty,
+    expectedAnswer: { keyPoints: [topic.description] }
+  };
+
+  const evaluation = await evaluateAnswerComprehensive(currentQuestion, answer, timeSpentSeconds || 0, topic);
+
+  // 2. Update Performance Signals
+  const updatedSignals = { ...(progress.signals || {}) };
+  if (evaluation.signalScores) {
+    for (const [sId, score] of Object.entries(evaluation.signalScores)) {
+      const sig = updatedSignals[sId] || { signalId: sId, score: 50, evidence: [], confidence: 0 };
+      sig.score = Math.round((sig.score + (score as number)) / 2); // Moving average
+      sig.evidence = [...(sig.evidence || []), ...(evaluation.signalEvidence?.[sId] || [])].slice(-5);
+      sig.confidence = Math.min(1, (sig.confidence || 0) + 0.2);
+      updatedSignals[sId] = sig;
+    }
   }
 
-  const questionsArray = analysis.interviewSimulation.mode === 'live'
-    ? analysis.interviewSimulation.coreQuestions || []
-    : analysis.interviewSimulation.questions || [];
+  // 3. Update Topic Fulfillment
+  topic.currentFulfillment = Math.max(topic.currentFulfillment, evaluation.topicFulfillment || 0);
+  topic.isCompleted = topic.currentFulfillment >= topic.fulfillmentThreshold;
 
-  const question = questionsArray.find((q: any) => q.questionId === questionId);
+  // 4. Determine next step (Follow-up vs Next Topic)
+  const nextStep = getNextInterviewStep(plan, progress, topic);
 
-  if (!question) {
-    return {
-      statusCode: 404,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({ error: 'Question not found' })
-    };
+  let followUpQuestions: string[] = [];
+  if (nextStep.type === 'follow_up') {
+    // Generate follow-up for the same topic
+    const followUpPrompt = `Generate a single deep-dive follow-up question for the topic: "${topic.title}".
+    The candidate just answered: "${answer}".
+    Evaluation found missed points: ${evaluation.keyPointsCoverage?.missed?.join(', ')}.
+    Probe deeper into logic and tradeoffs.`;
+
+    // Simplification: generate it now or call follow-up lambda
+    // For now, we'll return a placeholder or call follow-up logic
+    followUpQuestions = [evaluation.followUpRecommendations?.[0]?.question || `Can you go deeper into ${topic.title}?`].filter(Boolean);
+    topic.followUpsAsked = (topic.followUpsAsked || 0) + 1;
   }
 
-  // Evaluate answer using AI (call Bedrock answer evaluation logic)
-  const evaluation = await evaluateAnswerComprehensive(question, answer, timeSpentSeconds || 0);
+  // 5. Update Session Progress
+  const newProgress = {
+    ...progress,
+    signals: updatedSignals,
+    activeTopicId: nextStep.nextTopicId,
+    currentPhase: nextStep.nextPhase,
+    questionsAnswered: progress.questionsAnswered + 1,
+    averageScore: calculateAverageScore(session, evaluation.overallScore),
+    totalTimeSpentSeconds: progress.totalTimeSpentSeconds + (timeSpentSeconds || 0)
+  };
 
-  // Get previous attempts for this question to calculate improvement
-  const allAttempts = await DB.getSessionAttempts(sessionId);
-  const previousAttempts = allAttempts.filter((a: any) => a.questionId === questionId);
-
-  let improvementFromPrevious = 0;
-  if (previousAttempts.length > 0) {
-    // Sort by submission time to get the most recent previous attempt
-    previousAttempts.sort((a: any, b: any) =>
-      new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-    );
-    const lastAttempt = previousAttempts[0];
-    improvementFromPrevious = evaluation.overallScore - (lastAttempt.evaluation?.overallScore || 0);
+  if (nextStep.type === 'complete') {
+    await DB.completeInterviewSession(sessionId, { averageScore: newProgress.averageScore });
+  } else {
+    await DB.updateSessionProgress(sessionId, newProgress);
   }
 
   // Save attempt
-  const attempt = await DB.saveInterviewAttempt({
+  await DB.saveInterviewAttempt({
     sessionId,
     questionId,
     userAnswer: answer,
@@ -1275,47 +1313,45 @@ async function handleSubmitAnswer(event: any, context: any) {
     evaluation
   });
 
-  // Check if we should generate a follow-up (only for live mode)
-  let followUpQuestions = [];
-  if (analysis.interviewSimulation?.mode === 'live') {
-    try {
-      // Invoke dedicated FollowUp Lambda
-      const followUpResult = await invokeAsync(process.env.FOLLOWUP_FUNCTION || 'live-interview-followup', {
-        analysisId: session.analysisId,
-        sessionId,
-        questionAsked: question,
-        answerGiven: answer,
-        answerEvaluation: evaluation,
-        coverageMap: session.progress?.coverageMap || {},
-        interviewContext: session.config
-      });
-
-      if (followUpResult?.success && followUpResult.followUpQuestions?.length > 0) {
-        followUpQuestions = followUpResult.followUpQuestions;
-      }
-    } catch (err) {
-      console.warn('Follow-up generation skipped due to error:', err);
-    }
-  }
-
-  // Update session progress
-  await DB.updateSessionProgress(sessionId, {
-    questionsAnswered: session.progress.questionsAnswered + 1,
-    averageScore: calculateAverageScore(session, evaluation.overallScore),
-    totalTimeSpentSeconds: session.progress.totalTimeSpentSeconds + (timeSpentSeconds || 0)
-  });
-
   return {
     statusCode: 200,
     headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
     body: JSON.stringify({
-      attemptId: attempt.attemptId,
-      questionId,
+      attemptId: `${Date.now()}`,
       evaluation,
-      improvementFromPrevious,
-      followUpQuestions // Return follow-ups to frontend
+      followUpQuestions,
+      nextTopic: nextStep.type === 'next_topic' ? plan.allTopics[nextStep.nextTopicId] : null,
+      isPhaseTransition: nextStep.isPhaseTransition,
+      isCompleted: nextStep.type === 'complete'
     })
   };
+}
+
+function getNextInterviewStep(plan: Types.InterviewPlan, progress: any, currentTopic: Types.InterviewTopic): any {
+  // Check if current topic needs follow-up
+  if (!currentTopic.isCompleted && (currentTopic.followUpsAsked || 0) < currentTopic.maxFollowUps) {
+    return { type: 'follow_up', nextTopicId: currentTopic.topicId, nextPhase: progress.currentPhase };
+  }
+
+  // Topic complete or max follow-ups reached -> Move to next topic in current phase
+  const currentPhase = progress.currentPhase as 'warmup' | 'deep_dive' | 'stretch';
+  const phaseTopics = plan.phases[currentPhase] || [];
+  const currentIndex = phaseTopics.indexOf(currentTopic.topicId);
+
+  if (currentIndex !== -1 && currentIndex < phaseTopics.length - 1) {
+    return { type: 'next_topic', nextTopicId: phaseTopics[currentIndex + 1], nextPhase: currentPhase, isPhaseTransition: false };
+  }
+
+  // Phase complete -> Move to next phase
+  if (currentPhase === 'warmup') {
+    return { type: 'next_topic', nextTopicId: plan.phases.deep_dive[0], nextPhase: 'deep_dive', isPhaseTransition: true };
+  }
+  if (currentPhase === 'deep_dive') {
+    return { type: 'next_topic', nextTopicId: plan.phases.stretch[0], nextPhase: 'stretch', isPhaseTransition: true };
+  }
+
+  // All phases complete
+  return { type: 'complete' };
 }
 
 /**

@@ -43,9 +43,10 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
     console.log(`Loaded ${codeContext.length} chars of code`);
 
     let interviewSimulation;
+    let interviewPlan;
 
     if (mode === 'sheet') {
-      // MODE 1: Generate complete question sheet (50 questions upfront)
+      // MODE 1: Generate complete question sheet (legacy support)
       interviewSimulation = await generateQuestionSheet(
         projectContextMap,
         projectReview,
@@ -54,25 +55,31 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
         analysisId
       );
     } else {
-      // MODE 2: Initialize live interview (generates questions dynamically)
-      interviewSimulation = await initializeLiveInterview(
+      // MODE 2: Initialize live interview (Topic-Driven)
+      const result = await initializeTopicDrivenInterview(
         projectContextMap,
         projectReview,
         intelligenceReport,
         codeContext,
         analysisId
       );
+      interviewSimulation = result.simulation;
+      interviewPlan = result.plan;
     }
 
     // Save to DynamoDB
     await DB.saveInterviewSimulation(analysisId, interviewSimulation);
+    if (interviewPlan) {
+      await DB.saveInterviewPlan(analysisId, interviewPlan);
+    }
 
     console.log(`Stage 3 completed: ${mode} mode`);
 
     return {
       success: true,
       analysisId,
-      interviewSimulation
+      interviewSimulation,
+      interviewPlan
     };
 
   } catch (error) {
@@ -150,72 +157,178 @@ async function generateQuestionSheet(
 }
 
 /**
- * MODE 2: Initialize live interview (generates core questions + follow-up strategy)
+ * MODE 2: Initialize topic-driven live interview
  */
-async function initializeLiveInterview(
+async function initializeTopicDrivenInterview(
   contextMap: ProjectContextMap,
   projectReview: any,
   intelligenceReport: any,
   codeContext: string,
   analysisId: string
-): Promise<any> {
+): Promise<{ simulation: any, plan: any }> {
 
-  console.log('Initializing live interview mode...');
+  console.log('Initializing topic-driven interview mode...');
 
-  // Generate initial question set (18 core questions)
-  const coreQuestions = await generateCoreQuestions(
+  const userId = 'demo-user'; // Default for system-level calls
+  const userProfile = await DB.getUserProfile(userId);
+  const targetRole = userProfile?.targetRole || 'Senior SDE';
+  const candidateLevel = detectCandidateLevel(userProfile, projectReview);
+
+  // 1. Extract Topics from analysis
+  const topics = await extractTopics(
     contextMap,
     projectReview,
     intelligenceReport,
     codeContext,
+    targetRole,
+    candidateLevel,
     analysisId
   );
 
-  return {
-    mode: 'live',
-    coreQuestions,
-    totalCoreQuestions: coreQuestions.length,
-
-    // Live interview state
-    interviewState: {
-      currentQuestionIndex: 0,
-      questionsAsked: [],
-      questionsAnswered: [],
-      followUpsGenerated: [],
-      coverageMap: buildCoverageMap(coreQuestions),
-      interviewContext: {
-        // Store minimal context for follow-up generation
-        frameworks: contextMap.frameworks,
-        languages: contextMap.languages,
-        keyArchitecturalPatterns: intelligenceReport.systemArchitecture?.architecturalPatterns?.map((p: any) => p.name) || [],
-        codeQualityScore: projectReview.codeQuality?.overall || 0
-      }
-    },
-
-    // Strategy for follow-ups
-    followUpStrategy: {
-      enabled: true,
-      maxFollowUpsPerQuestion: 3,
-      generateFollowUpBasedOn: 'answer_quality',
-      ensureCoreTopicsCovered: true,
-      adaptDifficultyBasedOnPerformance: true
-    },
-
-    // Instructions for frontend
-    usage: {
-      type: 'live_interview',
-      instructions: 'Start with core questions. Generate follow-ups dynamically based on answers.',
-      coreQuestionsCount: coreQuestions.length,
-      estimatedTotalQuestions: '20-40 (depends on answers)',
-      estimatedDuration: '60-90 minutes'
-    },
-
+  // 2. Build Interview Plan (Phases)
+  const plan = {
+    analysisId,
+    candidateLevel,
+    targetRole,
+    phases: categorizeTopicsIntoPhases(topics),
+    allTopics: topics.reduce((acc: any, t: any) => ({ ...acc, [t.topicId]: t }), {}),
+    requiredSignals: [
+      'architecture_thinking',
+      'implementation_depth',
+      'code_quality_awareness',
+      'trade_off_analysis',
+      'scalability_vision'
+    ],
     generatedAt: new Date().toISOString()
+  };
+
+  const simulation = {
+    mode: 'live_topic_driven',
+    totalTopics: topics.length,
+    usage: {
+      type: 'topic_driven_interview',
+      instructions: 'Interview will proceed through Warmup, Deep Dive, and Stretch phases. Questions are crafted dynamically per topic.',
+      topicCount: topics.length,
+      estimatedDuration: '45-60 minutes'
+    },
+    generatedAt: new Date().toISOString()
+  };
+
+  return { simulation, plan };
+}
+
+function detectCandidateLevel(profile: any, review: any): 'junior' | 'mid-level' | 'senior' | 'staff' {
+  const role = (profile?.targetRole || '').toLowerCase();
+  if (role.includes('staff') || role.includes('principal') || role.includes('lead')) return 'staff';
+  if (role.includes('senior')) return 'senior';
+  if (role.includes('junior') || role.includes('entry')) return 'junior';
+
+  // Fallback to complexity assessment from Stage 1
+  const complexity = review?.employabilitySignal?.complexity || 'moderate';
+  if (complexity === 'advanced' || complexity === 'complex') return 'senior';
+  if (complexity === 'trivial' || complexity === 'simple') return 'junior';
+
+  return 'mid-level';
+}
+
+async function extractTopics(
+  contextMap: ProjectContextMap,
+  projectReview: any,
+  intelligenceReport: any,
+  codeContext: string,
+  targetRole: string,
+  candidateLevel: string,
+  analysisId: string
+): Promise<any[]> {
+  const prompt = `You are a Principal Engineer at Google. Analyze this candidate's codebase and extract 12-15 specific INTERVIEW TOPICS for a ${candidateLevel} ${targetRole} interview.
+
+Topics must be grounded in their code and categorized:
+1. Architecture: High-level structure, data flow, component boundaries.
+2. Implementation: Specific logic, algorithms, state management, API design.
+3. Engineering Quality: Testing, error handling, security, performance.
+
+For each topic, define:
+- fulfillmentThreshold: (Junior: 50, Mid: 70, Senior: 85, Staff: 95)
+- evaluationSignals: (Choose 2-3: architecture_thinking, implementation_depth, code_quality, tradeoffs, scalability, security)
+
+═══════════════════════════════════════════════════════════
+                    PROJECT CONTEXT
+═══════════════════════════════════════════════════════════
+${codeContext}
+
+REVIEWS:
+Code Quality: ${projectReview?.codeQuality?.overall}/100
+Design Patterns: ${projectReview?.architectureClarity?.designPatterns?.join(', ')}
+Patterns Found: ${intelligenceReport?.systemArchitecture?.architecturalPatterns?.map((p: any) => p.name).join(', ')}
+
+═══════════════════════════════════════════════════════════
+          EXTRACTION RULES
+═══════════════════════════════════════════════════════════
+- Topics must reference specific files/functions.
+- MUST be appropriate for a ${candidateLevel} candidate. 
+- Junior: Focus on implementation & basic clean code.
+- Senior/Staff: Focus on architecture, tradeoffs, and system design.
+
+Return ONLY valid JSON array:
+[
+  {
+    "topicId": "T-ARCH-01",
+    "title": "Short title",
+    "category": "architecture|implementation|engineering_quality",
+    "description": "What specifically to probe in their code",
+    "sourceCodeContext": {
+      "files": ["path/to/file.ts"],
+      "lineRanges": {"path/to/file.ts": {"start": 10, "end": 50}}
+    },
+    "evaluationSignals": ["architecture_thinking", "tradeoffs"],
+    "fulfillmentThreshold": 85,
+    "maxFollowUps": 2,
+    "difficulty": "${candidateLevel}"
+  }
+]`;
+
+  const { text: content, inferenceTimeMs, inputTokens, outputTokens } = await callBedrockConverse(
+    prompt,
+    MODEL_ID,
+    { maxTokens: 8000, temperature: 0.4 }
+  );
+
+  await CostTracker.trackAiCall({
+    analysisId,
+    stage: 'topic_extraction',
+    modelId: MODEL_ID,
+    inputTokens,
+    outputTokens,
+    inferenceTimeMs,
+    promptLength: prompt.length,
+    responseLength: content.length
+  });
+
+  const rawTopics = extractJson(content);
+  return (rawTopics || []).map((t: any) => ({
+    ...t,
+    currentFulfillment: 0,
+    followUpsAsked: 0,
+    isCompleted: false
+  }));
+}
+
+function categorizeTopicsIntoPhases(topics: any[]) {
+  const sorted = [...topics].sort((a, b) => {
+    // Basic implementation first, then architecture
+    const catPriority: any = { implementation: 1, engineering_quality: 2, architecture: 3 };
+    return (catPriority[a.category] || 0) - (catPriority[b.category] || 0);
+  });
+
+  return {
+    warmup: sorted.slice(0, 3).map(t => t.topicId),
+    deep_dive: sorted.slice(3, 8).map(t => t.topicId),
+    stretch: sorted.slice(8, 11).map(t => t.topicId)
   };
 }
 
 /**
- * Generate core questions for live interview (18 essential questions)
+ * MODE 1: Generate complete question sheet (legacy support)
  */
 async function generateCoreQuestions(
   contextMap: ProjectContextMap,

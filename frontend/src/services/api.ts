@@ -170,6 +170,43 @@ export interface InterviewQuestion {
   followUpQuestions: string[];
 }
 
+export interface InterviewTopic {
+  topicId: string;
+  title: string;
+  category: string;
+  description: string;
+  evaluationSignals: string[];
+  fulfillmentThreshold: number;
+  maxFollowUps: number;
+  difficulty: string;
+  currentFulfillment: number;
+  followUpsAsked: number;
+  isCompleted: boolean;
+}
+
+export interface PerformanceSignal {
+  signalId: string;
+  name: string;
+  category: string;
+  score: number;
+  evidence: string[];
+  confidence: number;
+}
+
+export interface InterviewPlan {
+  analysisId: string;
+  candidateLevel: string;
+  targetRole: string;
+  phases: {
+    warmup: string[];
+    deep_dive: string[];
+    stretch: string[];
+  };
+  allTopics: Record<string, InterviewTopic>;
+  requiredSignals: string[];
+  generatedAt: string;
+}
+
 export interface InterviewSimulation {
   questions: InterviewQuestion[];
   totalQuestions: number;
@@ -259,6 +296,9 @@ export interface InterviewSession {
     questionsSkipped: number;
     averageScore: number;
     totalTimeSpentSeconds: number;
+    activeTopicId?: string;
+    currentPhase?: 'warmup' | 'deep_dive' | 'stretch';
+    signals?: Record<string, PerformanceSignal>;
   };
   totalQuestions: number;
   currentQuestionIndex: number;
@@ -272,6 +312,7 @@ export interface InterviewSession {
     timeSpentSeconds?: number;
     evaluation?: AnswerEvaluation;
   }>;
+  interviewPlan?: InterviewPlan;
   summary?: InterviewSummary;
 }
 

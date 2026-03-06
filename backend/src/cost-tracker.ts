@@ -211,7 +211,7 @@ export interface AiCallRecord {
   sessionId?: string;      // Link to interview session
 
   // Call details
-  stage: 'repo_processing' | 'project_review' | 'intelligence_report' | 'interview_questions' | 'answer_evaluation';
+  stage: 'repo_processing' | 'project_review' | 'intelligence_report' | 'interview_questions' | 'answer_evaluation' | 'topic_extraction';
   modelId: string;
   modelName: string;
   provider: string;

@@ -186,7 +186,8 @@ export async function getFullAnalysis(analysisId: string): Promise<Types.Analysi
           { PK: `ANALYSIS#${analysisId}`, SK: 'REPO_METADATA' },
           { PK: `ANALYSIS#${analysisId}`, SK: 'PROJECT_REVIEW' },
           { PK: `ANALYSIS#${analysisId}`, SK: 'INTELLIGENCE_REPORT' },
-          { PK: `ANALYSIS#${analysisId}`, SK: 'INTERVIEW_SIMULATION' }
+          { PK: `ANALYSIS#${analysisId}`, SK: 'INTERVIEW_SIMULATION' },
+          { PK: `ANALYSIS#${analysisId}`, SK: 'INTERVIEW_PLAN' }
         ]
       }
     }
@@ -201,6 +202,7 @@ export async function getFullAnalysis(analysisId: string): Promise<Types.Analysi
   const projectReview = items.find(item => item.SK === 'PROJECT_REVIEW') as Types.ProjectReview;
   const intelligenceReport = items.find(item => item.SK === 'INTELLIGENCE_REPORT') as Types.IntelligenceReport;
   const interviewSimulation = items.find(item => item.SK === 'INTERVIEW_SIMULATION') as Types.InterviewSimulation;
+  const interviewPlan = items.find(item => item.SK === 'INTERVIEW_PLAN') as Types.InterviewPlan;
 
   return {
     analysis: {
@@ -216,6 +218,7 @@ export async function getFullAnalysis(analysisId: string): Promise<Types.Analysi
     projectReview,
     intelligenceReport,
     interviewSimulation,
+    interviewPlan,
     _metadata: {
       version: '2.0',
       generatedAt: new Date().toISOString(),
@@ -323,6 +326,36 @@ export async function saveInterviewSimulation(
 }
 
 // ============================================================================
+// INTERVIEW PLAN OPERATIONS
+// ============================================================================
+
+export async function saveInterviewPlan(
+  analysisId: string,
+  plan: Omit<Types.InterviewPlan, 'PK' | 'SK'>
+): Promise<void> {
+  await dynamoClient.send(new PutCommand({
+    TableName: MAIN_TABLE,
+    Item: {
+      PK: `ANALYSIS#${analysisId}`,
+      SK: 'INTERVIEW_PLAN',
+      ...plan
+    }
+  }));
+}
+
+export async function getInterviewPlan(analysisId: string): Promise<Types.InterviewPlan | null> {
+  const result = await dynamoClient.send(new GetCommand({
+    TableName: MAIN_TABLE,
+    Key: {
+      PK: `ANALYSIS#${analysisId}`,
+      SK: 'INTERVIEW_PLAN'
+    }
+  }));
+
+  return result.Item as Types.InterviewPlan || null;
+}
+
+// ============================================================================
 // INTERVIEW SESSION OPERATIONS
 // ============================================================================
 
@@ -349,7 +382,10 @@ export async function createInterviewSession(params: {
       questionsAnswered: 0,
       questionsSkipped: 0,
       averageScore: 0,
-      totalTimeSpentSeconds: 0
+      totalTimeSpentSeconds: 0,
+      fulfillmentHistory: [],
+      signals: {},
+      currentPhase: 'warmup'
     },
     config: params.config,
     ttl: Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60)
