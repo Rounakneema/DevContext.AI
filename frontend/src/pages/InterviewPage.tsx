@@ -150,9 +150,6 @@ const InterviewPage: React.FC = () => {
             const evaluation = (result as any).evaluation;
             setCurrentEval(evaluation);
 
-            // Check if topic was completed
-            const isTopicCompleted = (result as any).nextTopic !== null || (result as any).isPhaseTransition || (result as any).isCompleted;
-
             // Refresh session to get updated signals/progress
             try {
                 const updatedSession = await getInterviewSession(session.sessionId);
