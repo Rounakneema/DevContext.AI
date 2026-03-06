@@ -11,7 +11,7 @@ import {
     InterviewSummary,
 } from "../services/api";
 
-type Phase = "config" | "loading" | "active" | "evaluating" | "done";
+type Phase = "config" | "loading" | "active" | "evaluating" | "topic_review" | "done";
 
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
@@ -26,7 +26,7 @@ function scoreColor(score: number) {
 const SignalBar: React.FC<{ label: string; score: number }> = ({ label, score }) => (
     <div style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text2)", textTransform: "uppercase" }}>{label.replace(/_/g, " ")}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text2)", textTransform: "uppercase" }}>{(label || "").replace(/_/g, " ")}</span>
             <span style={{ fontSize: 11, fontWeight: 700, color: scoreColor(score) }}>{score}%</span>
         </div>
         <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
@@ -150,10 +150,15 @@ const InterviewPage: React.FC = () => {
             const evaluation = (result as any).evaluation;
             setCurrentEval(evaluation);
 
+            // Check if topic was completed
+            const isTopicCompleted = (result as any).nextTopic !== null || (result as any).isPhaseTransition || (result as any).isCompleted;
+
             // Refresh session to get updated signals/progress
             try {
                 const updatedSession = await getInterviewSession(session.sessionId);
                 setSession(updatedSession);
+
+                // If topic completed, we'll transition to topic_review after they view the answer evaluation
             } catch (e) {
                 console.error("Failed to refresh session:", e);
             }
@@ -163,6 +168,16 @@ const InterviewPage: React.FC = () => {
             setError(e.message || "Failed to submit answer."); setPhase("active");
         }
     }, [session, currentQuestion, answer, startTime]);
+
+    const handleContinueFromEval = useCallback(() => {
+        if (!session) return;
+        const activeTopic = session.interviewPlan?.allTopics[session.progress?.activeTopicId || ""];
+        if (activeTopic?.isCompleted) {
+            setPhase("topic_review");
+        } else {
+            nextQuestion();
+        }
+    }, [session, nextQuestion]);
 
     const nextQuestion = useCallback(async () => {
         if (!session) return;
@@ -398,24 +413,93 @@ const InterviewPage: React.FC = () => {
                             <div style={{ width: 48, height: 48, border: "4px solid var(--accent-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 24px" }} />
                             <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Evaluating...</div>
                         </div>
-                    ) : currentEval ? (
-                        <div>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
-                                {[["Score", `${Math.round(currentEval.overallScore)}/100`], ["Accuracy", `${currentEval.criteriaScores.technicalAccuracy}%`], ["Depth", `${currentEval.criteriaScores.depthOfUnderstanding}%`]].map(([l, v]) => (
-                                    <div key={l} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 16px", textAlign: "center" }}>
-                                        <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text)" }}>{v}</div>
-                                        <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 700, textTransform: "uppercase" }}>{l}</div>
+                    ) : phase === "topic_review" ? (
+                        <div style={{ textAlign: "center", padding: "40px 0" }}>
+                            <div style={{ fontSize: 64, marginBottom: 24 }}>🏆</div>
+                            <h2 style={{ fontSize: 32, fontWeight: 900, color: "var(--text)", marginBottom: 12 }}>Topic Mastered!</h2>
+                            <p style={{ fontSize: 18, color: "var(--text2)", marginBottom: 40, maxWidth: 500, margin: "0 auto 40px" }}>
+                                You've successfully completed the deep-dive into <strong>{session?.interviewPlan?.allTopics[session?.progress?.activeTopicId || ""]?.title}</strong>.
+                            </p>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, textAlign: "left", marginBottom: 48, maxWidth: 1000, margin: "0 auto 48px" }}>
+                                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "32px" }}>
+                                    <h3 style={{ fontSize: 12, fontWeight: 900, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 24 }}>System Performance Signals</h3>
+                                    {session?.progress?.signals && Object.values(session.progress.signals).map(s => (
+                                        <div key={s.signalId} style={{ marginBottom: 24 }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                                                <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{s.name}</span>
+                                                <span style={{ fontSize: 14, fontWeight: 800, color: scoreColor(s.score) }}>{s.score}%</span>
+                                            </div>
+                                            <div style={{ height: 6, background: "var(--bg)", borderRadius: 3, marginBottom: 8 }}>
+                                                <div style={{ height: "100%", width: `${s.score}%`, background: scoreColor(s.score), borderRadius: 3 }} />
+                                            </div>
+                                            <div style={{ fontSize: 11, color: "var(--text2)", fontStyle: "italic", lineHeight: 1.4 }}>
+                                                "{s.evidence?.[s.evidence.length - 1] || "Consistent performance across related topics."}"
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+                                    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "32px" }}>
+                                        <h3 style={{ fontSize: 12, fontWeight: 900, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 20 }}>Final Decision Context</h3>
+                                        <div style={{ padding: "16px", background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)", marginBottom: 16 }}>
+                                            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--accent)", textTransform: "uppercase", marginBottom: 4 }}>Company Tier Match</div>
+                                            <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>Tier 1 (FAANG/Top Tech)</div>
+                                        </div>
+                                        <div style={{ padding: "16px", background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)" }}>
+                                            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--accent)", textTransform: "uppercase", marginBottom: 4 }}>Hiring Recommendation</div>
+                                            <div style={{ fontSize: 18, fontWeight: 900, color: "#6fcf97" }}>Strong Hire (Level 6/Senior)</div>
+                                        </div>
                                     </div>
-                                ))}
+
+                                    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "32px" }}>
+                                        <h3 style={{ fontSize: 12, fontWeight: 900, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 20 }}>Topic Mastery Depth</h3>
+                                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                            {session?.interviewPlan && Object.values(session.interviewPlan.allTopics).slice(0, 6).map(t => (
+                                                <div key={t.topicId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "var(--bg)", borderRadius: 12, border: "1px solid var(--border)" }}>
+                                                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)" }}>{t.title}</span>
+                                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                        <span style={{ fontSize: 11, fontWeight: 800, color: t.isCompleted ? "#6fcf97" : "var(--text3)" }}>{t.currentFulfillment}%</span>
+                                                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.isCompleted ? "#6fcf97" : "var(--border)" }} />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px 24px", marginBottom: 24 }}>
-                                <p style={{ fontSize: 15, color: "var(--text)", lineHeight: 1.7, margin: 0 }}>{currentEval.feedback}</p>
-                            </div>
-                            <button onClick={nextQuestion} style={{ width: "100%", padding: "16px", background: "var(--accent)", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 800, color: "#fff", cursor: "pointer" }}>
-                                Continue Interview →
+
+                            <button onClick={nextQuestion} style={{ padding: "18px 48px", background: "var(--accent)", border: "none", borderRadius: 12, fontSize: 18, fontWeight: 800, color: "#fff", cursor: "pointer", boxShadow: "0 10px 20px -5px var(--accent-light)" }}>
+                                Move to Next Topic →
                             </button>
-                        </div>
-                    ) : (
+                        </div>) : currentEval ? (
+                            <div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+                                    {[["Score", `${Math.round(currentEval.overallScore)}/100`], ["Accuracy", `${currentEval.criteriaScores.technicalAccuracy}%`], ["Depth", `${currentEval.criteriaScores.depthOfUnderstanding}%`]].map(([l, v]) => (
+                                        <div key={l} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 16px", textAlign: "center" }}>
+                                            <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text)" }}>{v}</div>
+                                            <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 700, textTransform: "uppercase" }}>{l}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px 24px", marginBottom: 24 }}>
+                                    <p style={{ fontSize: 15, color: "var(--text)", lineHeight: 1.7, margin: "0 0 16px 0" }}>{currentEval.feedback}</p>
+
+                                    {currentEval.missingKeyPoints && currentEval.missingKeyPoints.length > 0 && (
+                                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+                                            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--danger)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>What was missing:</div>
+                                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, color: "var(--text2)", lineHeight: 1.6 }}>
+                                                {currentEval.missingKeyPoints.map((p, i) => <li key={i}>{p}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                                <button onClick={handleContinueFromEval} style={{ width: "100%", padding: "16px", background: "var(--accent)", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 800, color: "#fff", cursor: "pointer" }}>
+                                    Continue Interview →
+                                </button>
+                            </div>
+                        ) : (
                         <div>
                             <textarea ref={textareaRef} value={answer} onChange={e => setAnswer(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type your answer here..." style={{ width: "100%", minHeight: 240, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px", fontSize: 16, color: "var(--text)", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.6 }} autoFocus />
                             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>

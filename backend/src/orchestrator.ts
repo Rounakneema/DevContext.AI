@@ -1127,11 +1127,14 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   const dbSession = await DB.createInterviewSession(sessionData);
 
+  const firstQuestionText = `Let's discuss ${firstTopic.title}. ${firstTopic.description}`;
+
   // Initialize first topic
-  const initialProgress = {
+  const initialProgress: Types.SessionProgress = {
     ...dbSession.progress,
     activeTopicId: firstTopicId,
     currentPhase: 'warmup',
+    currentQuestionOverride: firstQuestionText,
     signals: interviewPlan.requiredSignals.reduce((acc: any, s: string) => ({
       ...acc,
       [s]: { signalId: s, name: s.replace(/_/g, ' '), score: 50, evidence: [], confidence: 0 }
@@ -1144,7 +1147,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   // We'll map topics to "questions" for the V1 UI
   const questions = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>).map(t => ({
     questionId: t.topicId,
-    question: `Let's talk about ${t.title}. ${t.description}`,
+    question: t.topicId === firstTopicId ? firstQuestionText : `Let's discuss ${t.title}`,
     category: t.category,
     difficulty: t.difficulty
   }));
@@ -1198,9 +1201,12 @@ async function handleGetInterviewSession(event: any) {
   // Map topics to questions for compatibility
   let questions: any[] = [];
   if (interviewPlan) {
+    const activeTopicId = session.progress?.activeTopicId;
+    const override = session.progress?.currentQuestionOverride;
+
     questions = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>).map(t => ({
       questionId: t.topicId,
-      question: `Let's discuss ${t.title}`,
+      question: (t.topicId === activeTopicId && override) ? override : `Let's discuss ${t.title}`,
       category: t.category,
       difficulty: t.difficulty
     }));
@@ -1258,7 +1264,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   const updatedSignals = { ...(progress.signals || {}) };
   if (evaluation.signalScores) {
     for (const [sId, score] of Object.entries(evaluation.signalScores)) {
-      const sig = updatedSignals[sId] || { signalId: sId, score: 50, evidence: [], confidence: 0 };
+      const sig = updatedSignals[sId] || { signalId: sId, name: sId.replace(/_/g, ' '), score: 50, evidence: [], confidence: 0 };
       sig.score = Math.round((sig.score + (score as number)) / 2); // Moving average
       sig.evidence = [...(sig.evidence || []), ...(evaluation.signalEvidence?.[sId] || [])].slice(-5);
       sig.confidence = Math.min(1, (sig.confidence || 0) + 0.2);
@@ -1288,11 +1294,20 @@ async function handleSubmitAnswer(event: any, context: any) {
   }
 
   // 5. Update Session Progress
-  const newProgress = {
+  let nextQuestionText: string | undefined = followUpQuestions[0];
+  if (!nextQuestionText && nextStep.type === 'next_topic') {
+    const nextTopic = plan.allTopics[nextStep.nextTopicId];
+    if (nextTopic) {
+      nextQuestionText = `Let's move to ${nextTopic.title}. ${nextTopic.description}`;
+    }
+  }
+
+  const newProgress: Types.SessionProgress = {
     ...progress,
     signals: updatedSignals,
     activeTopicId: nextStep.nextTopicId,
     currentPhase: nextStep.nextPhase,
+    currentQuestionOverride: nextQuestionText,
     questionsAnswered: progress.questionsAnswered + 1,
     averageScore: calculateAverageScore(session, evaluation.overallScore),
     totalTimeSpentSeconds: progress.totalTimeSpentSeconds + (timeSpentSeconds || 0)

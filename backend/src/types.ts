@@ -636,6 +636,7 @@ export interface SessionProgress {
   // New Topic-Driven Progress
   activeTopicId?: string;
   currentPhase?: 'warmup' | 'deep_dive' | 'stretch' | 'completed';
+  currentQuestionOverride?: string; // For dynamic follow-up logic
   fulfillmentHistory: Array<{ topicId: string; score: number; timestamp: string }>;
   signals: Record<string, PerformanceSignal>;
 }
