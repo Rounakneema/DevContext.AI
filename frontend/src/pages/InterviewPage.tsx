@@ -197,7 +197,7 @@ const InterviewPage: React.FC = () => {
         if (topic) {
             setCurrentQuestion({
                 questionId: topic.topicId,
-                question: `Let's discuss ${topic.title}. ${topic.description}`,
+                question: currentSdt.progress.currentQuestionOverride || `Let's discuss ${topic.title}. ${topic.description}`,
                 category: topic.category,
                 difficulty: topic.difficulty,
                 questionNumber: currentSdt.progress.questionsAnswered + 1,

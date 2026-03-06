@@ -1204,6 +1204,15 @@ async function handleGetInterviewSession(event: any) {
     const activeTopicId = session.progress?.activeTopicId;
     const override = session.progress?.currentQuestionOverride;
 
+    // Hydrate topicState from session progress
+    if (session.progress?.topicState) {
+      Object.entries(session.progress.topicState).forEach(([tId, state]) => {
+        if (interviewPlan.allTopics[tId]) {
+          Object.assign(interviewPlan.allTopics[tId], state);
+        }
+      });
+    }
+
     questions = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>).map(t => ({
       questionId: t.topicId,
       question: (t.topicId === activeTopicId && override) ? override : `Let's discuss ${t.title}`,
@@ -1244,7 +1253,7 @@ async function handleSubmitAnswer(event: any, context: any) {
 
   const progress = session.progress as any;
   const activeTopicId = progress.activeTopicId;
-  const topic = plan.allTopics[activeTopicId] as Types.InterviewTopic;
+  const topic = { ...plan.allTopics[activeTopicId], ...(progress.topicState?.[activeTopicId] || {}) } as Types.InterviewTopic;
 
   // 1. Evaluate answer with topic context
   // Map the current questionId to a question object (if it were a follow-up or core)
@@ -1302,9 +1311,19 @@ async function handleSubmitAnswer(event: any, context: any) {
     }
   }
 
+  const newTopicState = {
+    currentFulfillment: topic.currentFulfillment,
+    isCompleted: topic.isCompleted,
+    followUpsAsked: topic.followUpsAsked
+  };
+
   const newProgress: Types.SessionProgress = {
     ...progress,
     signals: updatedSignals,
+    topicState: {
+      ...(progress.topicState || {}),
+      [activeTopicId]: newTopicState
+    },
     activeTopicId: nextStep.nextTopicId,
     currentPhase: nextStep.nextPhase,
     currentQuestionOverride: nextQuestionText,
@@ -1314,6 +1333,8 @@ async function handleSubmitAnswer(event: any, context: any) {
   };
 
   if (nextStep.type === 'complete') {
+    // Only difference: pass the new progress so final metrics are updated
+    await DB.updateSessionProgress(sessionId, newProgress);
     await DB.completeInterviewSession(sessionId, { averageScore: newProgress.averageScore });
   } else {
     await DB.updateSessionProgress(sessionId, newProgress);

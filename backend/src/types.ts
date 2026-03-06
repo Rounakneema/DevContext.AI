@@ -639,6 +639,11 @@ export interface SessionProgress {
   currentQuestionOverride?: string; // For dynamic follow-up logic
   fulfillmentHistory: Array<{ topicId: string; score: number; timestamp: string }>;
   signals: Record<string, PerformanceSignal>;
+  topicState?: Record<string, {
+    currentFulfillment: number;
+    isCompleted: boolean;
+    followUpsAsked: number;
+  }>;
 }
 
 export interface SessionConfig {
