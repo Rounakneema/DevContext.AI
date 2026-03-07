@@ -340,11 +340,23 @@ Resources:
             RestApiId: !Ref DevContextApi
             Path: /interview/sessions
             Method: post
+        ListInterviewSessions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/sessions
+            Method: get
         GetInterviewSession:
           Type: Api
           Properties:
             RestApiId: !Ref DevContextApi
             Path: /interview/sessions/{sessionId}
+            Method: get
+        GetSessionAttempts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/sessions/{sessionId}/attempts
             Method: get
         SubmitAnswer:
           Type: Api
@@ -357,6 +369,18 @@ Resources:
           Properties:
             RestApiId: !Ref DevContextApi
             Path: /interview/sessions/{sessionId}/complete
+            Method: post
+        FollowUpQuestion:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /interview/sessions/{sessionId}/followup
+            Method: post
+        CancelAnalysis:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DevContextApi
+            Path: /analysis/{id}/cancel
             Method: post
 
   RepoProcessorFunction:

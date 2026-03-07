@@ -55,6 +55,52 @@ const getCorsHeaders = (requestOrigin?: string) => {
 // Keep legacy constant for backward compat - will be phased out
 const CORS_HEADERS = getCorsHeaders();
 
+function getRequestOrigin(event: any): string | undefined {
+  return event?.headers?.origin || event?.headers?.Origin;
+}
+
+function getUserIdFromEvent(event: any): string | null {
+  const claims = event?.requestContext?.authorizer?.claims;
+  const userId = claims?.sub;
+  if (userId) return userId;
+
+  // Local/dev fallback only. In production, Cognito authorizer should always populate claims.
+  if (process.env.ALLOW_DEMO_USER === 'true') return 'demo-user';
+  return null;
+}
+
+async function assertOwnsAnalysisOrNotFound(event: any, analysisId: string): Promise<void> {
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    const err = new Error('Unauthorized');
+    (err as any).statusCode = 401;
+    throw err;
+  }
+
+  const analysis = await DB.getAnalysis(analysisId);
+  if (!analysis || analysis.userId !== userId) {
+    const err = new Error('Analysis not found');
+    (err as any).statusCode = 404;
+    throw err;
+  }
+}
+
+async function assertOwnsSessionOrNotFound(event: any, sessionId: string): Promise<void> {
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    const err = new Error('Unauthorized');
+    (err as any).statusCode = 401;
+    throw err;
+  }
+
+  const session = await DB.getInterviewSession(sessionId);
+  if (!session || session.userId !== userId) {
+    const err = new Error('Session not found');
+    (err as any).statusCode = 404;
+    throw err;
+  }
+}
+
 export const handler: APIGatewayProxyHandler = async (event, context) => {
   const path = event.resource || event.path;
   const method = event.httpMethod;
@@ -195,12 +241,17 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
   } catch (error) {
     console.error('Orchestrator error:', error);
 
+    const statusCode =
+      (error as any)?.statusCode && typeof (error as any).statusCode === 'number'
+        ? (error as any).statusCode
+        : 500;
+
     return {
-      statusCode: 500,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+      statusCode,
+      headers: getCorsHeaders(getRequestOrigin(event)),
       body: JSON.stringify({
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        error: statusCode === 401 ? 'Unauthorized' : statusCode === 404 ? 'Not found' : 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
       })
     };
   }
@@ -219,7 +270,14 @@ async function handleAnalyze(event: any, context: any) {
   }
 
   // Extract userId from Cognito JWT
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
 
   // Check user profile and quota
   const userProfile = await DB.getUserProfile(userId);
@@ -284,7 +342,7 @@ async function handleAnalyze(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId: analysis.analysisId,
       status: 'initiated',
@@ -430,7 +488,14 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
 }
 
 async function handleListAnalyses(event: any) {
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
   const limit = parseInt(event.queryStringParameters?.limit || '20');
   const cursor = event.queryStringParameters?.cursor;
 
@@ -442,7 +507,7 @@ async function handleListAnalyses(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(result)
   };
 }
@@ -458,6 +523,7 @@ async function handleGetAnalysis(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   const result = await DB.getFullAnalysis(analysisId);
 
   if (!result) {
@@ -470,7 +536,7 @@ async function handleGetAnalysis(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(result)
   };
 }
@@ -486,6 +552,7 @@ async function handleGetStatus(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   const analysis = await DB.getAnalysis(analysisId);
 
   if (!analysis) {
@@ -503,7 +570,7 @@ async function handleGetStatus(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId: analysis.analysisId,
       status: analysis.status,
@@ -548,11 +615,12 @@ async function handleGetEvents(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   const events = await DB.getAnalysisEvents(analysisId);
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({ events })
   };
 }
@@ -568,6 +636,7 @@ async function handleGetCost(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   const analysis = await DB.getAnalysis(analysisId);
 
   if (!analysis) {
@@ -580,7 +649,7 @@ async function handleGetCost(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(analysis.cost)
   };
 }
@@ -597,11 +666,12 @@ async function handleDeleteAnalysis(event: any) {
   }
 
   try {
+    await assertOwnsAnalysisOrNotFound(event, analysisId);
     await DB.deleteAnalysis(analysisId);
 
     return {
       statusCode: 204,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+      headers: getCorsHeaders(getRequestOrigin(event)),
       body: ''
     };
   } catch (error) {
@@ -609,7 +679,7 @@ async function handleDeleteAnalysis(event: any) {
 
     return {
       statusCode: 500,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+      headers: getCorsHeaders(getRequestOrigin(event)),
       body: JSON.stringify({
         error: 'Failed to delete analysis',
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -622,13 +692,14 @@ async function handleDeleteAnalysis(event: any) {
 // Marks an in-progress analysis as cancelled so the frontend can stop polling
 async function handleCancelAnalysis(event: any) {
   const analysisId = event.pathParameters?.id;
-  const corsHeaders = getCorsHeaders(event.headers?.origin || event.headers?.Origin);
+  const corsHeaders = getCorsHeaders(getRequestOrigin(event));
 
   if (!analysisId) {
     return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'analysisId is required' }) };
   }
 
   try {
+    await assertOwnsAnalysisOrNotFound(event, analysisId);
     await DB.updateAnalysisStatus(analysisId, 'cancelled' as any, 'Cancelled by user');
     await DB.updateWorkflowState(analysisId, 'cancelled' as any);
     await DB.logAnalysisEvent(analysisId, 'analysis_cancelled', { cancelledBy: 'user' }, null);
@@ -695,6 +766,7 @@ async function handleContinueStage2(event: any, context: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   const analysis = await DB.getAnalysis(analysisId);
 
   if (!analysis) {
@@ -734,7 +806,7 @@ async function handleContinueStage2(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId,
       message: 'Stage 2 (Intelligence Report) started',
@@ -759,6 +831,7 @@ async function handleContinueStage3(event: any, context: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   const analysis = await DB.getAnalysis(analysisId);
 
   if (!analysis) {
@@ -800,7 +873,7 @@ async function handleContinueStage3(event: any, context: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId,
       message: `Stage 3 (Interview Questions - ${mode} mode) started`,
@@ -997,7 +1070,14 @@ async function processStage3(analysisId: string, mode: string, context: any) {
  * GET /user/profile
  */
 async function handleGetUserProfile(event: any) {
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
 
   const profile = await DB.getUserProfile(userId);
 
@@ -1011,7 +1091,7 @@ async function handleGetUserProfile(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(profile)
   };
 }
@@ -1020,7 +1100,14 @@ async function handleGetUserProfile(event: any) {
  * POST /user/profile
  */
 async function handleCreateUserProfile(event: any) {
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
   const email = event.requestContext?.authorizer?.claims?.email || 'user@example.com';
   const body = JSON.parse(event.body || '{}');
 
@@ -1037,7 +1124,7 @@ async function handleCreateUserProfile(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(profile)
   };
 }
@@ -1046,14 +1133,21 @@ async function handleCreateUserProfile(event: any) {
  * PATCH /user/preferences
  */
 async function handleUpdatePreferences(event: any) {
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
   const body = JSON.parse(event.body || '{}');
 
   const updated = await DB.updateUserPreferences(userId, body);
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(updated)
   };
 }
@@ -1062,13 +1156,20 @@ async function handleUpdatePreferences(event: any) {
  * GET /user/stats
  */
 async function handleGetUserStats(event: any) {
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
 
   const stats = await DB.getUserStats(userId);
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(stats)
   };
 }
@@ -1077,13 +1178,20 @@ async function handleGetUserStats(event: any) {
  * GET /user/progress
  */
 async function handleGetUserProgress(event: any) {
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
 
   const progress = await DB.getUserProgress(userId);
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(progress)
   };
 }
@@ -1107,7 +1215,15 @@ async function handleCreateInterviewSession(event: any, context: any) {
     };
   }
 
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
 
   // Get interview questions/plan from analysis
   const fullAnalysis = await DB.getFullAnalysis(analysisId);
@@ -1279,6 +1395,7 @@ async function handleGetInterviewSession(event: any) {
     };
   }
 
+  await assertOwnsSessionOrNotFound(event, sessionId);
   const session = await DB.getInterviewSession(sessionId);
 
   if (!session) {
@@ -1318,7 +1435,7 @@ async function handleGetInterviewSession(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       ...session,
       questions,
@@ -1328,14 +1445,24 @@ async function handleGetInterviewSession(event: any) {
 }
 
 async function handleListInterviewSessions(event: any) {
-  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const userId = getUserIdFromEvent(event);
+  if (!userId) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Unauthorized' })
+    };
+  }
   const analysisId = event.queryStringParameters?.analysisId;
 
+  if (analysisId) {
+    await assertOwnsAnalysisOrNotFound(event, analysisId);
+  }
   const sessions = await DB.getUserInterviewSessions(userId, analysisId);
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(sessions)
   };
 }
@@ -1354,11 +1481,12 @@ async function handleGetSessionAttempts(event: any) {
     };
   }
 
+  await assertOwnsSessionOrNotFound(event, sessionId);
   const attempts = await DB.getSessionAttempts(sessionId);
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify(attempts)
   };
 }
@@ -1371,16 +1499,17 @@ async function handleSubmitAnswer(event: any, context: any) {
   const body = JSON.parse(event.body || '{}');
   const { questionId, answer, timeSpentSeconds, action } = body;
 
+  await assertOwnsSessionOrNotFound(event, sessionId);
   const session = await DB.getInterviewSession(sessionId);
   if (!session || session.status !== 'active') {
-    return { statusCode: 404, headers: getCorsHeaders(event.headers?.origin), body: JSON.stringify({ error: 'Session not found or inactive' }) };
+    return { statusCode: 404, headers: getCorsHeaders(getRequestOrigin(event)), body: JSON.stringify({ error: 'Session not found or inactive' }) };
   }
 
   const fullAnalysis = await DB.getFullAnalysis(session.analysisId);
   const plan = session.customInterviewPlan || fullAnalysis?.interviewPlan;
 
   if (!plan) {
-    return { statusCode: 500, headers: getCorsHeaders(event.headers?.origin), body: JSON.stringify({ error: 'Interview plan missing' }) };
+    return { statusCode: 500, headers: getCorsHeaders(getRequestOrigin(event)), body: JSON.stringify({ error: 'Interview plan missing' }) };
   }
 
   const progress = session.progress as any;
@@ -1587,6 +1716,7 @@ async function handleFollowUpQuestion(event: any, context: any) {
   const body = JSON.parse(event.body || '{}');
   const { questionId, answer, evaluation, coverageMap, interviewContext } = body;
 
+  await assertOwnsSessionOrNotFound(event, sessionId);
   const result = await invokeAsync(process.env.FOLLOWUP_FUNCTION || 'live-interview-followup', {
     analysisId: body.analysisId,
     sessionId,
@@ -1618,6 +1748,7 @@ async function handleCompleteSession(event: any, context: any) {
     };
   }
 
+  await assertOwnsSessionOrNotFound(event, sessionId);
   const session = await DB.getInterviewSession(sessionId);
 
   if (!session) {
@@ -1748,6 +1879,7 @@ async function handleGetFiles(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   // Get repository metadata which contains file information
   const repoMetadata = await DB.getRepositoryMetadata(analysisId);
 
@@ -1767,7 +1899,7 @@ async function handleGetFiles(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId,
       totalFiles: allFiles.length,
@@ -1800,6 +1932,7 @@ async function handleUpdateFileSelection(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   // Get current selection
   let fileSelection = await DB.getFileSelection(analysisId);
 
@@ -1842,7 +1975,7 @@ async function handleUpdateFileSelection(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId,
       selectedFiles: fileSelection.selectedFiles.length,
@@ -1869,6 +2002,7 @@ async function handleReorderFiles(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   // Get current selection
   let fileSelection = await DB.getFileSelection(analysisId);
 
@@ -1891,7 +2025,7 @@ async function handleReorderFiles(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId,
       customOrder: fileSelection.customOrder.length,
@@ -1915,6 +2049,7 @@ async function handleReprocess(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   // Get analysis
   const analysis = await DB.getAnalysis(analysisId);
 
@@ -1958,7 +2093,7 @@ async function handleReprocess(event: any) {
 
   return {
     statusCode: 200,
-    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId,
       status: 'processing',
@@ -2105,6 +2240,7 @@ async function handleExportAnalysis(event: any) {
     };
   }
 
+  await assertOwnsAnalysisOrNotFound(event, analysisId);
   // Get full analysis
   const analysis = await DB.getFullAnalysis(analysisId);
 

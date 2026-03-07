@@ -21,6 +21,10 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3001',
 ];
 
+function getRequestOrigin(event: any): string | undefined {
+  return event?.headers?.origin || event?.headers?.Origin;
+}
+
 const getCorsHeaders = (requestOrigin?: string) => {
   const origin = requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)
     ? requestOrigin
@@ -34,12 +38,46 @@ const getCorsHeaders = (requestOrigin?: string) => {
   };
 };
 
-const CORS_HEADERS = getCorsHeaders();
+function getUserIdFromEvent(event: any): string | null {
+  const claims = event?.requestContext?.authorizer?.claims;
+  const userId = claims?.sub;
+  if (userId) return userId;
+  if (process.env.ALLOW_DEMO_USER === 'true') return 'demo-user';
+  return null;
+}
 
-function createResponse(statusCode: number, body: any): APIGatewayProxyResult {
+function getGroupsFromEvent(event: any): string[] {
+  const claims = event?.requestContext?.authorizer?.claims;
+  const raw = claims?.['cognito:groups'];
+
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean).map(String);
+
+  // Sometimes comes as a JSON string or comma-delimited string.
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String);
+    } catch {
+      // ignore
+    }
+    return raw.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  return [];
+}
+
+function isAdmin(event: any): boolean {
+  return getGroupsFromEvent(event).includes('Admins');
+}
+
+function createResponse(event: any, statusCode: number, body: any, extraHeaders?: Record<string, string>): APIGatewayProxyResult {
   return {
     statusCode,
-    headers: CORS_HEADERS,
+    headers: {
+      ...getCorsHeaders(getRequestOrigin(event)),
+      ...(extraHeaders || {})
+    },
     body: typeof body === 'string' ? body : JSON.stringify(body)
   };
 }
@@ -49,13 +87,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const method = event.httpMethod;
 
   try {
-    console.log(`Cost API: ${method} ${path}`, JSON.stringify(event, null, 2));
+    console.log(`Cost API: ${method} ${path} (requestId=${event?.requestContext?.requestId || 'n/a'})`);
 
     // Handle OPTIONS for CORS preflight
     if (method === 'OPTIONS') {
       return {
         statusCode: 200,
-        headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+        headers: getCorsHeaders(getRequestOrigin(event)),
         body: ''
       };
     }
@@ -100,15 +138,16 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       return await handleGetPricing(event);
     }
 
-    return createResponse(404, { error: 'Endpoint not found', path, method });
+    return createResponse(event, 404, { error: 'Endpoint not found', path, method });
 
   } catch (error) {
     console.error('Cost API error:', error);
 
-    return createResponse(500, {
+    const includeStack = process.env.NODE_ENV !== 'production';
+    return createResponse(event, 500, {
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: includeStack && error instanceof Error ? error.stack : undefined
     });
   }
 };
@@ -118,17 +157,24 @@ export const handler: APIGatewayProxyHandler = async (event) => {
  * Get complete cost breakdown for a specific analysis
  */
 async function handleGetAnalysisCost(event: any) {
+  const userId = getUserIdFromEvent(event);
   const analysisId = event.pathParameters?.analysisId || event.path.split('/').pop();
 
   if (!analysisId) {
-    return createResponse(400, { error: 'analysisId is required' });
+    return createResponse(event, 400, { error: 'analysisId is required' });
   }
 
   // Get analysis metadata
   const analysis = await DB.getAnalysis(analysisId);
 
+  // Allow admins or the analysis owner.
   if (!analysis) {
-    return createResponse(404, { error: 'Analysis not found' });
+    return createResponse(event, 404, { error: 'Analysis not found' });
+  }
+  if (!isAdmin(event)) {
+    if (!userId || analysis.userId !== userId) {
+      return createResponse(event, 404, { error: 'Analysis not found' });
+    }
   }
 
   // Get cost breakdown
@@ -179,7 +225,7 @@ async function handleGetAnalysisCost(event: any) {
     }
   };
 
-  return createResponse(200, response);
+  return createResponse(event, 200, response);
 }
 
 /**
@@ -187,16 +233,17 @@ async function handleGetAnalysisCost(event: any) {
  * Get daily cost summary
  */
 async function handleGetDailyCost(event: any) {
+  if (!isAdmin(event)) return createResponse(event, 403, { error: 'Forbidden' });
   const date = event.pathParameters?.date || event.path.split('/').pop();
 
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return createResponse(400, { error: 'Invalid date format. Use YYYY-MM-DD' });
+    return createResponse(event, 400, { error: 'Invalid date format. Use YYYY-MM-DD' });
   }
 
   const summary = await CostTracker.getDailyCostSummary(date);
 
   if (!summary) {
-    return createResponse(200, {
+    return createResponse(event, 200, {
       date,
       totalCostUsd: 0,
       totalCalls: 0,
@@ -204,7 +251,7 @@ async function handleGetDailyCost(event: any) {
     });
   }
 
-  return createResponse(200, summary);
+  return createResponse(event, 200, summary);
 }
 
 /**
@@ -212,11 +259,12 @@ async function handleGetDailyCost(event: any) {
  * Get cost summary for date range
  */
 async function handleGetCostRange(event: any) {
+  if (!isAdmin(event)) return createResponse(event, 403, { error: 'Forbidden' });
   const startDate = event.queryStringParameters?.start;
   const endDate = event.queryStringParameters?.end;
 
   if (!startDate || !endDate) {
-    return createResponse(400, { error: 'start and end dates required (YYYY-MM-DD)' });
+    return createResponse(event, 400, { error: 'start and end dates required (YYYY-MM-DD)' });
   }
 
   const summaries = await CostTracker.getCostSummaryRange(startDate, endDate);
@@ -235,7 +283,7 @@ async function handleGetCostRange(event: any) {
     totalTokens: 0
   });
 
-  return createResponse(200, {
+  return createResponse(event, 200, {
     startDate,
     endDate,
     daysInRange: summaries.length,
@@ -256,12 +304,13 @@ async function handleGetCostRange(event: any) {
  * Get monthly cost projection
  */
 async function handleGetProjection(event: any) {
+  if (!isAdmin(event)) return createResponse(event, 403, { error: 'Forbidden' });
   const projection = await CostTracker.getMonthlyProjection();
 
   const now = new Date();
   const monthName = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
-  return createResponse(200, {
+  return createResponse(event, 200, {
     month: monthName,
     ...projection,
 
@@ -285,6 +334,7 @@ async function handleGetProjection(event: any) {
  * Get cost breakdown by model
  */
 async function handleGetModelBreakdown(event: any) {
+  if (!isAdmin(event)) return createResponse(event, 403, { error: 'Forbidden' });
   const days = parseInt(event.queryStringParameters?.days || '7');
 
   const endDate = new Date().toISOString().split('T')[0];
@@ -334,7 +384,7 @@ async function handleGetModelBreakdown(event: any) {
     };
   }).sort((a, b) => b.costUsd - a.costUsd);
 
-  return createResponse(200, {
+  return createResponse(event, 200, {
     period: `Last ${days} days`,
     startDate,
     endDate,
@@ -353,6 +403,7 @@ async function handleGetModelBreakdown(event: any) {
  * Get real-time cost metrics
  */
 async function handleGetRealtimeMetrics(event: any) {
+  if (!isAdmin(event)) return createResponse(event, 403, { error: 'Forbidden' });
   try {
     const today = new Date().toISOString().split('T')[0];
     const currentMonth = today.substring(0, 7); // YYYY-MM
@@ -438,13 +489,14 @@ async function handleGetRealtimeMetrics(event: any) {
       alerts
     };
 
-    return createResponse(200, response);
+    return createResponse(event, 200, response);
   } catch (error) {
     console.error('Error in handleGetRealtimeMetrics:', error);
-    return createResponse(500, {
+    const includeStack = process.env.NODE_ENV !== 'production';
+    return createResponse(event, 500, {
       error: 'Failed to fetch realtime metrics',
       message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: includeStack && error instanceof Error ? error.stack : undefined
     });
   }
 }
@@ -454,6 +506,7 @@ async function handleGetRealtimeMetrics(event: any) {
  * Export cost data
  */
 async function handleExportCosts(event: any) {
+  if (!isAdmin(event)) return createResponse(event, 403, { error: 'Forbidden' });
   const format = event.queryStringParameters?.format || 'json';
   const days = parseInt(event.queryStringParameters?.days || '30');
 
@@ -465,18 +518,13 @@ async function handleExportCosts(event: any) {
   if (format === 'csv') {
     const csv = convertToCSV(summaries);
 
-    return {
-      statusCode: 200,
-      headers: {
-        ...CORS_HEADERS,
-        'Content-Type': 'text/csv',
-        'Content-Disposition': `attachment; filename="devcontext-costs-${startDate}-to-${endDate}.csv"`
-      },
-      body: csv
-    };
+    return createResponse(event, 200, csv, {
+      'Content-Type': 'text/csv',
+      'Content-Disposition': `attachment; filename="devcontext-costs-${startDate}-to-${endDate}.csv"`
+    });
   }
 
-  return createResponse(200, {
+  return createResponse(event, 200, {
     startDate,
     endDate,
     summaries
@@ -488,6 +536,7 @@ async function handleExportCosts(event: any) {
  * Get current model pricing
  */
 async function handleGetPricing(event: any) {
+  if (!isAdmin(event)) return createResponse(event, 403, { error: 'Forbidden' });
   const models = Object.values(CostTracker.MODEL_PRICING).map(p => ({
     modelId: p.modelId,
     modelName: p.modelName,
@@ -511,7 +560,7 @@ async function handleGetPricing(event: any) {
     }
   }));
 
-  return createResponse(200, {
+  return createResponse(event, 200, {
     models,
     lastUpdated: '2026-03-01',
     notes: [
