@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Outlet, useParams } from "react-router-dom";
-import FileExplorer from "../components/dashboard/FileExplorer";
 import api from "../services/api";
 import AiGeneratedNotice from "../components/AiGeneratedNotice";
 
@@ -341,16 +340,6 @@ const AnalysisLayout: React.FC = () => {
         </div>
       </div>
 
-      {/* File Explorer - Show only for Analysis tabs */}
-      {!practiceTabIds.includes(activeTab) && analysisId && (
-        <FileExplorer
-          analysisId={analysisId}
-          readOnly={true}
-          onSelectionChange={(files) => {
-            console.log("Selected files for analysis:", files);
-          }}
-        />
-      )}
 
       {/* Dash Main Content - Routed dynamically by Outlet! */}
        <div className="dash-main">
