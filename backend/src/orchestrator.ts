@@ -14,6 +14,18 @@ const STAGE1_FUNCTION = process.env.STAGE1_FUNCTION;
 const STAGE2_FUNCTION = process.env.STAGE2_FUNCTION;
 const STAGE3_FUNCTION = process.env.STAGE3_FUNCTION;
 const CACHE_BUCKET = process.env.CACHE_BUCKET;
+const MAIN_TABLE = process.env.MAIN_TABLE!;
+
+const SIGNAL_MAP: Record<string, string> = {
+  'code_quality_awareness': 'code_quality',
+  'trade_off_analysis': 'tradeoffs',
+  'scalability_vision': 'scalability',
+  'performance': 'implementation_depth'
+};
+
+function normalizeSignalId(sId: string): string {
+  return SIGNAL_MAP[sId] || sId;
+}
 
 if (!REPO_PROCESSOR_FUNCTION || !STAGE1_FUNCTION || !STAGE2_FUNCTION || !STAGE3_FUNCTION || !CACHE_BUCKET) {
   throw new Error('Missing required Lambda function environment variables');
@@ -1131,18 +1143,17 @@ async function handleCreateInterviewSession(event: any, context: any) {
     return undefined;
   };
 
+  // Target: 3 distinct topics representing "2 major, 1 codebase/follow-up"
   const selectedWarmup = [
-    popTopic([implBuckets, eqBuckets, archBuckets]),
-    popTopic([eqBuckets, implBuckets, archBuckets])
+    popTopic([archBuckets, implBuckets, eqBuckets]) // Major 1: heavily architecture focused
   ].filter(Boolean) as Types.InterviewTopic[];
 
   const selectedDeepDive = [
-    popTopic([archBuckets, implBuckets, eqBuckets]),
-    popTopic([implBuckets, archBuckets, eqBuckets])
+    popTopic([implBuckets, archBuckets, eqBuckets]) // Major 2: implementation focused
   ].filter(Boolean) as Types.InterviewTopic[];
 
   const selectedStretch = [
-    popTopic([archBuckets, eqBuckets, implBuckets])
+    popTopic([eqBuckets, implBuckets, archBuckets]) // Topic 3: Engineering quality / codebase specifics
   ].filter(Boolean) as Types.InterviewTopic[];
 
   let globalMaxFollowUps = 1;
@@ -1159,20 +1170,30 @@ async function handleCreateInterviewSession(event: any, context: any) {
   const finalTopics = [...selectedWarmup, ...selectedDeepDive, ...selectedStretch];
   const newAllTopics: Record<string, Types.InterviewTopic> = {};
 
-  finalTopics.forEach(t => {
-    t.maxFollowUps = globalMaxFollowUps;
+  finalTopics.forEach((t, i) => {
+    // Limit to exactly 5 questions total for normal flow (1+1 for first two topics, 1+0 for last)
+    t.maxFollowUps = intensity === 'normal' ? (i < 2 ? 1 : 0) : globalMaxFollowUps;
     t.fulfillmentThreshold = Math.max(10, Math.min(100, (t.fulfillmentThreshold || 70) + fulfillmentMod));
     newAllTopics[t.topicId] = t;
   });
 
-  const customInterviewPlan = {
+  const customInterviewPlan: Types.InterviewPlan = {
     ...interviewPlan,
     phases: {
       warmup: selectedWarmup.map(t => t.topicId),
       deep_dive: selectedDeepDive.map(t => t.topicId),
       stretch: selectedStretch.map(t => t.topicId)
     },
-    allTopics: newAllTopics
+    allTopics: newAllTopics,
+    requiredSignals: [
+      'architecture_thinking',
+      'implementation_depth',
+      'code_quality',
+      'tradeoffs',
+      'scalability',
+      'security'
+    ],
+    generatedAt: new Date().toISOString()
   };
 
   const firstTopicId = customInterviewPlan.phases.warmup[0] || finalTopics[0]?.topicId;
@@ -1188,7 +1209,8 @@ async function handleCreateInterviewSession(event: any, context: any) {
       feedbackMode: 'immediate' as const,
       intensity
     },
-    totalQuestions: finalTopics.length * (globalMaxFollowUps + 1)
+    totalQuestions: finalTopics.length * (globalMaxFollowUps + 1),
+    customInterviewPlan: customInterviewPlan
   };
 
   const dbSession = await DB.createInterviewSession(sessionData);
@@ -1258,9 +1280,9 @@ async function handleGetInterviewSession(event: any) {
     };
   }
 
-  // Get interview plan to attach topics/questions
+  // Get interview plan to attach topics/questions - prioritize session-specific plan
   const fullAnalysis = await DB.getFullAnalysis(session.analysisId);
-  const interviewPlan = fullAnalysis?.interviewPlan;
+  const interviewPlan = session.customInterviewPlan || fullAnalysis?.interviewPlan;
 
   // Map topics to questions for compatibility
   let questions: any[] = [];
@@ -1309,7 +1331,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   }
 
   const fullAnalysis = await DB.getFullAnalysis(session.analysisId);
-  const plan = fullAnalysis?.interviewPlan;
+  const plan = session.customInterviewPlan || fullAnalysis?.interviewPlan;
 
   if (!plan) {
     return { statusCode: 500, headers: getCorsHeaders(event.headers?.origin), body: JSON.stringify({ error: 'Interview plan missing' }) };
@@ -1391,10 +1413,11 @@ async function handleSubmitAnswer(event: any, context: any) {
   // 2. Update Performance Signals
   const updatedSignals = { ...(progress.signals || {}) };
   if (evaluation.signalScores) {
-    for (const [sId, score] of Object.entries(evaluation.signalScores)) {
+    for (const [rawId, score] of Object.entries(evaluation.signalScores)) {
+      const sId = normalizeSignalId(rawId);
       const sig = updatedSignals[sId] || { signalId: sId, name: sId.replace(/_/g, ' '), score: 50, evidence: [], confidence: 0 };
       sig.score = Math.round((sig.score + (score as number)) / 2); // Moving average
-      sig.evidence = [...(sig.evidence || []), ...(evaluation.signalEvidence?.[sId] || [])].slice(-5);
+      sig.evidence = [...(sig.evidence || []), ...(evaluation.signalEvidence?.[rawId] || [])].slice(-5);
       sig.confidence = Math.min(1, (sig.confidence || 0) + 0.2);
       updatedSignals[sId] = sig;
     }

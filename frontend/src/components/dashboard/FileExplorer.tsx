@@ -14,6 +14,7 @@ interface FileNode {
 interface FileExplorerProps {
   analysisId: string;
   onSelectionChange?: (selectedFiles: string[]) => void;
+  readOnly?: boolean;
 }
 
 // Build file tree from flat file list
@@ -67,243 +68,6 @@ const buildFileTree = (files: any[]): FileNode[] => {
   return root;
 };
 
-const mockFileTree: FileNode[] = [
-  {
-    name: "src",
-    path: "src",
-    type: "folder",
-    children: [
-      {
-        name: "components",
-        path: "src/components",
-        type: "folder",
-        children: [
-          {
-            name: "App.tsx",
-            path: "src/components/App.tsx",
-            type: "file",
-            extension: "tsx",
-            selected: true,
-            priority: 1,
-          },
-          {
-            name: "Header.tsx",
-            path: "src/components/Header.tsx",
-            type: "file",
-            extension: "tsx",
-            selected: true,
-            priority: 2,
-          },
-          {
-            name: "Sidebar.tsx",
-            path: "src/components/Sidebar.tsx",
-            type: "file",
-            extension: "tsx",
-            selected: true,
-            priority: 3,
-          },
-          {
-            name: "Dashboard.tsx",
-            path: "src/components/Dashboard.tsx",
-            type: "file",
-            extension: "tsx",
-            selected: true,
-            priority: 4,
-          },
-        ],
-      },
-      {
-        name: "hooks",
-        path: "src/hooks",
-        type: "folder",
-        children: [
-          {
-            name: "useAuth.ts",
-            path: "src/hooks/useAuth.ts",
-            type: "file",
-            extension: "ts",
-            selected: true,
-            priority: 5,
-          },
-          {
-            name: "useApi.ts",
-            path: "src/hooks/useApi.ts",
-            type: "file",
-            extension: "ts",
-            selected: true,
-            priority: 6,
-          },
-        ],
-      },
-      {
-        name: "utils",
-        path: "src/utils",
-        type: "folder",
-        children: [
-          {
-            name: "helpers.ts",
-            path: "src/utils/helpers.ts",
-            type: "file",
-            extension: "ts",
-            selected: true,
-            priority: 7,
-          },
-          {
-            name: "constants.ts",
-            path: "src/utils/constants.ts",
-            type: "file",
-            extension: "ts",
-            selected: false,
-          },
-          {
-            name: "validators.ts",
-            path: "src/utils/validators.ts",
-            type: "file",
-            extension: "ts",
-            selected: false,
-          },
-        ],
-      },
-      {
-        name: "index.tsx",
-        path: "src/index.tsx",
-        type: "file",
-        extension: "tsx",
-        selected: true,
-        priority: 8,
-      },
-      {
-        name: "App.css",
-        path: "src/App.css",
-        type: "file",
-        extension: "css",
-        selected: false,
-      },
-    ],
-  },
-  {
-    name: "server",
-    path: "server",
-    type: "folder",
-    children: [
-      {
-        name: "controllers",
-        path: "server/controllers",
-        type: "folder",
-        children: [
-          {
-            name: "userController.js",
-            path: "server/controllers/userController.js",
-            type: "file",
-            extension: "js",
-            selected: true,
-            priority: 9,
-          },
-          {
-            name: "authController.js",
-            path: "server/controllers/authController.js",
-            type: "file",
-            extension: "js",
-            selected: true,
-            priority: 10,
-          },
-        ],
-      },
-      {
-        name: "models",
-        path: "server/models",
-        type: "folder",
-        children: [
-          {
-            name: "User.js",
-            path: "server/models/User.js",
-            type: "file",
-            extension: "js",
-            selected: true,
-            priority: 11,
-          },
-          {
-            name: "Post.js",
-            path: "server/models/Post.js",
-            type: "file",
-            extension: "js",
-            selected: true,
-            priority: 12,
-          },
-        ],
-      },
-      {
-        name: "routes",
-        path: "server/routes",
-        type: "folder",
-        children: [
-          {
-            name: "index.js",
-            path: "server/routes/index.js",
-            type: "file",
-            extension: "js",
-            selected: true,
-            priority: 13,
-          },
-          {
-            name: "api.js",
-            path: "server/routes/api.js",
-            type: "file",
-            extension: "js",
-            selected: true,
-            priority: 14,
-          },
-        ],
-      },
-      {
-        name: "index.js",
-        path: "server/index.js",
-        type: "file",
-        extension: "js",
-        selected: true,
-        priority: 15,
-      },
-      {
-        name: "config.js",
-        path: "server/config.js",
-        type: "file",
-        extension: "js",
-        selected: false,
-      },
-    ],
-  },
-  {
-    name: "package.json",
-    path: "package.json",
-    type: "file",
-    extension: "json",
-    selected: true,
-    priority: 16,
-  },
-  {
-    name: "README.md",
-    path: "README.md",
-    type: "file",
-    extension: "md",
-    selected: true,
-    priority: 17,
-  },
-  {
-    name: ".gitignore",
-    path: ".gitignore",
-    type: "file",
-    extension: "",
-    selected: false,
-  },
-  {
-    name: "tsconfig.json",
-    path: "tsconfig.json",
-    type: "file",
-    extension: "json",
-    selected: false,
-  },
-];
-
 const getFileIcon = (extension?: string) => {
   const iconMap: Record<string, { color: string; icon: string }> = {
     tsx: { color: "#3178C6", icon: "TS" },
@@ -320,8 +84,8 @@ const getFileIcon = (extension?: string) => {
   return iconMap[extension || ""] || { color: "var(--text3)", icon: "📄" };
 };
 
-const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChange }) => {
-  const [fileTree, setFileTree] = useState<FileNode[]>(mockFileTree);
+const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChange, readOnly = false }) => {
+  const [fileTree, setFileTree] = useState<FileNode[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(["src", "src/components", "server", "server/controllers"]),
   );
@@ -567,29 +331,29 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
       return (
         <div
           key={node.path}
-          className={`fe-file ${isSelected ? "selected" : ""} ${dragOverFile === node.path ? "drag-over" : ""
-            } ${draggedFile === node.path ? "dragging" : ""}`}
+          className={`fe-file ${!readOnly && isSelected ? "selected" : ""} ${!readOnly && dragOverFile === node.path ? "drag-over" : ""
+            } ${!readOnly && draggedFile === node.path ? "dragging" : ""}`}
           style={{ paddingLeft: `${12 + depth * 12}px` }}
-          onClick={() => toggleFileSelection(node.path)}
-          draggable={isSelected}
-          onDragStart={(e) => handleDragStart(e, node.path)}
-          onDragOver={(e) => handleDragOver(e, node.path)}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, node.path)}
-          onDragEnd={handleDragEnd}
+          onClick={() => !readOnly && toggleFileSelection(node.path)}
+          draggable={!readOnly && isSelected}
+          onDragStart={(e) => !readOnly && handleDragStart(e, node.path)}
+          onDragOver={(e) => !readOnly && handleDragOver(e, node.path)}
+          onDragLeave={!readOnly ? handleDragLeave : undefined}
+          onDrop={(e) => !readOnly && handleDrop(e, node.path)}
+          onDragEnd={!readOnly ? handleDragEnd : undefined}
         >
           <div className="fe-file-icon" style={{ background: iconInfo.color }}>
             {iconInfo.icon.length <= 2 ? iconInfo.icon : ""}
           </div>
           <span className="fe-name">{node.name}</span>
-          {isSelected && (
+          {!readOnly && isSelected && (
             <div
               className={`fe-priority ${isInTop30 ? "in-budget" : "over-budget"}`}
             >
               {priorityNum}
             </div>
           )}
-          {isSelected && (
+          {!readOnly && isSelected && (
             <svg
               className="fe-check"
               viewBox="0 0 24 24"
@@ -625,7 +389,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
   }
 
   return (
-    <div className="file-explorer">
+    <div className={`file-explorer ${readOnly ? 'read-only' : ''}`}>
       <div className="fe-header">
         <div className="fe-title">
           <svg
@@ -638,31 +402,35 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
           </svg>
           Repository Files
         </div>
-        <div className="fe-count">
-          <span className={selectedCount > 30 ? "over" : ""}>
-            {Math.min(selectedCount, 30)}
-          </span>
-          /30 files
-        </div>
+        {!readOnly && (
+          <div className="fe-count">
+            <span className={selectedCount > 30 ? "over" : ""}>
+              {Math.min(selectedCount, 30)}
+            </span>
+            /30 files
+          </div>
+        )}
       </div>
 
-      <div className="fe-hint">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="16" x2="12" y2="12" />
-          <line x1="12" y1="8" x2="12.01" y2="8" />
-        </svg>
-        Click to select files for analysis
-      </div>
+      {!readOnly && (
+        <div className="fe-hint">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+          Click to select files for analysis
+        </div>
+      )}
 
       <div className="fe-tree">{renderFileTree(fileTree)}</div>
 
-      {selectedCount > 0 && (
+      {!readOnly && selectedCount > 0 && (
         <div className="fe-selected-panel">
           <div className="fe-selected-header">
             <span>Analysis Queue</span>

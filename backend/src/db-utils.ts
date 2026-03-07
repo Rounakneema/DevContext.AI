@@ -366,6 +366,7 @@ export async function createInterviewSession(params: {
   userId: string;
   totalQuestions: number;
   config: Types.SessionConfig;
+  customInterviewPlan?: Types.InterviewPlan;
 }): Promise<Types.InterviewSession> {
   const sessionId = uuidv4();
   const createdAt = new Date().toISOString();
@@ -390,6 +391,7 @@ export async function createInterviewSession(params: {
       currentPhase: 'warmup'
     },
     config: params.config,
+    customInterviewPlan: params.customInterviewPlan,
     ttl: Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60)
   };
 

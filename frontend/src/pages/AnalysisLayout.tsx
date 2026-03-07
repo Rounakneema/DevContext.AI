@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Outlet, useParams } from "react-router-dom";
 import FileExplorer from "../components/dashboard/FileExplorer";
 import api from "../services/api";
 
-type Tab = "overview" | "review" | "report" | "interview" | "history" | "framework";
+type Tab = "overview" | "architecture" | "code-review" | "interview-prep" | "interview" | "export" | "history" | "framework";
 
 interface AnalysisSummary {
   analysisId: string;
@@ -27,7 +27,7 @@ const AnalysisLayout: React.FC = () => {
   // Calculate active tab based on path
   const pathParts = location.pathname.split('/');
   const lastPart = pathParts[pathParts.length - 1];
-  const activeTab = ["history", "framework", "overview", "review", "report", "interview"].includes(lastPart)
+  const activeTab = ["history", "framework", "overview", "architecture", "code-review", "export", "interview-prep", "interview"].includes(lastPart)
     ? lastPart as Tab
     : "overview";
 
@@ -90,18 +90,29 @@ const AnalysisLayout: React.FC = () => {
       ),
     },
     {
-      id: "review" as Tab,
-      label: "Project Review",
+      id: "architecture" as Tab,
+      label: "Architecture",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
         </svg>
       ),
     },
     {
-      id: "report" as Tab,
-      label: "Intelligence Report",
+      id: "code-review" as Tab,
+      label: "Code Review",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <polyline points="16 18 22 12 16 6" />
+          <polyline points="8 6 2 12 8 18" />
+        </svg>
+      ),
+    },
+    {
+      id: "interview-prep" as Tab,
+      label: "Interview Prep",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -109,6 +120,17 @@ const AnalysisLayout: React.FC = () => {
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
           <polyline points="10 9 9 9 8 9" />
+        </svg>
+      ),
+    },
+    {
+      id: "export" as Tab,
+      label: "Export & Share",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
       ),
     },
@@ -147,10 +169,13 @@ const AnalysisLayout: React.FC = () => {
   const metaTabIds = ["framework"];
 
   const handleTabClick = (tabId: Tab) => {
-    if (tabId === 'history') navigate('/app/dashboard/history');
-    else if (tabId === 'framework') navigate('/app/dashboard/framework');
-    else if (tabId === 'interview' && analysisId) navigate(`/app/interview/${analysisId}`);
-    else if (analysisId) navigate(`/app/dashboard/${analysisId}/${tabId}`);
+    if (tabId === 'history') {
+      navigate('/app/dashboard/history');
+    } else if (tabId === 'interview' && analysisId) {
+      navigate(`/app/interview/${analysisId}`);
+    } else if (analysisId) {
+      navigate(`/app/dashboard/${analysisId}/${tabId}`);
+    }
   };
 
   return (
@@ -301,6 +326,7 @@ const AnalysisLayout: React.FC = () => {
       {!practiceTabIds.includes(activeTab) && analysisId && (
         <FileExplorer
           analysisId={analysisId}
+          readOnly={true}
           onSelectionChange={(files) => {
             console.log("Selected files for analysis:", files);
           }}

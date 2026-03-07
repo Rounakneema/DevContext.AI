@@ -264,8 +264,9 @@ CRITICAL INSTRUCTIONS:
 4. Your evaluation determines hiring decisions - take this seriously.
 5. If you see ANY red flags, score must be <60 and explain why in detailedFeedback.
 6. topicFulfillment must be 0-100 reflecting how much of the current topic (${topic?.title || 'this topic'}) has been satisfied.
-7. signalScores and signalEvidence MUST STRICTLY ONLY contain keys from this exact list: [${topic?.evaluationSignals?.join(', ') || 'architecture_thinking, implementation_depth, code_quality, tradeoffs'}]. Do NOT invent new signal names. You MUST provide a score for each of these exact exact keys.
+7. signalScores and signalEvidence MUST STRICTLY ONLY contain keys from this exact list: [${topic?.evaluationSignals?.join(', ') || 'architecture_thinking, implementation_depth, code_quality, tradeoffs, scalability, security'}]. Do NOT invent new signal names. You MUST provide a score for each of these exact exact keys.
 8. **CRITICAL: You MUST write ALL feedback directly addressing the user in the SECOND PERSON ("You"). NEVER use the phrase "the candidate" or refer to them in the third person. Speak directly to them like "You provided no substantive answer..."**
+9. For followUpRecommendations, ensure the questions gradually increase in complexity. Design them to take slightly longer to answer than the initial question (e.g., scoping the first follow-up for ~4 minutes, and subsequent ones for ~5 minutes).
 
 Before finishing the response:
 1. Validate that the JSON is syntactically correct.

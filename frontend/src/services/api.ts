@@ -134,6 +134,24 @@ export interface ProjectReview {
 }
 
 export interface IntelligenceReport {
+  systemArchitecture?: {
+    overview: string;
+    layers: Array<{
+      name: string;
+      components: string[];
+      responsibilities: string[];
+      fileReferences: Array<{ file: string }>;
+    }>;
+    componentDiagram: string;
+    dataFlowDiagram: string;
+    technologyStack: {
+      languages: Record<string, number>;
+      frameworks: string[];
+      databases: string[];
+      devTools: string[];
+      infrastructure?: string[];
+    };
+  };
   designDecisions: Array<{
     decisionId: string;
     decision: string;
@@ -609,6 +627,7 @@ export const createInterviewSession = (data: {
     feedbackMode?: string;
     questionCount?: number;
     questionTypes?: string[];
+    intensity?: 'fast' | 'normal' | 'deep';
   };
 }) =>
   apiCall<InterviewSession>('/interview/sessions', {
@@ -625,6 +644,7 @@ export const submitAnswer = (
     questionId: string;
     answer: string;
     timeSpentSeconds: number;
+    action?: 'submit' | 'skip_question' | 'end_early';
   }
 ) =>
   apiCall<{

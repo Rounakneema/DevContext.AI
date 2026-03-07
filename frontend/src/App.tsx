@@ -9,8 +9,10 @@ import HomePage from "./pages/HomePage";
 import LoadingPage from "./pages/LoadingPage";
 import AnalysisLayout from "./pages/AnalysisLayout";
 import OverviewPage from "./pages/OverviewPage";
-import ReviewPage from "./pages/ReviewPage";
-import ReportPage from "./pages/ReportPage";
+import ArchitectureTab from "./pages/ArchitectureTab";
+import CodeReviewTab from "./pages/CodeReviewTab";
+import ExportTab from "./pages/ExportTab";
+import InterviewPrepTab from "./pages/InterviewPrepTab";
 import HistoryPage from "./pages/HistoryPage";
 import EvaluationFrameworkPage from "./pages/EvaluationFrameworkPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -91,8 +93,10 @@ function App() {
 
                           {/* Analysis-specific pages inside layout */}
                           <Route path=":id/overview" element={<OverviewPage />} />
-                          <Route path=":id/review" element={<ReviewPage />} />
-                          <Route path=":id/report" element={<ReportPage />} />
+                          <Route path=":id/architecture" element={<ArchitectureTab />} />
+                          <Route path=":id/code-review" element={<CodeReviewTab />} />
+                          <Route path=":id/export" element={<ExportTab />} />
+                          <Route path=":id/interview-prep" element={<InterviewPrepTab />} />
 
                           {/* Default fallback for dashboard */}
                           <Route index element={

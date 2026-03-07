@@ -617,6 +617,7 @@ export interface InterviewSession {
 
   progress: SessionProgress;
   config: SessionConfig;
+  customInterviewPlan?: InterviewPlan;
 
   // GSI1: userId + createdAt (user's interview history)
   GSI1PK: string;          // USER#<userId>

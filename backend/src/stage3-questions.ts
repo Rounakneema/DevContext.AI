@@ -195,9 +195,10 @@ async function initializeTopicDrivenInterview(
     requiredSignals: [
       'architecture_thinking',
       'implementation_depth',
-      'code_quality_awareness',
-      'trade_off_analysis',
-      'scalability_vision'
+      'code_quality',
+      'tradeoffs',
+      'scalability',
+      'security'
     ],
     generatedAt: new Date().toISOString()
   };
@@ -268,6 +269,7 @@ Patterns Found: ${intelligenceReport?.systemArchitecture?.architecturalPatterns?
 - MUST be appropriate for a ${candidateLevel} candidate. 
 - Junior: Focus on implementation & basic clean code.
 - Senior/Staff: Focus on architecture, tradeoffs, and system design.
+- The 'description' field will serve as the initial question asked to the candidate. It should be designed so that it takes the candidate approximately 3 minutes to answer (not too short, not overly complex).
 
 Return ONLY valid JSON array:
 [
@@ -275,7 +277,7 @@ Return ONLY valid JSON array:
     "topicId": "T-ARCH-01",
     "title": "Short title",
     "category": "architecture|implementation|engineering_quality",
-    "description": "What specifically to probe in their code",
+    "description": "The actual question text to ask the candidate based on this topic. (Scope this to take ~3 minutes to answer)",
     "sourceCodeContext": {
       "files": ["path/to/file.ts"],
       "lineRanges": {"path/to/file.ts": {"start": 10, "end": 50}}

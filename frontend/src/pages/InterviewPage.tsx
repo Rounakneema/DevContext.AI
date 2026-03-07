@@ -101,7 +101,7 @@ const InterviewPage: React.FC = () => {
 
     const [focus, setFocus] = useState<"technical" | "behavioral" | "mixed">("technical");
     const [role, setRole] = useState("Senior Software Engineer");
-    const [count, setCount] = useState<5 | 10 | 15>(10);
+    const [intensity, setIntensity] = useState<"fast" | "normal" | "deep">("normal");
     const [answer, setAnswer] = useState("");
     const [elapsed, setElapsed] = useState(0);
     const [startTime, setStartTime] = useState(0);
@@ -119,7 +119,7 @@ const InterviewPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [phase, currentQuestion?.questionId]);
 
-    const totalQuestions = session?.questions?.length ?? count;
+    // removing legacy totalQuestions reference
 
     const startSession = useCallback(async () => {
         if (!effectiveAnalysisId) { setError("No analysis ID. Please run an analysis first."); return; }
@@ -129,24 +129,26 @@ const InterviewPage: React.FC = () => {
                 focus === "mixed" ? ["technical", "behavioral", "system-design"]
                     : focus === "behavioral" ? ["behavioral"]
                         : ["technical", "system-design"];
-            const newSession = await createInterviewSession({ analysisId: effectiveAnalysisId, config: { questionCount: count, questionTypes: types, targetRole: role } });
+            const newSession = await createInterviewSession({ analysisId: effectiveAnalysisId, config: { intensity, questionTypes: types, targetRole: role } });
             setSession(newSession);
             setCurrentQuestion(newSession.questions?.[0] || null);
             setAnswer(""); setPhase("active");
         } catch (e: any) {
             setError(e.message || "Failed to start interview."); setPhase("config");
         }
-    }, [effectiveAnalysisId, focus, count, role]);
+    }, [effectiveAnalysisId, focus, intensity, role]);
 
-    const submitAnswer = useCallback(async () => {
-        if (!session || !currentQuestion || !answer.trim()) return;
+    const submitAnswer = useCallback(async (action: 'submit' | 'skip_question' | 'end_early' = 'submit') => {
+        if (!session || !currentQuestion) return;
+        if (action === 'submit' && !answer.trim()) return;
         setPhase("evaluating");
         const timeSpent = Math.floor((Date.now() - startTime) / 1000);
         try {
             const result = await apiSubmitAnswer(session.sessionId, {
                 questionId: currentQuestion.questionId,
-                answer: answer.trim(),
+                answer: action === 'submit' ? answer.trim() : `[${action.toUpperCase()}]`,
                 timeSpentSeconds: timeSpent,
+                action
             });
             const evaluation = (result as any).evaluation;
             setCurrentEval(evaluation);
@@ -265,10 +267,10 @@ const InterviewPage: React.FC = () => {
                                 ))}
                             </div>
                         </ConfigSection>
-                        <ConfigSection label="Session Length">
+                        <ConfigSection label="Interview Intensity" hint="Determines length and follow-up depth">
                             <div style={{ display: "flex", gap: 10 }}>
-                                {([5, 10, 15] as const).map(n => (
-                                    <button key={n} onClick={() => setCount(n)} style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: count === n ? "1px solid var(--accent)" : "1px solid var(--border)", background: count === n ? "var(--accent-light)" : "var(--surface)", color: count === n ? "var(--accent)" : "var(--text2)", fontFamily: "Geist, sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{n} Q</button>
+                                {[{ id: "fast", label: "Fast (15m)" }, { id: "normal", label: "Normal (30m)" }, { id: "deep", label: "Deep (60m+)" }].map(opt => (
+                                    <button key={opt.id} onClick={() => setIntensity(opt.id as any)} style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: intensity === opt.id ? "1px solid var(--accent)" : "1px solid var(--border)", background: intensity === opt.id ? "var(--accent-light)" : "var(--surface)", color: intensity === opt.id ? "var(--accent)" : "var(--text2)", fontFamily: "Geist, sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{opt.label}</button>
                                 ))}
                             </div>
                         </ConfigSection>
@@ -303,6 +305,7 @@ const InterviewPage: React.FC = () => {
     /* ── DONE / SUMMARY ── */
     if (phase === "done") {
         const avg = summary ? Math.round((summary as any).overallScore ?? 0) : 0;
+        const totalTopics = session?.interviewPlan ? Object.keys(session.interviewPlan.allTopics).length : 0;
         return (
             <div style={pageStyle}>
                 <BgBlobs />
@@ -310,7 +313,7 @@ const InterviewPage: React.FC = () => {
                     <div style={{ textAlign: "center", marginBottom: 48 }}>
                         <div style={{ fontSize: 56, marginBottom: 16 }}>{avg >= 80 ? "🏆" : avg >= 60 ? "🎯" : "📈"}</div>
                         <h1 style={{ fontSize: 36, fontWeight: 900, color: "var(--text)", letterSpacing: -1, marginBottom: 12 }}>Interview Complete!</h1>
-                        <p style={{ fontSize: 16, color: "var(--text2)" }}>Here's how you performed across {totalQuestions} questions</p>
+                        <p style={{ fontSize: 16, color: "var(--text2)" }}>Here's how you performed across {totalTopics} topics</p>
                     </div>
 
                     {/* Score ring */}
@@ -331,7 +334,7 @@ const InterviewPage: React.FC = () => {
 
                     {summary && (
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 32 }}>
-                            {[["Questions", totalQuestions, "📋"], ["Avg Score", `${avg}/100`, "📊"], ["Strong Areas", (summary as any).strongAreas?.length ?? "—", "⚡"]].map(([label, value, icon], i) => (
+                            {[["Topics", totalTopics, "📋"], ["Avg Score", `${avg}/100`, "📊"], ["Strong Areas", (summary as any).strongAreas?.length ?? "—", "⚡"]].map(([label, value, icon], i) => (
                                 <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 16px", textAlign: "center" }}>
                                     <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
                                     <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>{value}</div>
@@ -500,8 +503,12 @@ const InterviewPage: React.FC = () => {
                         ) : (
                         <div>
                             <textarea ref={textareaRef} value={answer} onChange={e => setAnswer(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type your answer here..." style={{ width: "100%", minHeight: 240, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px", fontSize: 16, color: "var(--text)", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.6 }} autoFocus />
-                            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-                                <button onClick={submitAnswer} disabled={!answer.trim()} style={{ padding: "14px 40px", background: answer.trim() ? "var(--accent)" : "var(--border)", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 800, color: "#fff", cursor: "pointer" }}>Submit Answer</button>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
+                                <div style={{ display: "flex", gap: 12 }}>
+                                    <button onClick={() => submitAnswer('skip_question')} style={{ padding: "14px 24px", background: "transparent", border: "1px solid var(--border)", borderRadius: 12, fontSize: 14, fontWeight: 700, color: "var(--text2)", cursor: "pointer", transition: "all 0.2s" }}>Skip Question</button>
+                                    <button onClick={() => submitAnswer('end_early')} style={{ padding: "14px 24px", background: "transparent", border: "1px solid var(--danger-light)", borderRadius: 12, fontSize: 14, fontWeight: 700, color: "var(--danger)", cursor: "pointer", transition: "all 0.2s" }}>End Interview Early</button>
+                                </div>
+                                <button onClick={() => submitAnswer('submit')} disabled={!answer.trim()} style={{ padding: "14px 40px", background: answer.trim() ? "var(--accent)" : "var(--border)", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 800, color: "#fff", cursor: "pointer", transition: "all 0.2s", opacity: answer.trim() ? 1 : 0.6 }}>Submit Answer</button>
                             </div>
                         </div>
                     )}

@@ -258,8 +258,8 @@ Return ONLY valid JSON in this exact format:
         "fileReferences": [{"file": "exact/path/to/file.ext"}]
       }
     ],
-    "componentDiagram": "Detailed text description of component relationships (e.g., React Frontend -> Express API Gateway -> Auth Middleware -> Business Logic Services -> PostgreSQL / Redis Cache)",
-    "dataFlowDiagram": "Step-by-step data flow description through the system",
+    "componentDiagram": "A valid Mermaid.js graph TD diagram string representing the component relationships. MUST start with 'graph TD' or 'flowchart TD'. NO plain text explanations. Do not use markdown backticks.",
+    "dataFlowDiagram": "A valid Mermaid.js sequenceDiagram string representing the step-by-step data flow through the system. MUST start with 'sequenceDiagram'. NO plain text explanations. Do not use markdown backticks.",
     "architecturalPatterns": [
       {
         "name": "Pattern name",
@@ -745,6 +745,7 @@ KEYWORD GUIDANCE:
 Return ONLY valid JSON:
 
 {
+  "elevatorPitch": "A compelling 3-4 sentence professional narrative summarizing what this project is, its core technical challenge/achievement, and what it demonstrates about your engineering ability. Written in first-person ('I built...', 'I architected...').",
   "resumeBullets": [
     {
       "bulletId": "res-01",
@@ -833,6 +834,7 @@ async function synthesizeIntelligenceReport(
       bestPractices: { followed: [], missing: [] }
     },
 
+    elevatorPitch: resumeBulletsResult?.data?.elevatorPitch || "Your structured elevator pitch will appear here once analysis is fully complete.",
     resumeBullets: resumeBulletsResult?.data?.resumeBullets || [],
 
     groundingReport: {
