@@ -200,7 +200,7 @@ const LoadingPage: React.FC = () => {
     pollStatus();
     pollInterval = setInterval(pollStatus, 3000);
     return () => clearInterval(pollInterval);
-  }, [analysisId, navigate, updateStagesFromWorkflow]);
+  }, [analysisId, navigate, updateStagesFromWorkflow, stage3Mode]);
 
   // Cancel analysis
   const handleCancel = async () => {
