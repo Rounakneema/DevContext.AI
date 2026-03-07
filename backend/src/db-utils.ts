@@ -782,6 +782,10 @@ export async function saveInterviewAttempt(params: {
   sessionId: string;
   questionId: string;
   questionText?: string;
+  topicId?: string;
+  category?: string;
+  difficulty?: string;
+  action?: 'submit' | 'skip_question' | 'end_early';
   userAnswer: string;
   timeSpentSeconds: number;
   evaluation: any;
@@ -796,6 +800,10 @@ export async function saveInterviewAttempt(params: {
     sessionId: params.sessionId,
     questionId: params.questionId,
     questionText: params.questionText,
+    topicId: params.topicId,
+    category: params.category,
+    difficulty: params.difficulty,
+    action: params.action,
     userAnswer: params.userAnswer,
     timeSpentSeconds: params.timeSpentSeconds,
     evaluation: params.evaluation,

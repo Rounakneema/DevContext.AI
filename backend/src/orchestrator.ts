@@ -1661,6 +1661,31 @@ async function handleSubmitAnswer(event: any, context: any) {
   const topic = { ...plan.allTopics[activeTopicId], ...(progress.topicState?.[activeTopicId] || {}) } as Types.InterviewTopic;
 
   if (action === 'end_early') {
+    const endEval = {
+      overallScore: 0,
+      criteriaScores: { technicalAccuracy: 0, completeness: 0, clarity: 0, depthOfUnderstanding: 0 },
+      strengths: [],
+      weaknesses: [],
+      missingKeyPoints: [],
+      comparison: { weakAnswer: '', strongAnswer: '', yourAnswerCategory: 'weak' },
+      feedback: "You chose to end the interview early.",
+      improvementSuggestions: []
+    };
+
+    // Persist the end action as an attempt so the report timeline is consistent.
+    await DB.saveInterviewAttempt({
+      sessionId,
+      questionId,
+      questionText: body.questionText || progress.currentQuestionOverride || `Let's discuss ${topic.title}`,
+      topicId: activeTopicId,
+      category: topic.category,
+      difficulty: topic.difficulty,
+      action: 'end_early',
+      userAnswer: answer || `[END_EARLY]`,
+      timeSpentSeconds: timeSpentSeconds || 0,
+      evaluation: endEval
+    });
+
     topic.isCompleted = true;
     topic.followUpsAsked = topic.maxFollowUps;
     const endTopicState = {
@@ -1680,21 +1705,17 @@ async function handleSubmitAnswer(event: any, context: any) {
       totalTimeSpentSeconds: progress.totalTimeSpentSeconds + (timeSpentSeconds || 0)
     };
 
+    const endAttempts = await DB.getSessionAttempts(sessionId);
+    const finalSummary = generateSessionSummary(session, endAttempts, endProgress);
     await DB.updateSessionProgress(sessionId, endProgress);
-    await DB.completeInterviewSession(sessionId, { averageScore: endProgress.averageScore || 0 });
+    await DB.completeInterviewSession(sessionId, finalSummary);
 
     return {
       statusCode: 200,
       headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({
         attemptId: `${Date.now()}`,
-        evaluation: {
-          overallScore: 0,
-          criteriaScores: { technicalAccuracy: 0, completeness: 0, clarity: 0, depthOfUnderstanding: 0 },
-          strengths: [], weaknesses: [], missingKeyPoints: [], comparison: { weakAnswer: '', strongAnswer: '', yourAnswerCategory: 'weak' },
-          feedback: "You chose to end the interview early.",
-          improvementSuggestions: []
-        },
+        evaluation: endEval,
         followUpQuestions: [],
         nextTopic: null,
         isPhaseTransition: false,
@@ -1743,8 +1764,14 @@ async function handleSubmitAnswer(event: any, context: any) {
   }
 
   // 3. Update Topic Fulfillment
-  topic.currentFulfillment = Math.max(topic.currentFulfillment, evaluation.topicFulfillment || 0);
-  topic.isCompleted = topic.currentFulfillment >= topic.fulfillmentThreshold;
+  if (action === 'skip_question') {
+    // Force completion so the session progresses instead of re-asking the same topic.
+    topic.currentFulfillment = Math.max(topic.currentFulfillment || 0, topic.fulfillmentThreshold || 0);
+    topic.isCompleted = true;
+  } else {
+    topic.currentFulfillment = Math.max(topic.currentFulfillment, evaluation.topicFulfillment || 0);
+    topic.isCompleted = topic.currentFulfillment >= topic.fulfillmentThreshold;
+  }
 
   // 4. Determine next step (Follow-up vs Next Topic)
   const nextStep = getNextInterviewStep(plan, progress, topic);
@@ -1794,18 +1821,24 @@ async function handleSubmitAnswer(event: any, context: any) {
   };
 
   if (nextStep.type === 'complete') {
-    // Only difference: pass the new progress so final metrics are updated
+    const finalAttempts = await DB.getSessionAttempts(sessionId);
+    const finalSummary = generateSessionSummary(session, finalAttempts, newProgress);
     await DB.updateSessionProgress(sessionId, newProgress);
-    await DB.completeInterviewSession(sessionId, { averageScore: newProgress.averageScore });
+    await DB.completeInterviewSession(sessionId, finalSummary);
   } else {
     await DB.updateSessionProgress(sessionId, newProgress);
   }
+
 
   // Save attempt
   await DB.saveInterviewAttempt({
     sessionId,
     questionId,
     questionText: body.questionText || progress.currentQuestionOverride || `Let's discuss ${topic.title}`,
+    topicId: activeTopicId,
+    category: topic.category,
+    difficulty: topic.difficulty,
+    action: action || 'submit',
     userAnswer: answer,
     timeSpentSeconds: timeSpentSeconds || 0,
     evaluation
@@ -1910,23 +1943,9 @@ async function handleCompleteSession(event: any, context: any) {
   // Calculate category performance
   const categoryPerformance = calculateCategoryPerformance(attempts);
 
-  // Generate improvement areas
-  const improvementAreas = identifyImprovementAreas(attempts);
-
   // Complete session
-  const completedSession = await DB.completeInterviewSession(sessionId, {
-    totalQuestions: session.totalQuestions,
-    questionsAnswered: session.progress.questionsAnswered,
-    questionsSkipped: Math.max(0, session.totalQuestions - session.progress.questionsAnswered),
-    averageScore: session.progress.averageScore,
-    overallScore: session.progress.averageScore, // Match frontend
-    totalTimeSpentSeconds: session.progress.totalTimeSpentSeconds,
-    categoryPerformance,
-    weakAreas: improvementAreas, // Match frontend
-    strongAreas: identifyStrengths(attempts), // Match frontend
-    improvementAreas,
-    strengths: identifyStrengths(attempts)
-  });
+  const finalSummary = generateSessionSummary(session, attempts, session.progress);
+  const completedSession = await DB.completeInterviewSession(sessionId, finalSummary);
 
   await DB.logAnalysisEvent(session.analysisId, 'interview_session_completed', {
     sessionId,
@@ -1952,21 +1971,47 @@ function calculateAverageScore(session: any, newScore: number): number {
   return Math.round((currentAvg * totalAnswered + newScore) / (totalAnswered + 1));
 }
 
+function generateSessionSummary(session: any, attempts: any[], progress: any) {
+  const categoryPerformance = calculateCategoryPerformance(attempts);
+  const improvementAreas = identifyImprovementAreas(attempts);
+  const strengths = identifyStrengths(attempts);
+
+  const plan = session.interviewPlan || (session as any).customInterviewPlan;
+  const totalTopics = plan?.allTopics ? Object.keys(plan.allTopics).length : 0;
+
+  return {
+    totalQuestions: session.totalQuestions || 3,
+    questionsAnswered: progress.questionsAnswered || 0,
+    questionsSkipped: Math.max(0, (session.totalQuestions || 3) - (progress.questionsAnswered || 0)),
+    totalTopics: totalTopics || 3,
+    averageScore: progress.averageScore || 0,
+    overallScore: progress.averageScore || 0,
+    totalTimeSpentSeconds: progress.totalTimeSpentSeconds || 0,
+    categoryPerformance,
+    weakAreas: improvementAreas,
+    strongAreas: strengths,
+    improvementAreas,
+    strengths
+  };
+}
+
 function calculateCategoryPerformance(attempts: any[]): any {
   const categories: any = {};
 
   attempts.forEach((attempt: any) => {
-    const category = attempt.question?.category || 'general';
+    const category = attempt.category || attempt.question?.category || 'general';
     if (!categories[category]) {
       categories[category] = { total: 0, count: 0 };
     }
-    categories[category].total += attempt.evaluation.overallScore;
+    const score = Number(attempt?.evaluation?.overallScore);
+    if (!Number.isFinite(score)) return;
+    categories[category].total += score;
     categories[category].count += 1;
   });
 
   const performance: any = {};
   Object.keys(categories).forEach(cat => {
-    performance[cat] = Math.round(categories[cat].total / categories[cat].count);
+    performance[cat] = categories[cat].count > 0 ? Math.round(categories[cat].total / categories[cat].count) : 0;
   });
 
   return performance;

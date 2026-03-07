@@ -665,9 +665,13 @@ export interface QuestionAttempt {
   attemptId: string;       // UUID
   sessionId: string;
   questionId: string;
-  attemptNumber: number;   // Support retries
+  attemptNumber?: number;  // Support retries (optional for legacy items)
 
   questionText?: string;
+  topicId?: string;
+  category?: string;
+  difficulty?: string;
+  action?: 'submit' | 'skip_question' | 'end_early';
   userAnswer: string;
   submittedAt: string;
 

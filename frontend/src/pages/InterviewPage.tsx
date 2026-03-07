@@ -185,6 +185,7 @@ const ConfigSection: React.FC<{ label: string; hint?: string; children: React.Re
     </div>
 );
 
+
 const InterviewPage: React.FC = () => {
     const navigate = useNavigate();
     const { analysisId } = useParams<{ analysisId: string }>();
@@ -357,7 +358,6 @@ const InterviewPage: React.FC = () => {
                 timeSpentSeconds: timeSpent,
                 action
             });
-            const evaluation = (result as any).evaluation;
 
             // Refresh session to get updated signals/progress
             try {
@@ -366,10 +366,24 @@ const InterviewPage: React.FC = () => {
 
                 // Keep the evaluation for the final report, but do not interrupt the interview flow with
                 // per-question feedback screens. Move forward immediately.
+                if (updatedSession.status === 'completed' || String(updatedSession.progress?.currentPhase || '') === 'completed') {
+                    setPhase("loading");
+                    try {
+                        const sum = await completeInterviewSession(updatedSession.sessionId);
+                        setSummary(sum as any);
+                    } catch {
+                        setSummary(null);
+                    }
+                    setPhase("done");
+                    return;
+                }
                 const activeTopic = updatedSession.interviewPlan?.allTopics[updatedSession.progress?.activeTopicId || ""];
                 setAnswer("");
                 setCurrentEval(null);
-                if (activeTopic?.isCompleted) {
+                if (action === 'end_early') {
+                    // End-early is a session-level completion, not a topic celebration.
+                    await nextQuestion(updatedSession);
+                } else if (activeTopic?.isCompleted) {
                     setPhase("topic_review");
                 } else {
                     await nextQuestion(updatedSession);
@@ -614,8 +628,9 @@ const InterviewPage: React.FC = () => {
 
     /* ── DONE / SUMMARY ── */
     if (phase === "done") {
+        const sObj = (summary as any)?.summary || summary; // Handle session wrapper vs direct summary
         const summaryScoreRaw =
-            Number((summary as any)?.overallScore ?? (summary as any)?.averageScore ?? (summary as any)?.avgScore ?? 0) || 0;
+            Number(sObj?.overallScore ?? sObj?.averageScore ?? sObj?.avgScore ?? 0) || 0;
         const attemptsAvg =
             attempts && attempts.length > 0
                 ? Math.round(
@@ -625,7 +640,8 @@ const InterviewPage: React.FC = () => {
         const avg = summaryScoreRaw > 0 ? Math.round(summaryScoreRaw) : attemptsAvg;
         const topicsFromPlan = session?.interviewPlan ? Object.keys(session.interviewPlan.allTopics || {}).length : 0;
         const topicsFromSummary =
-            Array.isArray((summary as any)?.topics) ? Number((summary as any).topics.length) : Number((summary as any)?.topicsCount || 0) || 0;
+            Array.isArray(sObj?.topics) ? Number(sObj.topics.length) : Number(sObj?.totalTopics || sObj?.topicsCount || 0) || 0;
+
         const topicsFromAttempts = new Set(
             (attempts || []).map((a: any) => String(a?.topicId || "").trim()).filter(Boolean)
         ).size;
@@ -735,21 +751,22 @@ const InterviewPage: React.FC = () => {
                                 }
                             ] as const).map(({ title, items, fallback, color }) => {
                                 const list = (items || []).filter(Boolean);
-                                const finalList = list.length > 0 ? list : fallback;
+                                const nestedItems = ((summary as any)?.summary?.weakAreas || (summary as any)?.summary?.strongAreas || []) as string[];
+                                const finalList = list.length > 0 ? list : (nestedItems.length > 0 ? nestedItems : fallback);
                                 return (
-                                <div key={title} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px" }}>
-                                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>{title}</div>
-                                    {finalList.length === 0 ? (
-                                        <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div>
-                                    ) : (
-                                        finalList.map((item, i) => (
-                                            <div key={i} style={{ fontSize: 13, color: color, marginBottom: 6, display: "flex", gap: 8 }}>
-                                                <span style={{ fontVariantNumeric: "tabular-nums" }}>{i + 1}.</span>
-                                                <span>{item}</span>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
+                                    <div key={title} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px" }}>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>{title}</div>
+                                        {finalList.length === 0 ? (
+                                            <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div>
+                                        ) : (
+                                            finalList.map((item, i) => (
+                                                <div key={i} style={{ fontSize: 13, color: color, marginBottom: 6, display: "flex", gap: 8 }}>
+                                                    <span style={{ fontVariantNumeric: "tabular-nums" }}>{i + 1}.</span>
+                                                    <span>{item}</span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
                                 );
                             })}
                         </div>
@@ -802,7 +819,7 @@ const InterviewPage: React.FC = () => {
                                                     {attempt.evaluation?.overallScore || 0}% Score
                                                 </div>
                                             </div>
-                                         <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", lineHeight: 1.4 }}>
+                                            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", lineHeight: 1.4 }}>
                                                 {attempt.questionText || session?.questions?.find(q => q.questionId === attempt.questionId)?.question || "Question"}
                                             </div>
                                         </div>
@@ -872,25 +889,25 @@ const InterviewPage: React.FC = () => {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" /></svg>
                                 Print PDF Report
                             </button>
-                             <button onClick={() => {
-                                 let md = `# Interview Report - ${session?.config?.targetRole || "Software Engineer"}\n\n`;
-                                 md += `**Overall Score:** ${avg}%\n`;
-                                 md += `**Date:** ${new Date(session?.createdAt || "").toLocaleDateString()}\n\n`;
-                                 md += `## Detailed Breakdown\n\n`;
-                                 attempts.forEach((a, i) => {
-                                     const q = a.questionText || session?.questions?.find(que => que.questionId === a.questionId)?.question || "Question";
-                                     md += `### ${i + 1}. ${q}\n`;
-                                     md += `**Score:** ${a.evaluation?.overallScore || 0}%\n`;
-                                     md += `**Your Answer:** ${a.userAnswer}\n`;
-                                     const s = (a.evaluation?.strengths || []).filter(Boolean);
-                                     const im = (a.evaluation?.improvementSuggestions || a.evaluation?.weaknesses || []).filter(Boolean);
-                                     if (s.length) md += `**Strengths:** ${s.slice(0, 6).join("; ")}\n`;
-                                     if (im.length) md += `**Improvements:** ${im.slice(0, 6).join("; ")}\n`;
-                                     md += `\n`;
-                                 });
-                                 const blob = new Blob([md], { type: "text/markdown" });
-                                 const url = URL.createObjectURL(blob);
-                                 const link = document.createElement("a");
+                            <button onClick={() => {
+                                let md = `# Interview Report - ${session?.config?.targetRole || "Software Engineer"}\n\n`;
+                                md += `**Overall Score:** ${avg}%\n`;
+                                md += `**Date:** ${new Date(session?.createdAt || "").toLocaleDateString()}\n\n`;
+                                md += `## Detailed Breakdown\n\n`;
+                                attempts.forEach((a, i) => {
+                                    const q = a.questionText || session?.questions?.find(que => que.questionId === a.questionId)?.question || "Question";
+                                    md += `### ${i + 1}. ${q}\n`;
+                                    md += `**Score:** ${a.evaluation?.overallScore || 0}%\n`;
+                                    md += `**Your Answer:** ${a.userAnswer}\n`;
+                                    const s = (a.evaluation?.strengths || []).filter(Boolean);
+                                    const im = (a.evaluation?.improvementSuggestions || a.evaluation?.weaknesses || []).filter(Boolean);
+                                    if (s.length) md += `**Strengths:** ${s.slice(0, 6).join("; ")}\n`;
+                                    if (im.length) md += `**Improvements:** ${im.slice(0, 6).join("; ")}\n`;
+                                    md += `\n`;
+                                });
+                                const blob = new Blob([md], { type: "text/markdown" });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement("a");
                                 link.href = url;
                                 link.download = `interview-report-${session?.sessionId}.md`;
                                 link.click();
@@ -904,7 +921,7 @@ const InterviewPage: React.FC = () => {
                         </div>
                     </div>
                 </div>
-            </div>
+            </div >
         );
     }
 
