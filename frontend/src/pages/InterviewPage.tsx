@@ -624,7 +624,11 @@ const InterviewPage: React.FC = () => {
                 const key = s.toLowerCase();
                 counts.set(key, (counts.get(key) || 0) + 1);
             });
-            return [...counts.entries()]
+            const entries: Array<[string, number]> = [];
+            counts.forEach((v, k) => {
+                entries.push([k, v]);
+            });
+            return entries
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, limit)
                 .map(([k]) => {
