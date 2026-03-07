@@ -99,7 +99,7 @@ const CodeReviewTab: React.FC = () => {
                     </div>
 
                     <div style={{ width: '100%', height: 350 }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                             <TypedRadarChart cx="50%" cy="50%" outerRadius="75%" data={data.dimensions}>
                                 <TypedPolarGrid stroke="var(--border2)" />
                                 <TypedPolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text2)', fontSize: 12, fontWeight: 600 }} />

@@ -866,8 +866,18 @@ function parseAgentResponse(content: string, agentType: string): any {
   const parsed = extractJson(content);
 
   if (!parsed) {
-    console.error(`Failed to extra JSON from ${agentType} agent response`);
+    console.error(`Failed to extract JSON from ${agentType} agent response`);
     return { type: agentType, data: null, error: 'JSON extraction failed' };
+  }
+
+  // Clean up mermaid code blocks if agent is architecture
+  if (agentType === 'architecture' && parsed.systemArchitecture) {
+    if (parsed.systemArchitecture.componentDiagram) {
+      parsed.systemArchitecture.componentDiagram = parsed.systemArchitecture.componentDiagram.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '').trim();
+    }
+    if (parsed.systemArchitecture.dataFlowDiagram) {
+      parsed.systemArchitecture.dataFlowDiagram = parsed.systemArchitecture.dataFlowDiagram.replace(/^```[a-z]*\n?/gm, '').replace(/```$/gm, '').trim();
+    }
   }
 
   return {
