@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../services/api";
+import ExportDropdown from "../components/dashboard/ExportDropdown";
 
 const ReportPage: React.FC = () => {
   const { analysisId } = useOutletContext<{ analysisId: string }>();
@@ -46,8 +47,10 @@ const ReportPage: React.FC = () => {
     );
   }
 
-  const { intelligenceReport } = analysis;
+  const { intelligenceReport, projectReview } = analysis;
   const { designDecisions = [], technicalInsights = [], technologyStack, architecturePatterns = [] } = intelligenceReport;
+  const architectureClarity = projectReview?.architectureClarity || {};
+  const codeQuality = projectReview?.codeQuality || {};
 
   // Build a meaningful architecture summary from available data
   const buildArchitectureSummary = () => {
@@ -95,108 +98,187 @@ const ReportPage: React.FC = () => {
 
   return (
     <>
-      <div className="view-title">Intelligence Report</div>
-      <div className="view-sub">
-        AI-reconstructed architectural decisions grounded in your actual code.
-      </div>
-
-      {/* Architecture Overview — now always has content */}
-      <div className="panel">
-        <div className="panel-head">
-          <div className="panel-title">Architecture Overview</div>
-          <div className="chip green">Grounded</div>
-        </div>
-        <div className="panel-body">
-          <p style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: '1.75', marginBottom: '14px' }}>
-            {buildArchitectureSummary()}
-          </p>
-
-          {architecturePatterns.length > 0 && (
-            <div className="tag-row" style={{ marginBottom: '12px' }}>
-              {architecturePatterns.map((pattern: string) => (
-                <span key={pattern} className="tag tech">{pattern}</span>
-              ))}
-            </div>
-          )}
-
-          {technologyStack && (
-            <div className="tag-row">
-              {technologyStack.frameworks?.map((fw: string) => (
-                <span key={fw} className="tag acc">{fw}</span>
-              ))}
-              {technologyStack.libraries?.slice(0, 6).map((lib: string) => (
-                <span key={lib} className="tag tech">{lib}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Key Design Decisions — show ALL */}
-      {designDecisions.length > 0 && (
-        <div className="panel">
-          <div className="panel-head">
-            <div className="panel-title">Key Design Decisions</div>
-            <div className="chip blue">{designDecisions.length} found</div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "18px" }}>
+        <div>
+          <div className="view-title">Intelligence Report</div>
+          <div className="view-sub">
+            AI-reconstructed architectural decisions grounded in your actual code.
           </div>
-          <div className="panel-body">
-            <div className="insight-list">
-              {designDecisions.map((decision: any, idx: number) => (
-                <div key={decision.decisionId || idx} className="insight-item">
-                  <div className="i-dot pos">{idx + 1}</div>
-                  <div className="i-text">
-                    <strong>{decision.decision}</strong>
-                    <div style={{ fontSize: '12.5px', color: 'var(--text2)', marginTop: '3px', lineHeight: 1.6 }}>
-                      {decision.rationale}
+        </div>
+        <ExportDropdown analysisId={analysisId} analysisData={analysis} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 7fr) minmax(0, 3fr)', gap: '20px', alignItems: 'start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Architecture Overview — now always has content */}
+          <div className="panel" style={{ margin: 0 }}>
+            <div className="panel-head">
+              <div className="panel-title">Architecture Overview</div>
+              <div className="chip green">Grounded</div>
+            </div>
+            <div className="panel-body">
+              <p style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: '1.75', marginBottom: '14px' }}>
+                {buildArchitectureSummary()}
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {architectureClarity.componentOrganization && (
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: '4px' }}>Organization</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text)' }}>{architectureClarity.componentOrganization}</div>
+                  </div>
+                )}
+                {architectureClarity.separationOfConcerns && (
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: '4px' }}>Separation of Concerns</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text)' }}>{architectureClarity.separationOfConcerns}</div>
+                  </div>
+                )}
+              </div>
+
+              {technologyStack && (
+                <div className="tag-row" style={{ marginTop: '16px' }}>
+                  {technologyStack.frameworks?.map((fw: string) => (
+                    <span key={fw} className="tag acc">{fw}</span>
+                  ))}
+                  {technologyStack.libraries?.slice(0, 6).map((lib: string) => (
+                    <span key={lib} className="tag tech">{lib}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Key Design Decisions */}
+          {designDecisions.length > 0 && (
+            <div className="panel" style={{ margin: 0 }}>
+              <div className="panel-head">
+                <div className="panel-title">Key Design Decisions</div>
+                <div className="chip blue">{designDecisions.length} found</div>
+              </div>
+              <div className="panel-body">
+                <div className="insight-list">
+                  {designDecisions.map((decision: any, idx: number) => (
+                    <div key={decision.decisionId || idx} className="insight-item">
+                      <div className="i-dot pos">{idx + 1}</div>
+                      <div className="i-text">
+                        <strong>{decision.decision}</strong>
+                        <div style={{ fontSize: '12.5px', color: 'var(--text2)', marginTop: '3px', lineHeight: 1.6 }}>
+                          {decision.rationale}
+                        </div>
+                        {decision.tradeoffs && (
+                          <div style={{ fontSize: '11.5px', color: 'var(--accent)', marginTop: '4px', opacity: 0.8 }}>
+                            Tradeoff: {decision.tradeoffs}
+                          </div>
+                        )}
+                        {decision.fileReferences && decision.fileReferences.length > 0 && (
+                          <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Evidence:</span>
+                            {decision.fileReferences.slice(0, 3).map((ref: any, i: number) => (
+                              <code key={i} style={{ fontSize: '11px', padding: '1px 4px', background: 'var(--surface2)' }}>{ref.file.split('/').pop()}</code>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    {decision.tradeoffs && (
-                      <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '4px', fontStyle: 'italic' }}>
-                        Tradeoffs: {decision.tradeoffs}
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Engineering Justification */}
+          <div className="panel" style={{ margin: 0 }}>
+            <div className="panel-head">
+              <div className="panel-title">Technical Rationale</div>
+              <div className="chip purple">Quality</div>
+            </div>
+            <div className="panel-body">
+              <div style={{ fontSize: '12.5px', color: 'var(--text2)', lineHeight: '1.6', marginBottom: '12px' }}>
+                {codeQuality.justification || "Critical evaluation of implementation standards and engineering rigor."}
+              </div>
+
+              {architectureClarity.antiPatterns && architectureClarity.antiPatterns.length > 0 && (
+                <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--warn)', textTransform: 'uppercase', marginBottom: '8px' }}>Anti-Patterns Noted</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {architectureClarity.antiPatterns.map((p: string, i: number) => (
+                      <div key={i} style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '6px' }}>
+                        <span>⚠</span> {p}
                       </div>
-                    )}
-                    {decision.fileReferences && decision.fileReferences.length > 0 && (
-                      <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Evidence in</span>
-                        {decision.fileReferences.slice(0, 4).map((ref: any, i: number) => (
-                          <code key={i} style={{ fontSize: '11px' }}>{ref.file}</code>
-                        ))}
-                      </div>
-                    )}
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
+            </div>
+          </div>
+
+          {/* Interview Narrative */}
+          <div className="panel" style={{ margin: 0, background: 'var(--surface2)', border: '1px solid var(--accent)' }}>
+            <div className="panel-head">
+              <div className="panel-title">The "Story"</div>
+              <div className="chip green">Pitch</div>
+            </div>
+            <div className="panel-body">
+              <div
+                ref={narrativeRef}
+                style={{
+                  fontSize: '13px',
+                  color: 'var(--text)',
+                  lineHeight: '1.7',
+                  fontStyle: 'italic',
+                  marginBottom: '14px'
+                }}
+              >
+                "{buildNarrative()}"
+              </div>
+              <button
+                className="btn-accent"
+                style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px' }}
+                onClick={() => {
+                  const text = narrativeRef.current?.textContent;
+                  if (text) {
+                    navigator.clipboard.writeText(text.replace(/^"|"$/g, ''));
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }
+                }}
+              >
+                {copied ? '✓ Copied' : 'Copy Narrative'}
+              </button>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Technical Insights — show ALL */}
+      {/* Technical Insights — Full Width Bottom */}
       {technicalInsights.length > 0 && (
-        <div className="panel">
+        <div className="panel" style={{ marginTop: '20px' }}>
           <div className="panel-head">
-            <div className="panel-title">Technical Insights</div>
+            <div className="panel-title">Deep Technical Insights</div>
             <div className="chip green">{technicalInsights.length} insights</div>
           </div>
           <div className="panel-body">
-            <div className="insight-list">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
               {technicalInsights.map((insight: any, idx: number) => (
-                <div key={insight.insightId || idx} className="insight-item">
-                  <div className="i-dot pos">💡</div>
-                  <div className="i-text">
-                    <strong>{insight.insight}</strong>
-                    {insight.significance && (
-                      <div style={{ fontSize: '12.5px', color: 'var(--text2)', marginTop: '3px', lineHeight: 1.6 }}>
+                <div key={insight.insightId || idx} style={{ padding: '14px', background: 'var(--surface2)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <div style={{ fontSize: '18px' }}>💡</div>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>{insight.insight}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text2)', lineHeight: 1.5 }}>
                         {insight.significance}
                       </div>
-                    )}
-                    {insight.fileReferences && insight.fileReferences.length > 0 && (
-                      <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Found in</span>
-                        {insight.fileReferences.slice(0, 4).map((ref: any) => (
-                          <code key={ref.file} style={{ fontSize: '11px' }}>{ref.file}</code>
-                        ))}
-                      </div>
-                    )}
+                      {insight.fileReferences && insight.fileReferences.length > 0 && (
+                        <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {insight.fileReferences.slice(0, 2).map((ref: any) => (
+                            <code key={ref.file} style={{ fontSize: '10.5px', opacity: 0.7 }}>{ref.file.split('/').pop()}</code>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -204,50 +286,6 @@ const ReportPage: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Interview Narrative — properly constructed */}
-      <div className="panel">
-        <div className="panel-head">
-          <div className="panel-title">Interview Narrative</div>
-          <div className="chip green">Ready to use</div>
-        </div>
-        <div className="panel-body">
-          <div
-            ref={narrativeRef}
-            style={{
-              background: 'var(--surface2)',
-              borderLeft: '3px solid var(--accent)',
-              borderRadius: '0 7px 7px 0',
-              padding: '16px 18px',
-              fontSize: '13.5px',
-              color: 'var(--text)',
-              lineHeight: '1.8',
-              fontStyle: 'italic',
-            }}
-          >
-            "{buildNarrative()}"
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-            <button
-              className="btn-ghost"
-              style={{ width: 'auto', padding: '7px 14px', fontSize: '12px' }}
-              onClick={() => {
-                const text = narrativeRef.current?.textContent;
-                if (text) {
-                  navigator.clipboard.writeText(text.replace(/^"|"$/g, ''));
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }
-              }}
-            >
-              {copied ? '✓ Copied!' : 'Copy Narrative'}
-            </button>
-            <span style={{ fontSize: '11.5px', color: 'var(--text3)' }}>
-              Tip: personalise this with your own experience before using it
-            </span>
-          </div>
-        </div>
-      </div>
     </>
   );
 };

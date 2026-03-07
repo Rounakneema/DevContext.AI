@@ -12,6 +12,7 @@ import OverviewPage from "./pages/OverviewPage";
 import ArchitectureTab from "./pages/ArchitectureTab";
 import CodeReviewTab from "./pages/CodeReviewTab";
 import InterviewPrepTab from "./pages/InterviewPrepTab";
+import ReportPage from "./pages/ReportPage";
 import HistoryPage from "./pages/HistoryPage";
 import EvaluationFrameworkPage from "./pages/EvaluationFrameworkPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -94,6 +95,7 @@ function App() {
                           <Route path=":id/overview" element={<OverviewPage />} />
                           <Route path=":id/architecture" element={<ArchitectureTab />} />
                           <Route path=":id/code-review" element={<CodeReviewTab />} />
+                          <Route path=":id/intelligence" element={<ReportPage />} />
                           <Route path=":id/interview-prep" element={<InterviewPrepTab />} />
 
                           {/* Default fallback for dashboard */}

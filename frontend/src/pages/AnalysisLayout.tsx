@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Outlet, useParams } from "react-router-dom";
 import FileExplorer from "../components/dashboard/FileExplorer";
 import api from "../services/api";
 
-type Tab = "overview" | "architecture" | "code-review" | "interview-prep" | "interview" | "history" | "framework";
+type Tab = "overview" | "architecture" | "code-review" | "intelligence" | "interview-prep" | "interview" | "history" | "framework";
 
 interface AnalysisSummary {
   analysisId: string;
@@ -27,7 +27,7 @@ const AnalysisLayout: React.FC = () => {
   // Calculate active tab based on path
   const pathParts = location.pathname.split('/');
   const lastPart = pathParts[pathParts.length - 1];
-  const activeTab = ["history", "framework", "overview", "architecture", "code-review", "interview-prep", "interview"].includes(lastPart)
+  const activeTab = ["history", "framework", "overview", "architecture", "code-review", "intelligence", "interview-prep", "interview"].includes(lastPart)
     ? lastPart as Tab
     : "overview";
 
@@ -105,11 +105,20 @@ const AnalysisLayout: React.FC = () => {
     },
     {
       id: "code-review" as Tab,
-      label: "Code Review",
+      label: "Project Review",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <polyline points="16 18 22 12 16 6" />
           <polyline points="8 6 2 12 8 18" />
+        </svg>
+      ),
+    },
+    {
+      id: "intelligence" as Tab,
+      label: "Intelligence Report",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
         </svg>
       ),
     },

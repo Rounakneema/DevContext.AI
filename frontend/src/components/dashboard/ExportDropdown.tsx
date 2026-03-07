@@ -16,7 +16,21 @@ function generateMarkdown(data: any): string {
   const strengths = projectReview?.strengths || [];
   const weaknesses = projectReview?.weaknesses || [];
   const resumeBullets = intelligenceReport?.resumeBullets || [];
+  const questions = data?.interviewSimulation?.questions || [];
   const repoName = repository?.repositoryName || meta?.repositoryName || meta?.repositoryUrl || 'Repository';
+
+  // Realistic Scaling Factor
+  const currentScore = emp.overall ?? 0;
+  const availableHeadroom = 100 - currentScore;
+  const pointsMap: Record<string, number> = { high: 15, medium: 10, low: 5 };
+  const quickWins = [...weaknesses]
+    .sort((a: any, b: any) => {
+      const sv = (s?: string) => s === 'high' ? 3 : s === 'medium' ? 2 : 1;
+      return sv(b.severity) - sv(a.severity);
+    })
+    .slice(0, 3);
+  const totalBasePoints = quickWins.reduce((acc, w) => acc + (pointsMap[w.severity] ?? 8), 0);
+  const realismFactor = totalBasePoints > 0 ? Math.min(1, (availableHeadroom * 0.8) / totalBasePoints) : 1;
 
   let md = '';
   md += `# Career Impact Report — ${repoName}\n\n`;
@@ -61,18 +75,11 @@ function generateMarkdown(data: any): string {
   }
 
   // ── Quick Wins ──
-  const quickWins = [...weaknesses]
-    .sort((a: any, b: any) => {
-      const sv = (s?: string) => s === 'high' ? 3 : s === 'medium' ? 2 : 1;
-      return sv(b.severity) - sv(a.severity);
-    })
-    .slice(0, 3);
-  const pointsMap: Record<string, number> = { high: 15, medium: 10, low: 5 };
-
   if (quickWins.length > 0) {
     md += `## Quick Wins\n\n`;
     quickWins.forEach((w: any, i: number) => {
-      const pts = pointsMap[w.severity] ?? 8;
+      const basePts = pointsMap[w.severity] ?? 8;
+      const pts = Math.max(1, Math.floor(basePts * realismFactor));
       md += `${i + 1}. **${w.issue}** (+${pts} pts)\n`;
       if (w.recommendation) md += `   - Fix: ${w.recommendation}\n`;
       md += `\n`;
@@ -98,6 +105,19 @@ function generateMarkdown(data: any): string {
       if (w.recommendation) md += `  - Fix: ${w.recommendation}\n`;
     });
     md += `\n`;
+  }
+
+  // ── Interview Questions ──
+  if (questions.length > 0) {
+    md += `## Comprehensive Question Sheet (${questions.length} Questions)\n\n`;
+    questions.forEach((q: any, i: number) => {
+      md += `### Q${i + 1}: ${q.question}\n`;
+      md += `- **Category:** ${q.category} | **Difficulty:** ${q.difficulty}\n`;
+      if (q.groundedIn?.length > 0) {
+        md += `- **Grounded in:** ${q.groundedIn.map((r: any) => `\`${r.file.split('/').pop()}\``).join(', ')}\n`;
+      }
+      md += `\n`;
+    });
   }
 
   // ── Resume Bullets ──

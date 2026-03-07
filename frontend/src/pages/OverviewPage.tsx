@@ -83,6 +83,12 @@ const OverviewPage: React.FC = () => {
 
   const pointsMap: Record<string, number> = { high: 15, medium: 10, low: 5 };
 
+  // Scaling factor for realism (to ensure wins don't sum to more than available headroom)
+  const currentScore = employabilitySignal.overall;
+  const availableHeadroom = 100 - currentScore;
+  const totalBasePoints = quickWins.reduce((acc: number, w: any) => acc + (pointsMap[w.severity] ?? 8), 0);
+  const realismFactor = totalBasePoints > 0 ? Math.min(1, (availableHeadroom * 0.8) / totalBasePoints) : 1;
+
   return (
     <>
       {/* Header */}
@@ -133,7 +139,8 @@ const OverviewPage: React.FC = () => {
           <div className="panel-body">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {quickWins.map((w: any, i: number) => {
-                const pts = pointsMap[w.severity] ?? 8;
+                const basePts = pointsMap[w.severity] ?? 8;
+                const pts = Math.max(1, Math.floor(basePts * realismFactor));
                 return (
                   <div key={w.weaknessId ?? i} style={{
                     display: 'flex', alignItems: 'flex-start', gap: '12px',

@@ -166,6 +166,77 @@ const InterviewPrepTab: React.FC = () => {
                 </div>
 
             </div>
+
+            {/* Comprehensive Question Sheet */}
+            {fullData?.interviewSimulation?.questions?.length > 0 && (
+                <div className="panel" style={{ marginTop: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                    <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                            </svg>
+                            Comprehensive Question Sheet ({fullData.interviewSimulation.questions.length} Qs)
+                        </h3>
+                    </div>
+
+                    <div className="no-print" style={{ padding: '16px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '12.5px', color: 'var(--text2)' }}>
+                            Deep-dive questions tailored to your codebase. Perfect for practice or offline review.
+                        </span>
+                    </div>
+
+                    <div style={{ padding: '20px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {fullData.interviewSimulation.questions.map((q: any, i: number) => (
+                                <div key={q.questionId} style={{
+                                    padding: '16px',
+                                    background: 'var(--surface2)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '12px',
+                                    pageBreakInside: 'avoid'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>
+                                                {q.category}
+                                            </span>
+                                            <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', background: 'var(--border)', color: 'var(--text2)', padding: '2px 8px', borderRadius: '4px' }}>
+                                                {q.difficulty}
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text3)', fontWeight: 600 }}>Q{i + 1}</div>
+                                    </div>
+
+                                    <div style={{ fontSize: '14.5px', fontWeight: 700, color: 'var(--text)', marginBottom: '12px', lineHeight: 1.5 }}>
+                                        {q.question}
+                                    </div>
+
+                                    {q.groundedIn && q.groundedIn.length > 0 && (
+                                        <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px' }}>
+                                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text3)', marginBottom: '6px', textTransform: 'uppercase' }}>Evidence in Codebase:</div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                {q.groundedIn.slice(0, 3).map((ref: any, idx: number) => (
+                                                    <div key={idx} style={{
+                                                        fontSize: '11.5px',
+                                                        color: 'var(--accent)',
+                                                        background: 'rgba(124,92,219,0.08)',
+                                                        padding: '4px 8px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid rgba(124,92,219,0.2)'
+                                                    }}>
+                                                        <code>{ref.file.split('/').pop()}</code>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
