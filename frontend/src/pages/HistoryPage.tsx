@@ -141,7 +141,7 @@ const HistoryPage: React.FC = () => {
                 e.currentTarget.style.borderColor = "var(--border)";
               }}
               onClick={() => {
-                navigate(`/app/analysis/${item.analysisId}/overview`);
+                navigate(`/app/dashboard/${item.analysisId}/overview`);
               }}
             >
               <div
