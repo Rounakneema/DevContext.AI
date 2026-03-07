@@ -204,11 +204,14 @@ const ReportPage: React.FC = () => {
                 <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--warn)', textTransform: 'uppercase', marginBottom: '8px' }}>Anti-Patterns Noted</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {architectureClarity.antiPatterns.map((p: string, i: number) => (
-                      <div key={i} style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '6px' }}>
-                        <span>⚠</span> {p}
-                      </div>
-                    ))}
+                    {architectureClarity.antiPatterns.map((p: any, i: number) => {
+                      const text = typeof p === 'string' ? p : (p.name || p.description || p.issue || "Unknown anti-pattern");
+                      return (
+                        <div key={i} style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                          <span style={{ color: 'var(--warn)' }}>⚠</span> {text}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

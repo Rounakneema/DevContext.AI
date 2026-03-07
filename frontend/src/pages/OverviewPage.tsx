@@ -156,10 +156,12 @@ const OverviewPage: React.FC = () => {
                     }}>{i + 1}</div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)', marginBottom: '2px' }}>
-                        {w.issue}
+                        {typeof w === 'string' ? w : (w.issue || w.name || "Improvement Area")}
                       </div>
-                      {w.recommendation && (
-                        <div style={{ fontSize: '12px', color: 'var(--text3)', fontStyle: 'italic' }}>→ {w.recommendation}</div>
+                      {(w.recommendation || w.actionableSuggestion) && (
+                        <div style={{ fontSize: '12px', color: 'var(--text3)', fontStyle: 'italic' }}>
+                          → {typeof w.recommendation === 'string' ? w.recommendation : (w.actionableSuggestion || "Recommendation available")}
+                        </div>
                       )}
                     </div>
                     <div style={{
@@ -246,7 +248,8 @@ const OverviewPage: React.FC = () => {
                 <div key={strength.strengthId} className="insight-item">
                   <div className="i-dot pos">✓</div>
                   <div className="i-text">
-                    <strong>{strength.pattern}</strong> — {strength.description}
+                    <strong>{typeof strength === 'string' ? strength : (strength.pattern || strength.name || "Strength")}</strong>
+                    {strength.description && typeof strength.description === 'string' && <span> — {strength.description}</span>}
                     {strength.impact && (
                       <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '3px' }}>{strength.impact}</div>
                     )}
@@ -280,7 +283,7 @@ const OverviewPage: React.FC = () => {
                     {weakness.severity === 'high' ? '!' : '~'}
                   </div>
                   <div className="i-text">
-                    <strong>{weakness.issue}</strong>
+                    <strong>{typeof weakness === 'string' ? weakness : (weakness.issue || weakness.name || "Improvement")}</strong>
                     {weakness.severity && (
                       <span style={{
                         marginLeft: '6px', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',

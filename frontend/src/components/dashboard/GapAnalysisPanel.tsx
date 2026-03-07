@@ -120,11 +120,11 @@ const GapAnalysisPanel: React.FC<GapAnalysisPanelProps> = ({ employabilitySignal
                                 <div key={w.weaknessId ?? i} className="insight-item">
                                     <div className="i-dot neg">!</div>
                                     <div className="i-text">
-                                        <strong>{w.issue}</strong>
-                                        {w.impact && <div style={{ fontSize: '12.5px', color: 'var(--text2)', marginTop: '2px' }}>{w.impact}</div>}
-                                        {w.recommendation && (
+                                        <strong>{typeof w === 'string' ? w : (w.issue || w.name || "Improvement Area")}</strong>
+                                        {w.impact && typeof w.impact === 'string' && <div style={{ fontSize: '12.5px', color: 'var(--text2)', marginTop: '2px' }}>{w.impact}</div>}
+                                        {(w.recommendation || w.actionableSuggestion) && (
                                             <div style={{ fontSize: '12px', color: '#27AE60', marginTop: '4px', fontStyle: 'italic' }}>
-                                                → Fix: {w.recommendation}
+                                                → Fix: {typeof w.recommendation === 'string' ? w.recommendation : (w.actionableSuggestion || "Recommendation available")}
                                             </div>
                                         )}
                                         {w.fileReferences && w.fileReferences.length > 0 && (
@@ -152,9 +152,11 @@ const GapAnalysisPanel: React.FC<GapAnalysisPanelProps> = ({ employabilitySignal
                                 <div key={w.weaknessId ?? i} className="insight-item">
                                     <div className="i-dot warn">~</div>
                                     <div className="i-text">
-                                        <strong>{w.issue}</strong>
-                                        {w.recommendation && (
-                                            <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>→ {w.recommendation}</div>
+                                        <strong>{typeof w === 'string' ? w : (w.issue || w.name || "Improvement Area")}</strong>
+                                        {(w.recommendation || w.actionableSuggestion) && (
+                                            <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
+                                                → {typeof w.recommendation === 'string' ? w.recommendation : (w.actionableSuggestion || "Recommendation available")}
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -174,8 +176,8 @@ const GapAnalysisPanel: React.FC<GapAnalysisPanelProps> = ({ employabilitySignal
                                 <div key={s.strengthId ?? i} className="insight-item">
                                     <div className="i-dot pos">✓</div>
                                     <div className="i-text">
-                                        <strong>{s.pattern}</strong>
-                                        {s.impact && <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{s.impact}</div>}
+                                        <strong>{typeof s === 'string' ? s : (s.pattern || s.name || "Engineering Strength")}</strong>
+                                        {s.impact && typeof s.impact === 'string' && <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{s.impact}</div>}
                                     </div>
                                 </div>
                             ))}

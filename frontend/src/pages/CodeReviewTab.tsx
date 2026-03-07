@@ -131,12 +131,16 @@ const CodeReviewTab: React.FC = () => {
                             <h3 style={{ fontSize: '16px', fontWeight: 700 }}>Engineering Strengths</h3>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {stats.strengths.slice(0, 3).map((s: any, i: number) => (
-                                <div key={i} style={{ padding: '12px', background: 'var(--surface2)', borderRadius: '10px', border: '1px solid var(--border)' }}>
-                                    <div style={{ fontSize: '13.5px', fontWeight: 600, marginBottom: '2px' }}>{s.pattern}</div>
-                                    <div style={{ fontSize: '12px', color: 'var(--text3)', lineHeight: 1.4 }}>{s.description}</div>
-                                </div>
-                            ))}
+                            {stats.strengths.slice(0, 3).map((s: any, i: number) => {
+                                const patternText = typeof s === 'string' ? s : (s.pattern || s.name || "Engineering Strength");
+                                const descText = typeof s === 'string' ? "" : (s.description || s.impact || "");
+                                return (
+                                    <div key={i} style={{ padding: '12px', background: 'var(--surface2)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ fontSize: '13.5px', fontWeight: 600, marginBottom: '2px' }}>{patternText}</div>
+                                        {descText && <div style={{ fontSize: '12px', color: 'var(--text3)', lineHeight: 1.4 }}>{descText}</div>}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -152,12 +156,16 @@ const CodeReviewTab: React.FC = () => {
                             <h3 style={{ fontSize: '16px', fontWeight: 700 }}>Critical Improvements</h3>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {stats.weaknesses.slice(0, 2).map((w: any, i: number) => (
-                                <div key={i} style={{ padding: '12px', background: 'var(--surface2)', borderRadius: '10px', border: '1px solid var(--border)' }}>
-                                    <div style={{ fontSize: '13.5px', fontWeight: 600, marginBottom: '2px' }}>{w.issue}</div>
-                                    <div style={{ fontSize: '12px', color: 'var(--text3)', lineHeight: 1.4 }}>{w.recommendation}</div>
-                                </div>
-                            ))}
+                            {stats.weaknesses.slice(0, 2).map((w: any, i: number) => {
+                                const issueText = typeof w === 'string' ? w : (w.issue || w.name || "Improvement Area");
+                                const recommendationText = typeof w === 'string' ? "" : (w.recommendation || w.impact || w.description || "");
+                                return (
+                                    <div key={i} style={{ padding: '12px', background: 'var(--surface2)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                        <div style={{ fontSize: '13.5px', fontWeight: 600, marginBottom: '2px' }}>{issueText}</div>
+                                        {recommendationText && <div style={{ fontSize: '12px', color: 'var(--text3)', lineHeight: 1.4 }}>{recommendationText}</div>}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

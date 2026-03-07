@@ -116,12 +116,12 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
         // Auto-expand top-level folders
         const topFolders = new Set(tree.filter(n => n.type === 'folder').map(n => n.path));
         setExpandedFolders(topFolders);
+      } else {
+        setError("No files found for this analysis yet.");
       }
-      // If rawFiles is empty, keep mockFileTree so panel isn't blank
-      setError(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load files:', err);
-      // Don't set error — keep mock data so panel stays useful
+      setError(`Failed to load repository files: ${err.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

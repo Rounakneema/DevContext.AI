@@ -22,7 +22,11 @@ const getRepoName = (item: AnalysisSummary) => {
 const AnalysisLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { id: analysisId } = useParams();
+  const { id } = useParams();
+
+  // Robust analysisId derivation: check params first, then fallback to URL parsing
+  // This ensures the parent layout can see IDs from child routes reliably across different RRD versions
+  const analysisId = id || (location.pathname.startsWith('/app/dashboard/') ? location.pathname.split('/')[3] : undefined);
 
   // Calculate active tab based on path
   const pathParts = location.pathname.split('/');
