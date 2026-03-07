@@ -17,7 +17,7 @@ const Section: React.FC<{ icon: string; title: string; children: React.ReactNode
     </div>
 );
 
-const Pill: React.FC<{ children: React.ReactNode; color?: string }> = ({ children, color = '#2980B9' }) => (
+const Pill: React.FC<{ children: React.ReactNode; color?: string }> = ({ children, color = '#7C5CDB' }) => (
     <span style={{
         display: 'inline-block', padding: '2px 10px', borderRadius: '20px', fontSize: '11px',
         fontWeight: 700, background: `${color}14`, color, border: `1px solid ${color}33`,
@@ -26,7 +26,7 @@ const Pill: React.FC<{ children: React.ReactNode; color?: string }> = ({ childre
 );
 
 const BlockQuote: React.FC<{ children: React.ReactNode; type?: 'warn' | 'info' | 'success' }> = ({ children, type = 'info' }) => {
-    const colors = { warn: '#E67E22', info: '#2980B9', success: '#27AE60' };
+    const colors = { warn: '#9B7FE6', info: '#7C5CDB', success: '#6A4DC7' };
     const c = colors[type];
     return (
         <div style={{
@@ -43,12 +43,12 @@ const EvaluationFrameworkPage: React.FC = () => {
 
             {/* Hero */}
             <div style={{
-                background: 'linear-gradient(145deg, #0F1923 0%, #1A2332 60%, #0D1520 100%)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'linear-gradient(145deg, #7C5CDB 0%, #6A4DC7 60%, #5A3FB5 100%)',
+                border: '1px solid rgba(124,92,219,0.3)',
                 borderRadius: '16px', padding: '32px', marginBottom: '32px',
                 position: 'relative', overflow: 'hidden',
             }}>
-                <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, background: 'radial-gradient(circle, #2980B922 0%, transparent 70%)', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, background: 'radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />
                 <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: '8px' }}>
                     DevContext Intelligence Framework™ v3.1
                 </div>
@@ -135,7 +135,7 @@ const EvaluationFrameworkPage: React.FC = () => {
                         { label: 'Size-normalized complexity', desc: 'A 500-line repo and a 50,000-line system cannot share the same maintainability standard.' },
                     ].map(r => (
                         <div key={r.label} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#2980B9', marginTop: 5, flexShrink: 0 }} />
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#7C5CDB', marginTop: 5, flexShrink: 0 }} />
                             <div>
                                 <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)' }}>{r.label}</div>
                                 <div style={{ fontSize: '12px', color: 'var(--text2)' }}>{r.desc}</div>
@@ -152,9 +152,9 @@ const EvaluationFrameworkPage: React.FC = () => {
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '14px' }}>
                     {[
-                        { tier: 'FAANG / Big Tech', bar: '85+', color: '#8E44AD', note: 'Comprehensive testing, observability, system design depth required' },
-                        { tier: 'Product Companies', bar: '65+', color: '#2980B9', note: 'Clean architecture, meaningful documentation, solid error handling' },
-                        { tier: 'High-Growth Startups', bar: '55+', color: '#27AE60', note: 'Delivery-focused; working software that scales from Day 1' },
+                        { tier: 'FAANG / Big Tech', bar: '85+', color: '#5A3FB5', note: 'Comprehensive testing, observability, system design depth required' },
+                        { tier: 'Product Companies', bar: '65+', color: '#7C5CDB', note: 'Clean architecture, meaningful documentation, solid error handling' },
+                        { tier: 'High-Growth Startups', bar: '55+', color: '#9B7FE6', note: 'Delivery-focused; working software that scales from Day 1' },
                     ].map(t => (
                         <div key={t.tier} style={{ background: 'var(--surface2)', border: `1px solid ${t.color}33`, borderRadius: '10px', padding: '14px' }}>
                             <div style={{ fontSize: '11px', fontWeight: 800, color: t.color, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t.tier}</div>
@@ -172,11 +172,11 @@ const EvaluationFrameworkPage: React.FC = () => {
             <Section icon="💡" title="What Your Score Actually Means">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {[
-                        { range: '85 – 100', label: 'Exceptional', color: '#8E44AD', desc: 'Passes BigTech screening comfortably. Code demonstrates staff-level thinking.' },
-                        { range: '70 – 84', label: 'Strong', color: '#2980B9', desc: 'Solid Senior+ quality. Will pass Product Company screens with high confidence.' },
-                        { range: '55 – 69', label: 'Competitive', color: '#27AE60', desc: 'Mid-level quality. Strong at startups; needs improvement for BigTech.' },
-                        { range: '40 – 54', label: 'Developing', color: '#E67E22', desc: 'Junior level. Shows initiative but missing production-grade patterns.' },
-                        { range: '0 – 39', label: 'Early Stage', color: '#E74C3C', desc: 'Early career or proof-of-concept. Focus on fundamentals before showcasing.' },
+                        { range: '85 – 100', label: 'Exceptional', color: '#5A3FB5', desc: 'Passes BigTech screening comfortably. Code demonstrates staff-level thinking.' },
+                        { range: '70 – 84', label: 'Strong', color: '#6A4DC7', desc: 'Solid Senior+ quality. Will pass Product Company screens with high confidence.' },
+                        { range: '55 – 69', label: 'Competitive', color: '#7C5CDB', desc: 'Mid-level quality. Strong at startups; needs improvement for BigTech.' },
+                        { range: '40 – 54', label: 'Developing', color: '#9B7FE6', desc: 'Junior level. Shows initiative but missing production-grade patterns.' },
+                        { range: '0 – 39', label: 'Early Stage', color: '#BBA8F0', desc: 'Early career or proof-of-concept. Focus on fundamentals before showcasing.' },
                     ].map(r => (
                         <div key={r.range} style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', padding: '12px 14px', background: 'var(--surface2)', borderRadius: '10px', border: '1px solid var(--border)' }}>
                             <div style={{ minWidth: '70px', textAlign: 'center' }}>

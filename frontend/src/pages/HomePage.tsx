@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import UserStatsPanel from '../components/UserStatsPanel';
-import api, { getUserStats, UserStats } from '../services/api';
+import api, { getUserStats, UserStats, getUserProfile } from '../services/api';
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -13,6 +13,7 @@ const HomePage: React.FC = () => {
   const [checkingInProgress, setCheckingInProgress] = useState(true);
   const charCount = inputValue.length;
   const maxChars = 500;
+  const [displayName, setDisplayName] = useState('Dev');
 
   // Check if repo URL was passed from landing page
   useEffect(() => {
@@ -36,7 +37,16 @@ const HomePage: React.FC = () => {
         setStatsLoading(false);
       }
     };
+    const fetchProfile = async () => {
+      try {
+        const profile = await getUserProfile();
+        if (profile.displayName) setDisplayName(profile.displayName);
+      } catch (err) {
+        console.error('Failed to load profile:', err);
+      }
+    };
     fetchStats();
+    fetchProfile();
   }, []);
 
   // Check for in-progress analysis on mount
@@ -155,10 +165,7 @@ const HomePage: React.FC = () => {
     if (urlError) setUrlError(''); // clear error on edit
   };
 
-  const refreshPrompts = () => {
-    // Visual feedback only - in real app would fetch new prompts
-    console.log('Refreshing prompts...');
-  };
+
 
   return (
     <div className="main page active home-page">
@@ -275,11 +282,11 @@ const HomePage: React.FC = () => {
 
         <div className="greeting">
           <h1>
-            Hi there, <span className="name">Dev</span>
+            Hi there, <span className="name">{displayName}</span>
             <br />
             What repo should we analyse?
           </h1>
-          <p>Use one of the common prompts below or paste your own GitHub URL to begin</p>
+          <p>Explore one of our many use cases below, paste your GitHub repo URL to begin</p>
         </div>
 
         <div className="prompt-cards">
@@ -295,12 +302,12 @@ const HomePage: React.FC = () => {
           ))}
         </div>
 
-        <div className="refresh-row" onClick={refreshPrompts}>
+        <div className="refresh-row" onClick={() => navigate('/app/dashboard/history')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <polyline points="1 4 1 10 7 10" />
-            <path d="M3.51 15a9 9 0 1 0 .49-3.5" />
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 7 12 12 15 15" />
           </svg>
-          Refresh Prompts
+          See recent analyses →
         </div>
 
         <div className="chat-input-box">
@@ -331,13 +338,13 @@ const HomePage: React.FC = () => {
                 {urlError}
               </div>
             )}
-            <div className="web-badge">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            <div className="web-badge" style={{ opacity: 0.5, pointerEvents: 'none', cursor: 'default' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ width: '14px', height: '14px' }}>
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
               </svg>
-              All Web
+              Mistral AI Large 3
               <svg
                 viewBox="0 0 10 6"
                 fill="none"
@@ -352,22 +359,6 @@ const HomePage: React.FC = () => {
           </div>
           <div className="chat-input-bottom">
             <div className="input-actions">
-              <button className="input-action-btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="16" />
-                  <line x1="8" y1="12" x2="16" y2="12" />
-                </svg>
-                Add Attachment
-              </button>
-              <button className="input-action-btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21 15 16 10 5 21" />
-                </svg>
-                Use Image
-              </button>
             </div>
             <div className="input-right">
               <span className="char-count">
