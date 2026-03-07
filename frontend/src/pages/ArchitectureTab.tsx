@@ -13,6 +13,7 @@ const ArchitectureTab: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     const mermaidRef = useRef<HTMLDivElement>(null);
+    const [isMermaidValid, setIsMermaidValid] = useState(true);
 
     useEffect(() => {
         const loadArchitecture = async () => {
@@ -45,17 +46,24 @@ const ArchitectureTab: React.FC = () => {
 
     useEffect(() => {
         if (archData?.diagram && mermaidRef.current) {
-            mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { primaryColor: '#f4f4f5', primaryBorderColor: '#e4e4e7', primaryTextColor: '#18181b', linetype: 'basis' } });
-            mermaid.render('arch-diagram', archData.diagram).then((result: any) => {
-                if (mermaidRef.current) {
-                    mermaidRef.current.innerHTML = result.svg;
-                }
-            }).catch((e: any) => {
-                console.error("Mermaid Render Error", e);
-                if (mermaidRef.current) {
-                    mermaidRef.current.innerHTML = `<div style="color:red">Failed to render architecture diagram</div>`;
-                }
-            });
+            const diagramText = archData.diagram.trim();
+            const validMermaidStarts = ['graph', 'flowchart', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'gantt', 'pie', 'requirementDiagram', 'gitGraph', 'C4Context'];
+
+            const isProbablyValid = validMermaidStarts.some(start => diagramText.startsWith(start));
+
+            setIsMermaidValid(isProbablyValid);
+
+            if (isProbablyValid) {
+                mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { primaryColor: '#f4f4f5', primaryBorderColor: '#e4e4e7', primaryTextColor: '#18181b', linetype: 'basis' } });
+                mermaid.render('arch-diagram', diagramText).then((result: any) => {
+                    if (mermaidRef.current) {
+                        mermaidRef.current.innerHTML = result.svg;
+                    }
+                }).catch((e: any) => {
+                    console.error("Mermaid Render Error", e);
+                    setIsMermaidValid(false); // Fallback if rendering fails despite startsWith
+                });
+            }
         }
     }, [archData]);
 
@@ -116,9 +124,15 @@ const ArchitectureTab: React.FC = () => {
                             overflow: 'auto'
                         }}
                     >
-                        <div ref={mermaidRef} className="mermaid" style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-                            {/* Mermaid SVG will render here */}
-                        </div>
+                        {!isMermaidValid ? (
+                            <div style={{ padding: '24px', background: 'var(--surface2)', borderRadius: '12px', color: 'var(--text)', fontSize: '14px', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', border: '1px solid var(--border)' }}>
+                                {archData.diagram}
+                            </div>
+                        ) : (
+                            <div ref={mermaidRef} className="mermaid" style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+                                {/* Mermaid SVG will render here */}
+                            </div>
+                        )}
                     </div>
                 </div>
 
