@@ -600,11 +600,53 @@ const InterviewPage: React.FC = () => {
     /* ── DONE / SUMMARY ── */
     if (phase === "done") {
         const avg = summary ? Math.round((summary as any).overallScore ?? 0) : 0;
-        const totalTopics = session?.interviewPlan ? Object.keys(session.interviewPlan.allTopics).length : 0;
-        const fixedSignals = normalizeSignals(session?.progress?.signals);
+        const topicsFromPlan = session?.interviewPlan ? Object.keys(session.interviewPlan.allTopics || {}).length : 0;
+        const topicsFromSummary =
+            Array.isArray((summary as any)?.topics) ? Number((summary as any).topics.length) : Number((summary as any)?.topicsCount || 0) || 0;
+        const topicsFromAttempts = new Set(
+            (attempts || []).map((a: any) => String(a?.topicId || "").trim()).filter(Boolean)
+        ).size;
+        const topicsFromQuestions = new Set(
+            (session?.questions || []).map((q: any) => String(q?.topicId || "").trim()).filter(Boolean)
+        ).size;
         const questionsAnswered =
             Number((summary as any)?.questionsAnswered ?? session?.progress?.questionsAnswered ?? attempts?.length ?? 0) || 0;
+        const totalTopicsRaw = topicsFromPlan || topicsFromSummary || topicsFromAttempts || topicsFromQuestions || 0;
+        const totalTopics = totalTopicsRaw === 0 && questionsAnswered > 0 ? 1 : totalTopicsRaw;
+        const fixedSignals = normalizeSignals(session?.progress?.signals);
         const strongAreasCount = fixedSignals.filter(s => s.score >= 80).length;
+
+        const rankBullets = (values: any[], limit: number) => {
+            const counts = new Map<string, number>();
+            (values || []).forEach((v) => {
+                const s = String(v || "").trim();
+                if (!s) return;
+                const key = s.toLowerCase();
+                counts.set(key, (counts.get(key) || 0) + 1);
+            });
+            return [...counts.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, limit)
+                .map(([k]) => {
+                    // Restore original casing by picking first matching original value.
+                    const orig = (values || []).find((v) => String(v || "").trim().toLowerCase() === k);
+                    return String(orig || k);
+                });
+        };
+
+        const derivedStrengths = rankBullets(
+            (attempts || [])
+                .flatMap((a: any) => (a?.evaluation?.strengths || a?.evaluation?.strongPoints || []) as any[])
+                .filter(Boolean),
+            6
+        );
+
+        const derivedImprovements = rankBullets(
+            (attempts || [])
+                .flatMap((a: any) => (a?.evaluation?.improvementSuggestions || a?.evaluation?.weaknesses || a?.evaluation?.areasToImprove || []) as any[])
+                .filter(Boolean),
+            6
+        );
         return (
             <div style={pageStyle}>
                 <BgBlobs />
@@ -651,18 +693,38 @@ const InterviewPage: React.FC = () => {
 
                     {summary && (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32 }}>
-                            {([{ title: "💪 Strengths", items: (summary as any).strongAreas || (summary as any).strengths || [], color: "#6fcf97" }, { title: "📈 Areas to Improve", items: (summary as any).weakAreas || (summary as any).weaknesses || [], color: "#f6ad55" }] as const).map(({ title, items, color }) => (
+                            {([
+                                {
+                                    title: "💪 Strengths",
+                                    items: ((summary as any).strongAreas || (summary as any).strengths || []) as string[],
+                                    fallback: derivedStrengths,
+                                    color: "#6fcf97"
+                                },
+                                {
+                                    title: "📈 Areas to Improve",
+                                    items: ((summary as any).weakAreas || (summary as any).weaknesses || []) as string[],
+                                    fallback: derivedImprovements,
+                                    color: "#f6ad55"
+                                }
+                            ] as const).map(({ title, items, fallback, color }) => {
+                                const list = (items || []).filter(Boolean);
+                                const finalList = list.length > 0 ? list : fallback;
+                                return (
                                 <div key={title} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px" }}>
                                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>{title}</div>
-                                    {(items as string[]).length === 0 ? <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div> :
-                                        (items as string[]).map((item, i) => (
+                                    {finalList.length === 0 ? (
+                                        <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div>
+                                    ) : (
+                                        finalList.map((item, i) => (
                                             <div key={i} style={{ fontSize: 13, color: color, marginBottom: 6, display: "flex", gap: 8 }}>
-                                                <span>•</span><span>{item}</span>
+                                                <span style={{ fontVariantNumeric: "tabular-nums" }}>{i + 1}.</span>
+                                                <span>{item}</span>
                                             </div>
                                         ))
-                                    }
+                                    )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
 
@@ -713,8 +775,8 @@ const InterviewPage: React.FC = () => {
                                                     {attempt.evaluation?.overallScore || 0}% Score
                                                 </div>
                                             </div>
-                                            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", lineHeight: 1.4 }}>
-                                                {session?.questions?.find(q => q.questionId === attempt.questionId)?.question || "Question"}
+                                         <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", lineHeight: 1.4 }}>
+                                                {attempt.questionText || session?.questions?.find(q => q.questionId === attempt.questionId)?.question || "Question"}
                                             </div>
                                         </div>
                                         <div style={{ padding: "20px 24px" }}>
@@ -730,6 +792,44 @@ const InterviewPage: React.FC = () => {
                                                     {attempt.evaluation?.narrative}
                                                 </div>
                                             </div>
+
+                                            {(() => {
+                                                const strengths = (attempt.evaluation?.strengths || []) as string[];
+                                                const improvements = (attempt.evaluation?.improvementSuggestions || attempt.evaluation?.weaknesses || []) as string[];
+                                                const hasStrengths = Array.isArray(strengths) && strengths.filter(Boolean).length > 0;
+                                                const hasImprovements = Array.isArray(improvements) && improvements.filter(Boolean).length > 0;
+                                                if (!hasStrengths && !hasImprovements) return null;
+                                                return (
+                                                    <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                                        <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
+                                                            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase" }}>Strengths</div>
+                                                            {hasStrengths ? (
+                                                                strengths.filter(Boolean).slice(0, 6).map((s: string, idx: number) => (
+                                                                    <div key={idx} style={{ fontSize: 13, color: "#6fcf97", marginBottom: 6, display: "flex", gap: 8 }}>
+                                                                        <span style={{ fontVariantNumeric: "tabular-nums" }}>{idx + 1}.</span>
+                                                                        <span>{s}</span>
+                                                                    </div>
+                                                                ))
+                                                            ) : (
+                                                                <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
+                                                            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase" }}>Improvements</div>
+                                                            {hasImprovements ? (
+                                                                improvements.filter(Boolean).slice(0, 6).map((s: string, idx: number) => (
+                                                                    <div key={idx} style={{ fontSize: 13, color: "#f6ad55", marginBottom: 6, display: "flex", gap: 8 }}>
+                                                                        <span style={{ fontVariantNumeric: "tabular-nums" }}>{idx + 1}.</span>
+                                                                        <span>{s}</span>
+                                                                    </div>
+                                                                ))
+                                                            ) : (
+                                                                <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 ))}
