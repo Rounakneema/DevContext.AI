@@ -176,6 +176,8 @@ const AnalysisLayout: React.FC = () => {
   const handleTabClick = (tabId: Tab) => {
     if (tabId === 'history') {
       navigate('/app/dashboard/history');
+    } else if (tabId === 'framework') {
+      navigate('/app/dashboard/framework');
     } else if (tabId === 'interview' && analysisId) {
       navigate(`/app/interview/${analysisId}`);
     } else if (analysisId) {
