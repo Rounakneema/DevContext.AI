@@ -1209,7 +1209,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
       feedbackMode: 'immediate' as const,
       intensity
     },
-    totalQuestions: finalTopics.length * (globalMaxFollowUps + 1),
+    totalQuestions: finalTopics.reduce((sum, t) => sum + (t.maxFollowUps + 1), 0),
     customInterviewPlan: customInterviewPlan
   };
 
@@ -1595,10 +1595,13 @@ async function handleCompleteSession(event: any, context: any) {
   const completedSession = await DB.completeInterviewSession(sessionId, {
     totalQuestions: session.totalQuestions,
     questionsAnswered: session.progress.questionsAnswered,
-    questionsSkipped: session.totalQuestions - session.progress.questionsAnswered,
+    questionsSkipped: Math.max(0, session.totalQuestions - session.progress.questionsAnswered),
     averageScore: session.progress.averageScore,
+    overallScore: session.progress.averageScore, // Match frontend
     totalTimeSpentSeconds: session.progress.totalTimeSpentSeconds,
     categoryPerformance,
+    weakAreas: improvementAreas, // Match frontend
+    strongAreas: identifyStrengths(attempts), // Match frontend
     improvementAreas,
     strengths: identifyStrengths(attempts)
   });

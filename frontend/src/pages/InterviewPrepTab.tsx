@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../services/api";
+import ExportDropdown from "../components/dashboard/ExportDropdown";
 
 const InterviewPrepTab: React.FC = () => {
     const { analysisId } = useOutletContext<{ analysisId: string }>();
-    const [data, setData] = useState<any>(null);
+    const [fullData, setFullData] = useState<any>(null);
+    const [prepData, setPrepData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -12,29 +14,30 @@ const InterviewPrepTab: React.FC = () => {
     const [copiedBullet, setCopiedBullet] = useState<number | null>(null);
 
     useEffect(() => {
-        const loadPrepData = async () => {
+        const loadInterviewPrep = async () => {
             try {
                 setLoading(true);
-                const res: any = await api.getAnalysis(analysisId);
-                const report = res?.intelligenceReport;
-                if (!report) {
+                const data: any = await api.getAnalysis(analysisId);
+                setFullData(data);
+                const prep = data?.intelligenceReport;
+                if (!prep) {
                     throw new Error("Interview prep data has not been generated yet.");
                 }
 
-                setData({
-                    elevatorPitch: report.elevatorPitch || "Your elevator pitch is being generated.",
-                    resumeBullets: (report.resumeBullets || []).map((b: any) => ({
+                setPrepData({
+                    elevatorPitch: prep.elevatorPitch || "Your elevator pitch is being generated.",
+                    resumeBullets: (prep.resumeBullets || []).map((b: any) => ({
                         target: b.category || "General",
                         bullet: b.text || b.bullet
                     }))
                 });
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load interview prep data');
+                setError(err instanceof Error ? err.message : 'Failed to load prep data');
             } finally {
                 setLoading(false);
             }
         };
-        loadPrepData();
+        loadInterviewPrep();
     }, [analysisId]);
 
     const copyToClipboard = (text: string, type: 'pitch' | 'bullet', index?: number) => {
@@ -52,12 +55,12 @@ const InterviewPrepTab: React.FC = () => {
         return (
             <div style={{ textAlign: 'center', padding: '60px 20px' }}>
                 <div className="spinner" style={{ margin: '0 auto 16px' }} />
-                <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Generating your custom interview narrative…</div>
+                <div style={{ fontSize: '14px', color: 'var(--text2)' }}>Synthesizing interview strategy…</div>
             </div>
         );
     }
 
-    if (error || !data) {
+    if (error || !prepData) {
         return (
             <div style={{ background: '#FEF4F4', border: '1px solid #FACACA', borderRadius: '8px', padding: '12px 16px', color: '#C0392B', fontSize: '13px' }}>
                 {error || 'Interview prep data not found'}
@@ -67,9 +70,12 @@ const InterviewPrepTab: React.FC = () => {
 
     return (
         <div style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div>
-                <div className="view-title">Interview Prep</div>
-                <div className="view-sub">Ready-to-use materials and narratives for standard interview questions</div>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div>
+                    <div className="view-title">Interview Persistence</div>
+                    <div className="view-sub">AI-driven talking points and resume optimization</div>
+                </div>
+                <ExportDropdown analysisId={analysisId} analysisData={fullData} />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '24px', alignItems: 'start' }}>
@@ -86,10 +92,10 @@ const InterviewPrepTab: React.FC = () => {
                     </div>
                     <div style={{ padding: '24px' }}>
                         <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '16px', fontSize: '14.5px', color: '#334155', lineHeight: 1.6, fontStyle: 'italic', marginBottom: '16px' }}>
-                            "{data.elevatorPitch}"
+                            "{prepData.elevatorPitch}"
                         </div>
                         <button
-                            onClick={() => copyToClipboard(data.elevatorPitch, 'pitch')}
+                            onClick={() => copyToClipboard(prepData.elevatorPitch, 'pitch')}
                             style={{ background: copiedPitch ? '#10B981' : 'var(--surface2)', color: copiedPitch ? '#fff' : 'var(--text)', border: `1px solid ${copiedPitch ? '#10B981' : 'var(--border)'}`, borderRadius: '6px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}
                         >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -123,8 +129,8 @@ const InterviewPrepTab: React.FC = () => {
                         </h3>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        {data.resumeBullets.map((item: any, i: number) => (
-                            <div key={i} style={{ padding: '20px', borderBottom: i < data.resumeBullets.length - 1 ? '1px solid var(--border2)' : 'none' }}>
+                        {prepData.resumeBullets.map((item: any, i: number) => (
+                            <div key={i} style={{ padding: '20px', borderBottom: i < prepData.resumeBullets.length - 1 ? '1px solid var(--border2)' : 'none' }}>
                                 <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
                                     Targeting: {item.target}
                                 </div>
@@ -151,7 +157,7 @@ const InterviewPrepTab: React.FC = () => {
                                 </div>
                             </div>
                         ))}
-                        {data.resumeBullets.length === 0 && (
+                        {prepData.resumeBullets.length === 0 && (
                             <div style={{ padding: '20px', color: 'var(--text3)', fontSize: '14px' }}>
                                 No resume bullets generated yet.
                             </div>

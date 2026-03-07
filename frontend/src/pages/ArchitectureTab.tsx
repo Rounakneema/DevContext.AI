@@ -3,9 +3,11 @@ import { useOutletContext } from "react-router-dom";
 // @ts-ignore
 import mermaid from "mermaid";
 import api from "../services/api";
+import ExportDropdown from "../components/dashboard/ExportDropdown";
 
 const ArchitectureTab: React.FC = () => {
     const { analysisId } = useOutletContext<{ analysisId: string }>();
+    const [fullData, setFullData] = useState<any>(null);
     const [archData, setArchData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -17,6 +19,7 @@ const ArchitectureTab: React.FC = () => {
             try {
                 setLoading(true);
                 const data: any = await api.getAnalysis(analysisId);
+                setFullData(data);
                 const sysArch = data?.intelligenceReport?.systemArchitecture;
                 if (!sysArch) {
                     throw new Error("Architecture data has not been generated yet for this analysis.");
@@ -75,9 +78,12 @@ const ArchitectureTab: React.FC = () => {
 
     return (
         <div style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div>
-                <div className="view-title">System Architecture</div>
-                <div className="view-sub">Auto-extracted system design and data flow</div>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div>
+                    <div className="view-title">System Architecture</div>
+                    <div className="view-sub">Auto-extracted system design and data flow</div>
+                </div>
+                <ExportDropdown analysisId={analysisId} analysisData={fullData} />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 7fr) minmax(0, 3fr)', gap: '24px', alignItems: 'start' }}>

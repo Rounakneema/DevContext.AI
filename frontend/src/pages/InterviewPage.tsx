@@ -334,7 +334,11 @@ const InterviewPage: React.FC = () => {
 
                     {summary && (
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 32 }}>
-                            {[["Topics", totalTopics, "📋"], ["Avg Score", `${avg}/100`, "📊"], ["Strong Areas", (summary as any).strongAreas?.length ?? "—", "⚡"]].map(([label, value, icon], i) => (
+                            {[
+                                ["Questions", `${(summary as any).questionsAnswered} Asked`, "📋"],
+                                ["Avg Score", `${avg}/100`, "📊"],
+                                ["Strong Areas", (summary as any).strongAreas?.length ?? (summary as any).strengths?.length ?? "—", "⚡"]
+                            ].map(([label, value, icon], i) => (
                                 <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 16px", textAlign: "center" }}>
                                     <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
                                     <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>{value}</div>

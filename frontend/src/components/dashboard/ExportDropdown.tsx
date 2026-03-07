@@ -129,57 +129,10 @@ function downloadAsFile(content: string, filename: string, mime: string) {
 }
 
 /**
- * Generate a simple HTML → printable PDF via the browser's print dialog.
+ * Trigger high-fidelity PDF export via browser print
  */
-function downloadAsPdf(markdown: string, repoName: string) {
-  // Filter out markdown table separator rows (|---|---|) before conversion
-  const lines = markdown.split('\n').filter(line => !/^\|[\s\-:|]+\|$/.test(line));
-
-  // Convert basic markdown to HTML
-  let html = lines.join('\n')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`)
-    .replace(/\|(.+)\|/g, (_, row) => {
-      const cells = row.split('|').map((c: string) => c.trim()).filter(Boolean);
-      return `<tr>${cells.map((c: string) => `<td>${c}</td>`).join('')}</tr>`;
-    })
-    .replace(/(<tr>.*<\/tr>\n?)+/g, (m) => `<table>${m}</table>`)
-    .replace(/---/g, '<hr>')
-    .replace(/\n{2,}/g, '<br>')
-    .replace(/\n/g, ' ');
-
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert('Please allow popups to download PDF');
-    return;
-  }
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html><head>
-      <title>Career Impact Report — ${repoName}</title>
-      <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 720px; margin: 32px auto; padding: 0 24px; color: #1a1a1a; font-size: 15px; line-height: 1.5; }
-        h1 { font-size: 26px; color: #7C5CDB; border-bottom: 2px solid #7C5CDB; padding-bottom: 6px; margin: 0 0 8px; }
-        h2 { font-size: 18px; margin: 18px 0 6px; color: #333; }
-        blockquote { border-left: 3px solid #7C5CDB; padding-left: 12px; color: #555; font-style: italic; margin: 6px 0; }
-        table { border-collapse: collapse; width: 100%; margin: 4px 0 14px; }
-        td { padding: 6px 14px; border: 1px solid #e0e0e0; font-size: 14px; }
-        tr:first-child td { font-weight: 700; background: #f5f3ff; }
-        ul { padding-left: 20px; margin: 4px 0; }
-        li { margin-bottom: 2px; font-size: 14px; }
-        hr { border: none; border-top: 1px solid #ddd; margin: 18px 0; }
-        br { display: block; content: ""; margin: 2px 0; }
-        @media print { body { margin: 0; } }
-      </style>
-    </head><body>${html}</body></html>
-  `);
-  printWindow.document.close();
-  setTimeout(() => { printWindow.print(); }, 400);
+function downloadAsPdf() {
+  window.print();
 }
 
 const ExportDropdown: React.FC<ExportDropdownProps> = ({ analysisId, analysisData }) => {
@@ -214,12 +167,11 @@ const ExportDropdown: React.FC<ExportDropdownProps> = ({ analysisId, analysisDat
       const repoName = data?.repository?.repositoryName
         || data?.analysis?.repositoryName
         || 'analysis';
-      const md = generateMarkdown(data);
-
       if (format === 'markdown') {
+        const md = generateMarkdown(data);
         downloadAsFile(md, `${repoName}-career-impact.md`, 'text/markdown');
       } else {
-        downloadAsPdf(md, repoName);
+        downloadAsPdf();
       }
     } catch (err) {
       console.error('Export failed:', err);

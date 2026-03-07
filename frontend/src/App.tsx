@@ -11,7 +11,6 @@ import AnalysisLayout from "./pages/AnalysisLayout";
 import OverviewPage from "./pages/OverviewPage";
 import ArchitectureTab from "./pages/ArchitectureTab";
 import CodeReviewTab from "./pages/CodeReviewTab";
-import ExportTab from "./pages/ExportTab";
 import InterviewPrepTab from "./pages/InterviewPrepTab";
 import HistoryPage from "./pages/HistoryPage";
 import EvaluationFrameworkPage from "./pages/EvaluationFrameworkPage";
@@ -95,7 +94,6 @@ function App() {
                           <Route path=":id/overview" element={<OverviewPage />} />
                           <Route path=":id/architecture" element={<ArchitectureTab />} />
                           <Route path=":id/code-review" element={<CodeReviewTab />} />
-                          <Route path=":id/export" element={<ExportTab />} />
                           <Route path=":id/interview-prep" element={<InterviewPrepTab />} />
 
                           {/* Default fallback for dashboard */}
