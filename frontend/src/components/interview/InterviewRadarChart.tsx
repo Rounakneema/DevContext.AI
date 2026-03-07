@@ -13,12 +13,6 @@ interface InterviewRadarChartProps {
     signals: Record<string, { name: string; score: number }>;
 }
 
-const getScoreColor = (score: number) => {
-    if (score >= 80) return '#6fcf97';
-    if (score >= 60) return '#f6ad55';
-    return '#ef4444';
-};
-
 const InterviewRadarChart: React.FC<InterviewRadarChartProps> = ({ signals }) => {
     const data = Object.values(signals).map(s => ({
         subject: s.name.replace(/_/g, ' '),
