@@ -24,9 +24,15 @@ const AnalysisLayout: React.FC = () => {
   const location = useLocation();
   const { id } = useParams();
 
-  // Robust analysisId derivation: check params first, then fallback to URL parsing
-  // This ensures the parent layout can see IDs from child routes reliably across different RRD versions
-  const analysisId = id || (location.pathname.startsWith('/app/dashboard/') ? location.pathname.split('/')[3] : undefined);
+  // Extract ID from URL if present, ensuring it's not a root tab name
+  const parsedId = location.pathname.startsWith('/app/dashboard/') ? location.pathname.split('/')[3] : undefined;
+  const urlAnalysisId = id || (parsedId && !['history', 'framework'].includes(parsedId) ? parsedId : undefined);
+
+  // Analysis selector state
+  const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
+
+  // Use URL ID, or fallback to the most recently completed analysis
+  const analysisId = urlAnalysisId || (analyses.length > 0 ? analyses[0].analysisId : undefined);
 
   // Calculate active tab based on path
   const pathParts = location.pathname.split('/');
@@ -35,8 +41,6 @@ const AnalysisLayout: React.FC = () => {
     ? lastPart as Tab
     : "overview";
 
-  // Analysis selector state
-  const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [selectorOpen, setSelectorOpen] = useState(false); // Restored as it's fully used
   const [loadingAnalyses, setLoadingAnalyses] = useState(false); // Restored as it's fully used
   const selectorRef = useRef<HTMLDivElement>(null);
