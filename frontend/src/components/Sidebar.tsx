@@ -19,7 +19,7 @@ const Sidebar: React.FC = () => {
       <button
         className={`sidebar-btn ${isActive('/app') ? 'active' : ''}`}
         title="New"
-        onClick={() => navigate('/app')}
+        onClick={() => navigate('/app', { state: { focusInput: true } })}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <line x1="12" y1="5" x2="12" y2="19" />

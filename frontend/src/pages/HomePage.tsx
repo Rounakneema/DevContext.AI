@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import UserStatsPanel from '../components/UserStatsPanel';
 import api, { getUserStats, UserStats, getUserProfile } from '../services/api';
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [inputValue, setInputValue] = useState('');
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [urlError, setUrlError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inProgressAnalysis, setInProgressAnalysis] = useState<any>(null);
@@ -14,6 +16,7 @@ const HomePage: React.FC = () => {
   const charCount = inputValue.length;
   const maxChars = 500;
   const [displayName, setDisplayName] = useState('');
+  const [isHighlighted, setIsHighlighted] = useState(false);
 
   // Check if repo URL was passed from landing page
   useEffect(() => {
@@ -22,6 +25,16 @@ const HomePage: React.FC = () => {
       setInputValue(repoParam);
     }
   }, [searchParams]);
+
+  // Focus input if navigated with focusInput state (e.g., from Sidebar 'New' button)
+  useEffect(() => {
+    if (location.state?.focusInput && inputRef.current) {
+      inputRef.current.focus();
+      setIsHighlighted(true);
+      const timer = setTimeout(() => setIsHighlighted(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state, location.key]);
 
   const [stats, setStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -310,9 +323,10 @@ const HomePage: React.FC = () => {
           See recent analyses →
         </div>
 
-        <div className="chat-input-box">
+        <div className={`chat-input-box ${isHighlighted ? 'highlighted' : ''}`}>
           <div className="chat-input-top">
             <textarea
+              ref={inputRef}
               className="chat-textarea"
               rows={2}
               placeholder="Paste a GitHub URL (e.g. https://github.com/owner/repo)"

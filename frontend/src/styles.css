@@ -300,6 +300,11 @@ code {
   box-shadow: var(--shadow-lg);
 }
 
+.chat-input-box.highlighted {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light), var(--shadow-lg);
+}
+
 .chat-input-top {
   display: flex;
   align-items: flex-start;
