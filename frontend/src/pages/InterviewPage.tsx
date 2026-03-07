@@ -358,23 +358,36 @@ const InterviewPage: React.FC = () => {
                 action
             });
             const evaluation = (result as any).evaluation;
-            setCurrentEval(evaluation);
 
             // Refresh session to get updated signals/progress
             try {
                 const updatedSession = await getInterviewSession(session.sessionId);
                 setSession(updatedSession);
 
-                // If topic completed, we'll transition to topic_review after they view the answer evaluation
+                // Keep the evaluation for the final report, but do not interrupt the interview flow with
+                // per-question feedback screens. Move forward immediately.
+                const activeTopic = updatedSession.interviewPlan?.allTopics[updatedSession.progress?.activeTopicId || ""];
+                setAnswer("");
+                setCurrentEval(null);
+                if (activeTopic?.isCompleted) {
+                    setPhase("topic_review");
+                } else {
+                    await nextQuestion(updatedSession);
+                }
+                return;
             } catch (e) {
                 console.error("Failed to refresh session:", e);
             }
 
+            // Fallback: if refresh fails, still clear and continue based on current local state.
+            setAnswer("");
+            setCurrentEval(null);
             setPhase("active");
+            await nextQuestion();
         } catch (e: any) {
             setError(e.message || "Failed to submit answer."); setPhase("active");
         }
-    }, [session, currentQuestion, answer, startTime, questionElapsed]);
+    }, [session, currentQuestion, answer, startTime, questionElapsed, nextQuestion]);
 
     // Hard-stop the session when time limit is reached.
     useEffect(() => {
@@ -390,24 +403,26 @@ const InterviewPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [questionElapsed, phase, session?.sessionId]);
 
-    const nextQuestion = useCallback(async () => {
-        if (!session) return;
+    const nextQuestion = useCallback(async (prefetchedSession?: any) => {
+        const base = prefetchedSession || session;
+        if (!base) return;
 
-        // Refresh session state
-        let currentSdt = session;
-        try {
-            currentSdt = await getInterviewSession(session.sessionId);
-            setSession(currentSdt);
-        } catch (e) {
-            console.error("Failed to refresh session:", e);
-            // Optionally, handle the error more gracefully, e.g., show a message to the user
-            return; // Stop execution if session refresh fails
+        // Refresh session state (unless a fresh session was already provided)
+        let currentSdt = base;
+        if (!prefetchedSession) {
+            try {
+                currentSdt = await getInterviewSession(base.sessionId);
+            } catch (e) {
+                console.error("Failed to refresh session:", e);
+                return;
+            }
         }
+        setSession(currentSdt);
 
         if (currentSdt.status === 'completed') {
             setPhase("loading");
             try {
-                const sum = await completeInterviewSession(session.sessionId);
+                const sum = await completeInterviewSession(currentSdt.sessionId);
                 setSummary(sum as any); setPhase("done");
             } catch {
                 setSummary(null); setPhase("done");
@@ -599,7 +614,15 @@ const InterviewPage: React.FC = () => {
 
     /* ── DONE / SUMMARY ── */
     if (phase === "done") {
-        const avg = summary ? Math.round((summary as any).overallScore ?? 0) : 0;
+        const summaryScoreRaw =
+            Number((summary as any)?.overallScore ?? (summary as any)?.averageScore ?? (summary as any)?.avgScore ?? 0) || 0;
+        const attemptsAvg =
+            attempts && attempts.length > 0
+                ? Math.round(
+                    attempts.reduce((acc: number, a: any) => acc + (Number(a?.evaluation?.overallScore) || 0), 0) / attempts.length
+                )
+                : 0;
+        const avg = summaryScoreRaw > 0 ? Math.round(summaryScoreRaw) : attemptsAvg;
         const topicsFromPlan = session?.interviewPlan ? Object.keys(session.interviewPlan.allTopics || {}).length : 0;
         const topicsFromSummary =
             Array.isArray((summary as any)?.topics) ? Number((summary as any).topics.length) : Number((summary as any)?.topicsCount || 0) || 0;
@@ -677,7 +700,7 @@ const InterviewPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {summary && (
+                    {(summary || attempts.length > 0) && (
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 32 }}>
                             {[
                                 ["Questions", `${questionsAnswered} Asked`, "📋"],
@@ -695,7 +718,7 @@ const InterviewPage: React.FC = () => {
 
                     <InterviewRadarChart signals={fixedSignals} />
 
-                    {summary && (
+                    {(summary || attempts.length > 0) && (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32 }}>
                             {([
                                 {
@@ -790,12 +813,6 @@ const InterviewPage: React.FC = () => {
                                                     {attempt.userAnswer}
                                                 </div>
                                             </div>
-                                            <div>
-                                                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text3)", marginBottom: 8, textTransform: "uppercase" }}>AI Feedback</div>
-                                                <div style={{ fontSize: 14, color: "var(--text)", lineHeight: 1.6 }}>
-                                                    {attempt.evaluation?.narrative}
-                                                </div>
-                                            </div>
 
                                             {(() => {
                                                 const strengths = (attempt.evaluation?.strengths || []) as string[];
@@ -855,21 +872,25 @@ const InterviewPage: React.FC = () => {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" /></svg>
                                 Print PDF Report
                             </button>
-                            <button onClick={() => {
-                                let md = `# Interview Report - ${session?.config?.targetRole || "Software Engineer"}\n\n`;
-                                md += `**Overall Score:** ${summary ? Math.round((summary as any).overallScore || 0) : 0}%\n`;
-                                md += `**Date:** ${new Date(session?.createdAt || "").toLocaleDateString()}\n\n`;
-                                md += `## Detailed Breakdown\n\n`;
-                                attempts.forEach((a, i) => {
-                                    const q = a.questionText || session?.questions?.find(que => que.questionId === a.questionId)?.question || "Question";
-                                    md += `### ${i + 1}. ${q}\n`;
-                                    md += `**Score:** ${a.evaluation?.overallScore || 0}%\n`;
-                                    md += `**Your Answer:** ${a.userAnswer}\n`;
-                                    md += `**AI Feedback:** ${a.evaluation?.narrative}\n\n`;
-                                });
-                                const blob = new Blob([md], { type: "text/markdown" });
-                                const url = URL.createObjectURL(blob);
-                                const link = document.createElement("a");
+                             <button onClick={() => {
+                                 let md = `# Interview Report - ${session?.config?.targetRole || "Software Engineer"}\n\n`;
+                                 md += `**Overall Score:** ${avg}%\n`;
+                                 md += `**Date:** ${new Date(session?.createdAt || "").toLocaleDateString()}\n\n`;
+                                 md += `## Detailed Breakdown\n\n`;
+                                 attempts.forEach((a, i) => {
+                                     const q = a.questionText || session?.questions?.find(que => que.questionId === a.questionId)?.question || "Question";
+                                     md += `### ${i + 1}. ${q}\n`;
+                                     md += `**Score:** ${a.evaluation?.overallScore || 0}%\n`;
+                                     md += `**Your Answer:** ${a.userAnswer}\n`;
+                                     const s = (a.evaluation?.strengths || []).filter(Boolean);
+                                     const im = (a.evaluation?.improvementSuggestions || a.evaluation?.weaknesses || []).filter(Boolean);
+                                     if (s.length) md += `**Strengths:** ${s.slice(0, 6).join("; ")}\n`;
+                                     if (im.length) md += `**Improvements:** ${im.slice(0, 6).join("; ")}\n`;
+                                     md += `\n`;
+                                 });
+                                 const blob = new Blob([md], { type: "text/markdown" });
+                                 const url = URL.createObjectURL(blob);
+                                 const link = document.createElement("a");
                                 link.href = url;
                                 link.download = `interview-report-${session?.sessionId}.md`;
                                 link.click();
