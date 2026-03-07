@@ -229,7 +229,7 @@ code {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 18px;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.15s;
   display: flex;
   flex-direction: column;
@@ -712,6 +712,12 @@ code {
 .decision-btn.primary svg {
   width: 18px;
   height: 18px;
+}
+
+.decision-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 .decision-secondary {

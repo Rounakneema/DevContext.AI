@@ -35,6 +35,8 @@ const AnalysisLayout: React.FC = () => {
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [loadingAnalyses, setLoadingAnalyses] = useState(false);
+  const [showSelectPrompt, setShowSelectPrompt] = useState(false);
+  const promptTimerRef = useRef<NodeJS.Timeout | null>(null);
   const selectorRef = useRef<HTMLDivElement>(null);
 
   const currentAnalysis = analyses.find(a => a.analysisId === analysisId);
@@ -280,13 +282,24 @@ const AnalysisLayout: React.FC = () => {
             </div>
           ))}
 
+        {showSelectPrompt && (
+          <div style={{
+            margin: '4px 12px 8px', padding: '10px 12px', borderRadius: 10,
+            background: 'rgba(124,92,219,0.08)', border: '1px solid rgba(124,92,219,0.25)',
+            fontSize: 11, fontWeight: 600, color: '#7C5CDB', lineHeight: 1.5,
+            animation: 'fadeIn 0.2s ease',
+          }}>
+            Select an analysis from History or the dropdown above to view this page
+          </div>
+        )}
+
         <div className="ds-section-label">Practice</div>
         {tabs
           .filter((tab) => practiceTabIds.includes(tab.id))
           .map((tab) => (
             <div
               key={tab.id}
-              className={`ds-nav-item ${activeTab === tab.id ? "active" : ""}`}
+              className={`ds-nav-item ${activeTab === tab.id ? "active" : ""}${tab.id === 'history' && showSelectPrompt ? ' prompt-pulse' : ''}`}
               onClick={() => handleTabClick(tab.id as Tab)}
             >
               {tab.icon}
