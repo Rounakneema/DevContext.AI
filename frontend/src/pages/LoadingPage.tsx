@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getAnalysisStatus, continueToStage2, continueToStage3, exportAnalysis, cancelAnalysis } from '../services/api';
+import { getAnalysisStatus, continueToStage2, continueToStage3, getAnalysis, cancelAnalysis } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { generateCareerImpactMarkdown, downloadTextFile, renderAndPrintQuestionSheet } from '../utils/exportReport';
 
 type WorkflowState =
   | 'stage1_pending'
@@ -30,6 +31,9 @@ const LoadingPage: React.FC = () => {
   const [error, setError] = useState('');
   const [pipelineError, setPipelineError] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [stage3Mode, setStage3Mode] = useState<'sheet' | 'live' | null>(null);
+  const [sheetWindow, setSheetWindow] = useState<Window | null>(null);
+  const [autoPrinted, setAutoPrinted] = useState(false);
 
   // Redirect if no analysisId
   React.useEffect(() => {
@@ -46,14 +50,37 @@ const LoadingPage: React.FC = () => {
         setWorkflowState(payload.workflowState as WorkflowState);
         updateStagesFromWorkflow(payload.workflowState as WorkflowState);
         if (payload.workflowState === 'all_complete') {
-          setTimeout(() => navigate(`/app/dashboard?id=${analysisId}&tab=interview`), 1500);
+          if (stage3Mode === 'sheet') {
+            // Print dialog needs focus; don't auto-redirect for sheet mode.
+            if (!autoPrinted) {
+              setAutoPrinted(true);
+              void (async () => {
+                try {
+                  const full = await getAnalysis(analysisId);
+                  if (sheetWindow && !sheetWindow.closed) {
+                    renderAndPrintQuestionSheet(sheetWindow, full);
+                  } else {
+                    const repoName = full?.repository?.repositoryName || full?.analysis?.repositoryName || 'analysis';
+                    const md = generateCareerImpactMarkdown(full);
+                    downloadTextFile(md, `${repoName}-career-impact.md`, 'text/markdown');
+                  }
+                } catch (e: any) {
+                  setError(e?.message || 'Failed to download question sheet');
+                }
+              })();
+            }
+          } else {
+            setTimeout(() => navigate(`/app/dashboard?id=${analysisId}&tab=interview`), 1500);
+          }
         }
       }
     },
     onAnalysisComplete: () => {
       setWorkflowState('all_complete');
       updateStagesFromWorkflow('all_complete');
-      setTimeout(() => navigate(`/app/dashboard?id=${analysisId}&tab=interview`), 1500);
+      if (stage3Mode !== 'sheet') {
+        setTimeout(() => navigate(`/app/dashboard?id=${analysisId}&tab=interview`), 1500);
+      }
     },
   });
 
@@ -229,10 +256,23 @@ const LoadingPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
+      setStage3Mode(mode);
+      // Pre-open a window on user gesture to avoid popup blockers.
+      if (mode === 'sheet') {
+        const w = window.open('', '_blank');
+        if (w) setSheetWindow(w);
+      }
       await continueToStage3(analysisId, mode);
 
       setWorkflowState('stage3_pending');
       updateStagesFromWorkflow('stage3_pending');
+
+      // For live mode, take the user directly to the interview UI. InterviewPage will
+      // handle waiting/retrying if Stage 3 is still running.
+      if (mode === 'live') {
+        navigate(`/app/interview?id=${analysisId}`);
+        return;
+      }
 
       // Resume polling
       const pollInterval = setInterval(async () => {
@@ -243,9 +283,27 @@ const LoadingPage: React.FC = () => {
 
           if (data.workflowState === 'all_complete') {
             clearInterval(pollInterval);
-            setTimeout(() => {
-              navigate(`/app/dashboard?id=${analysisId}&tab=interview`);
-            }, 1500);
+            if (mode === 'sheet') {
+              if (!autoPrinted) {
+                setAutoPrinted(true);
+                try {
+                  const full = await getAnalysis(analysisId);
+                  if (sheetWindow && !sheetWindow.closed) {
+                    renderAndPrintQuestionSheet(sheetWindow, full);
+                  } else {
+                    const repoName = full?.repository?.repositoryName || full?.analysis?.repositoryName || 'analysis';
+                    const md = generateCareerImpactMarkdown(full);
+                    downloadTextFile(md, `${repoName}-career-impact.md`, 'text/markdown');
+                  }
+                } catch (e: any) {
+                  setError(e?.message || 'Failed to download question sheet');
+                }
+              }
+            } else {
+              setTimeout(() => {
+                navigate(`/app/dashboard?id=${analysisId}&tab=interview`);
+              }, 1500);
+            }
           }
         } catch (err: any) {
           console.error('Polling error:', err);
@@ -265,11 +323,16 @@ const LoadingPage: React.FC = () => {
   // Download report
   const handleDownloadReport = async () => {
     try {
-      const data = await exportAnalysis(analysisId, 'pdf');
-      console.log('Export initiated:', data);
-      alert('Report download started! Check your downloads folder.');
+      setLoading(true);
+      setError('');
+      const data = await getAnalysis(analysisId);
+      const repoName = data?.repository?.repositoryName || data?.analysis?.repositoryName || 'analysis';
+      const md = generateCareerImpactMarkdown(data);
+      downloadTextFile(md, `${repoName}-career-impact.md`, 'text/markdown');
     } catch (err: any) {
       setError(err.message || 'Failed to download report');
+    } finally {
+      setLoading(false);
     }
   };
 

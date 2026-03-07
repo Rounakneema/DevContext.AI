@@ -194,25 +194,28 @@ async function initializeTopicDrivenInterview(
     allTopics: topics.reduce((acc: any, t: any) => ({ ...acc, [t.topicId]: t }), {}),
     requiredSignals: [
       'architecture_thinking',
-      'implementation_depth',
       'code_quality',
-      'tradeoffs',
-      'scalability',
-      'security'
+      'implementation_depth',
+      'tradeoff_analysis',
+      'scalability_vision',
+      'debugging_communication'
     ],
     generatedAt: new Date().toISOString()
   };
 
   const simulation = {
-    mode: 'live_topic_driven',
-    totalTopics: topics.length,
+    questions: [],
+    categoryCounts: { architecture: 0, implementation: 0, tradeoffs: 0, scalability: 0, designPatterns: 0, debugging: 0 },
+    difficultyDistribution: { junior: 0, midLevel: 0, senior: 0, staff: 0 },
+    mode: 'live',
+    modelMetadata: { modelId: MODEL_ID, tokensIn: 0, tokensOut: 0, inferenceTimeMs: 0, temperature: 0 },
+    generatedAt: new Date().toISOString(),
     usage: {
       type: 'topic_driven_interview',
-      instructions: 'Interview will proceed through Warmup, Deep Dive, and Stretch phases. Questions are crafted dynamically per topic.',
+      instructions: 'Live interview: topics are prepared upfront; each question is asked dynamically and saved as you answer.',
       topicCount: topics.length,
-      estimatedDuration: '45-60 minutes'
-    },
-    generatedAt: new Date().toISOString()
+      estimatedDuration: '30-60 minutes'
+    }
   };
 
   return { simulation, plan };
@@ -245,12 +248,12 @@ async function extractTopics(
 
 Topics must be grounded in their code and categorized:
 1. Architecture: High-level structure, data flow, component boundaries.
-2. Implementation: Specific logic, algorithms, state management, API design.
-3. Engineering Quality: Testing, error handling, security, performance.
+  2. Implementation: Specific logic, algorithms, state management, API design.
+  3. Engineering Quality: Testing, error handling, reliability, performance.
 
 For each topic, define:
 - fulfillmentThreshold: (Junior: 50, Mid: 70, Senior: 85, Staff: 95)
-- evaluationSignals: (Choose 2-3: architecture_thinking, implementation_depth, code_quality, tradeoffs, scalability, security)
+  - evaluationSignals: (Choose 2-3: architecture_thinking, implementation_depth, code_quality, tradeoff_analysis, scalability_vision, debugging_communication)
 
 ═══════════════════════════════════════════════════════════
                     PROJECT CONTEXT
@@ -282,7 +285,7 @@ Return ONLY valid JSON array:
       "files": ["path/to/file.ts"],
       "lineRanges": {"path/to/file.ts": {"start": 10, "end": 50}}
     },
-    "evaluationSignals": ["architecture_thinking", "tradeoffs"],
+    "evaluationSignals": ["architecture_thinking", "tradeoff_analysis"],
     "fulfillmentThreshold": 85,
     "maxFollowUps": 2,
     "difficulty": "${candidateLevel}"

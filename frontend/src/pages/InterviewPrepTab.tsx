@@ -3,6 +3,117 @@ import { useOutletContext } from "react-router-dom";
 import api from "../services/api";
 import ExportDropdown from "../components/dashboard/ExportDropdown";
 
+function normalizeQ(s: string) {
+    return (s || "")
+        .toLowerCase()
+        .replace(/[`"'’“”]/g, "")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function tokenSet(s: string): Set<string> {
+    const out = new Set<string>();
+    for (const t of normalizeQ(s).split(" ")) {
+        if (!t) continue;
+        // Drop ultra-common filler words to reduce false positives.
+        if (t.length <= 2) continue;
+        if (["the", "and", "for", "with", "that", "this", "from", "into", "your"].includes(t)) continue;
+        out.add(t);
+    }
+    return out;
+}
+
+function jaccard(a: Set<string>, b: Set<string>) {
+    if (a.size === 0 || b.size === 0) return 0;
+    let inter = 0;
+    a.forEach((x) => { if (b.has(x)) inter++; });
+    return inter / (a.size + b.size - inter);
+}
+
+function isTooSimilar(a: string, b: string) {
+    const na = normalizeQ(a);
+    const nb = normalizeQ(b);
+    if (!na || !nb) return false;
+    if (na === nb) return true;
+    if (na.length > 40 && (na.includes(nb) || nb.includes(na))) return true;
+    return jaccard(tokenSet(na), tokenSet(nb)) >= 0.88;
+}
+
+function buildPrepQuestions(fullData: any, prepData: any) {
+    const repoName =
+        fullData?.repository?.repositoryName ||
+        fullData?.analysis?.repositoryName ||
+        (fullData?.analysis?.repositoryUrl ? String(fullData.analysis.repositoryUrl).replace(/^https?:\/\//, "") : null) ||
+        "this project";
+
+    const bullets: string[] = (prepData?.resumeBullets || [])
+        .map((b: any) => b?.bullet)
+        .filter(Boolean)
+        .slice(0, 6);
+
+    const weaknesses: any[] = (fullData?.projectReview?.weaknesses || []).slice(0, 4);
+    const strengths: any[] = (fullData?.projectReview?.strengths || []).slice(0, 3);
+
+    const out: Array<{ id: string; category: string; difficulty: string; question: string }> = [];
+
+    out.push({
+        id: "prep-arch-1",
+        category: "architecture",
+        difficulty: "mid-level",
+        question: `Give a 60-second overview of ${repoName}: what problem it solves, who uses it, and the core data flow.`,
+    });
+    out.push({
+        id: "prep-arch-2",
+        category: "architecture",
+        difficulty: "senior",
+        question: `Draw (verbally) the main components of ${repoName}. Where are the boundaries (API, services, storage) and why?`,
+    });
+    out.push({
+        id: "prep-scale-1",
+        category: "scalability",
+        difficulty: "senior",
+        question: `What are the likely bottlenecks in ${repoName} (DB hot spots, external calls, queue backlogs)? How would you measure them (metrics/SLOs)?`,
+    });
+    out.push({
+        id: "prep-trade-1",
+        category: "tradeoffs",
+        difficulty: "senior",
+        question: `Pick one key design decision you made in ${repoName}. What were 2 alternatives, and what tradeoffs made you choose your approach?`,
+    });
+
+    bullets.forEach((b, i) => {
+        out.push({
+            id: `prep-impl-b${i + 1}`,
+            category: "implementation",
+            difficulty: i < 2 ? "mid-level" : "senior",
+            question: `Deep dive: "${b}". What exactly did you implement, what edge cases did you handle, and how did you validate it (tests/monitoring)?`,
+        });
+    });
+
+    strengths.forEach((s, i) => {
+        const label = s?.pattern || s?.title || "a strong area";
+        out.push({
+            id: `prep-strength-${i + 1}`,
+            category: "implementation",
+            difficulty: "mid-level",
+            question: `You show strength in "${label}". Walk through the code change or pattern behind it, and how it improves maintainability.`,
+        });
+    });
+
+    weaknesses.forEach((w, i) => {
+        const issue = w?.issue || w?.title || "an improvement area";
+        out.push({
+            id: `prep-weak-${i + 1}`,
+            category: "tradeoffs",
+            difficulty: "senior",
+            question: `The review flagged "${issue}". How would you fix it, what risks/tradeoffs are involved, and what tests would prove the fix?`,
+        });
+    });
+
+    return out;
+}
+
 const InterviewPrepTab: React.FC = () => {
     const { analysisId } = useOutletContext<{ analysisId: string }>();
     const [fullData, setFullData] = useState<any>(null);
@@ -68,11 +179,29 @@ const InterviewPrepTab: React.FC = () => {
         );
     }
 
+    const interviewQuestions: any[] = fullData?.interviewSimulation?.questions || [];
+    const prepQuestionsRaw = buildPrepQuestions(fullData, prepData);
+    const filteredPrepQuestions = prepQuestionsRaw.filter((pq) => {
+        // Drop overlap with mock interview bank.
+        for (const iq of interviewQuestions) {
+            if (isTooSimilar(pq.question, iq?.question || "")) return false;
+        }
+        return true;
+    }).filter((pq, idx, arr) => {
+        // Drop near-duplicates within the prep set.
+        for (let i = 0; i < idx; i++) {
+            if (isTooSimilar(pq.question, arr[i].question)) return false;
+        }
+        return true;
+    }).slice(0, 12);
+
+    const removedOverlapCount = Math.max(0, prepQuestionsRaw.length - filteredPrepQuestions.length);
+
     return (
         <div style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div>
-                    <div className="view-title">Interview Persistence</div>
+                    <div className="view-title">Interview Prep</div>
                     <div className="view-sub">AI-driven talking points and resume optimization</div>
                 </div>
                 <ExportDropdown analysisId={analysisId} analysisData={fullData} />
@@ -167,76 +296,65 @@ const InterviewPrepTab: React.FC = () => {
 
             </div>
 
-            {/* Comprehensive Question Sheet */}
-            {fullData?.interviewSimulation?.questions?.length > 0 && (
-                <div className="panel" style={{ marginTop: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                    <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h3 style={{ fontSize: '15px', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)' }}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                            </svg>
-                            Comprehensive Question Sheet ({fullData.interviewSimulation.questions.length} Qs)
-                        </h3>
-                    </div>
-
-                    <div className="no-print" style={{ padding: '16px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '12.5px', color: 'var(--text2)' }}>
-                            Deep-dive questions tailored to your codebase. Perfect for practice or offline review.
-                        </span>
-                    </div>
-
-                    <div style={{ padding: '20px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {fullData.interviewSimulation.questions.map((q: any, i: number) => (
-                                <div key={q.questionId} style={{
-                                    padding: '16px',
-                                    background: 'var(--surface2)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: '12px',
-                                    pageBreakInside: 'avoid'
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>
-                                                {q.category}
-                                            </span>
-                                            <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', background: 'var(--border)', color: 'var(--text2)', padding: '2px 8px', borderRadius: '4px' }}>
-                                                {q.difficulty}
-                                            </span>
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text3)', fontWeight: 600 }}>Q{i + 1}</div>
-                                    </div>
-
-                                    <div style={{ fontSize: '14.5px', fontWeight: 700, color: 'var(--text)', marginBottom: '12px', lineHeight: 1.5 }}>
-                                        {q.question}
-                                    </div>
-
-                                    {q.groundedIn && q.groundedIn.length > 0 && (
-                                        <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px' }}>
-                                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text3)', marginBottom: '6px', textTransform: 'uppercase' }}>Evidence in Codebase:</div>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                {q.groundedIn.slice(0, 3).map((ref: any, idx: number) => (
-                                                    <div key={idx} style={{
-                                                        fontSize: '11.5px',
-                                                        color: 'var(--accent)',
-                                                        background: 'rgba(124,92,219,0.08)',
-                                                        padding: '4px 8px',
-                                                        borderRadius: '6px',
-                                                        border: '1px solid rgba(124,92,219,0.2)'
-                                                    }}>
-                                                        <code>{ref.file.split('/').pop()}</code>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+            {/* Prep Practice Questions (distinct from Mock Interview bank) */}
+            <div className="panel" style={{ marginTop: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                        Prep Practice Questions
+                    </h3>
+                    <div style={{ fontSize: '12px', color: 'var(--text3)', fontWeight: 700 }}>
+                        {filteredPrepQuestions.length} Qs
                     </div>
                 </div>
-            )}
+
+                <div className="no-print" style={{ padding: '16px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ fontSize: '12.5px', color: 'var(--text2)' }}>
+                        These are warmup questions derived from your elevator pitch, resume bullets, and review findings. We filter out overlap with the Mock Interview question bank.
+                    </div>
+                    {removedOverlapCount > 0 && (
+                        <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
+                            Removed {removedOverlapCount} overlapping question(s).
+                        </div>
+                    )}
+                    <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
+                        Tip: use <strong>Mock Interview</strong> for the full deep-dive question bank.
+                    </div>
+                </div>
+
+                <div style={{ padding: '20px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {filteredPrepQuestions.map((q, i) => (
+                            <div key={q.id} style={{ padding: '16px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>
+                                            {q.category}
+                                        </span>
+                                        <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', background: 'var(--border)', color: 'var(--text2)', padding: '2px 8px', borderRadius: '4px' }}>
+                                            {q.difficulty}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text3)', fontWeight: 600 }}>Q{i + 1}</div>
+                                </div>
+                                <div style={{ fontSize: '14.5px', fontWeight: 700, color: 'var(--text)', lineHeight: 1.5 }}>
+                                    {q.question}
+                                </div>
+                            </div>
+                        ))}
+                        {filteredPrepQuestions.length === 0 && (
+                            <div style={{ padding: '16px', color: 'var(--text3)', fontSize: '13px', fontStyle: 'italic' }}>
+                                No distinct prep questions available yet.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

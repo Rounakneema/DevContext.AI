@@ -18,8 +18,13 @@ const MAIN_TABLE = process.env.MAIN_TABLE!;
 
 const SIGNAL_MAP: Record<string, string> = {
   'code_quality_awareness': 'code_quality',
-  'trade_off_analysis': 'tradeoffs',
-  'scalability_vision': 'scalability',
+  'trade_off_analysis': 'tradeoff_analysis',
+  'tradeoffs': 'tradeoff_analysis',
+  'scalability': 'scalability_vision',
+  'scalability_vision': 'scalability_vision',
+  'debugging': 'debugging_communication',
+  'communication': 'debugging_communication',
+  'clarity': 'debugging_communication',
   'performance': 'implementation_depth'
 };
 
@@ -853,6 +858,28 @@ async function handleContinueStage3(event: any, context: any) {
 
   // Check if Stage 3 already completed
   if (analysis.stages.interview_simulation.status === 'completed') {
+    const body = JSON.parse(event.body || '{}');
+    const requestedMode = body.mode || 'sheet';
+    // Allow switching from sheet -> live by rerunning Stage 3 to generate an interview plan.
+    if (requestedMode === 'live') {
+      const full = await DB.getFullAnalysis(analysisId);
+      const currentMode = full?.interviewSimulation?.mode || 'sheet';
+      if (currentMode !== 'live') {
+        processStage3(analysisId, 'live', context);
+        await DB.updateWorkflowState(analysisId, 'stage3_pending');
+        return {
+          statusCode: 200,
+          headers: getCorsHeaders(getRequestOrigin(event)),
+          body: JSON.stringify({
+            analysisId,
+            message: 'Stage 3 (Interview Questions - live mode) started',
+            status: 'processing',
+            estimatedCompletionTime: 90
+          })
+        };
+      }
+    }
+
     return {
       statusCode: 200,
       headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
@@ -1200,6 +1227,108 @@ async function handleGetUserProgress(event: any) {
 // INTERVIEW SESSION HANDLERS
 // ============================================================================
 
+function buildFallbackInterviewPlanFromSimulation(fullAnalysis: any, analysisId: string, targetRole?: string): Types.InterviewPlan | null {
+  const sim = fullAnalysis?.interviewSimulation;
+  const questions: any[] = sim?.questions || [];
+  if (!Array.isArray(questions) || questions.length === 0) return null;
+
+  const role =
+    targetRole ||
+    fullAnalysis?.analysis?.targetRole ||
+    fullAnalysis?.projectReview?.targetRole ||
+    'Full Stack Developer';
+
+  const candidateLevel: Types.InterviewPlan['candidateLevel'] =
+    (fullAnalysis?.analysis?.candidateLevel as any) ||
+    (fullAnalysis?.projectReview?.employabilitySignal?.level as any) ||
+    'senior';
+
+  const requiredSignals = [
+    'architecture_thinking',
+    'code_quality',
+    'implementation_depth',
+    'tradeoff_analysis',
+    'scalability_vision',
+    'debugging_communication'
+  ];
+
+  const buckets: Record<'architecture' | 'implementation' | 'engineering_quality', any[]> = {
+    architecture: [],
+    implementation: [],
+    engineering_quality: []
+  };
+
+  for (const q of questions) {
+    const cat = String(q?.category || '').toLowerCase();
+    if (cat === 'implementation') buckets.implementation.push(q);
+    else if (cat === 'architecture' || cat === 'scalability' || cat === 'tradeoffs') buckets.architecture.push(q);
+    else buckets.engineering_quality.push(q);
+  }
+
+  const all = [...questions];
+  const pickAny = () => all[Math.floor(Math.random() * all.length)];
+  if (buckets.architecture.length === 0) buckets.architecture.push(pickAny());
+  if (buckets.implementation.length === 0) buckets.implementation.push(pickAny());
+  if (buckets.engineering_quality.length === 0) buckets.engineering_quality.push(pickAny());
+
+  const mkTopic = (q: any, category: Types.InterviewTopic['category'], idx: number): Types.InterviewTopic => {
+    const refs = q?.context?.fileReferences || q?.context?.fileRefs || [];
+    const files: string[] = Array.isArray(refs)
+      ? refs.map((r: any) => r?.file || r?.path).filter(Boolean).slice(0, 6)
+      : [];
+    const title = (q?.question ? String(q.question) : `${category} topic`).slice(0, 72);
+    const description = q?.question ? String(q.question) : `Let's discuss ${title}.`;
+
+    const signals =
+      category === 'architecture'
+        ? ['architecture_thinking', 'tradeoff_analysis', 'scalability_vision']
+        : category === 'implementation'
+          ? ['implementation_depth', 'code_quality']
+          : ['code_quality', 'debugging_communication'];
+
+    return {
+      topicId: `topic_${category}_${idx}`,
+      title,
+      category,
+      description,
+      sourceCodeContext: files.length > 0 ? { files } : undefined,
+      evaluationSignals: signals,
+      fulfillmentThreshold: 70,
+      maxFollowUps: 1,
+      difficulty: candidateLevel,
+      currentFulfillment: 0,
+      followUpsAsked: 0,
+      isCompleted: false
+    };
+  };
+
+  const archTopic = mkTopic(buckets.architecture[0], 'architecture', 1);
+  const implTopic = mkTopic(buckets.implementation[0], 'implementation', 1);
+  const eqTopic = mkTopic(buckets.engineering_quality[0], 'engineering_quality', 1);
+
+  const allTopics: Record<string, Types.InterviewTopic> = {
+    [archTopic.topicId]: archTopic,
+    [implTopic.topicId]: implTopic,
+    [eqTopic.topicId]: eqTopic
+  };
+
+  return {
+    PK: `ANALYSIS#${analysisId}`,
+    SK: 'INTERVIEW_PLAN',
+    analysisId,
+    candidateLevel,
+    targetRole: role,
+    phases: {
+      warmup: [archTopic.topicId],
+      deep_dive: [implTopic.topicId],
+      stretch: [eqTopic.topicId]
+    },
+    allTopics,
+    requiredSignals,
+    generatedAt: new Date().toISOString()
+  };
+}
+
 /**
  * POST /interview/sessions
  */
@@ -1236,19 +1365,33 @@ async function handleCreateInterviewSession(event: any, context: any) {
     };
   }
 
-  const interviewPlan = fullAnalysis.interviewPlan;
+  let interviewPlan = fullAnalysis.interviewPlan;
 
   if (!interviewPlan) {
-    return {
-      statusCode: 404,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({ error: 'Interview plan not found. Complete Stage 3 first.' })
-    };
+    // Stage 3 "sheet" mode produces a question bank but not a topic-driven plan.
+    // Build a lightweight plan from the existing questions so users can still run a live interview.
+    const fallback = buildFallbackInterviewPlanFromSimulation(fullAnalysis, analysisId, config?.targetRole);
+    if (!fallback) {
+      return {
+        statusCode: 404,
+        headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+        body: JSON.stringify({ error: 'Interview plan not found. Complete Stage 3 first.' })
+      };
+    }
+    await DB.saveInterviewPlan(analysisId, fallback);
+    interviewPlan = fallback;
   }
 
   // 1. Level Calibration & Intensity Mapping
   const intensity = config?.intensity || 'normal';
   const role = config?.targetRole || interviewPlan.targetRole || 'Full Stack Developer';
+  const requestedTypes = Array.isArray(config?.questionTypes) ? config!.questionTypes.map((t: any) => String(t)) : [];
+  const wantsSystemDesign = requestedTypes.includes('system-design');
+  const wantsTechnical = requestedTypes.includes('technical');
+  const wantsBehavioral = requestedTypes.includes('behavioral');
+  const wantsArch = wantsSystemDesign || (!wantsTechnical && !wantsBehavioral && requestedTypes.length === 0);
+  const wantsImpl = wantsTechnical || (!wantsSystemDesign && !wantsBehavioral && requestedTypes.length === 0);
+  const wantsEQ = wantsBehavioral || wantsTechnical || (!wantsSystemDesign && !wantsTechnical && requestedTypes.length === 0);
 
   const topicsArray = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>);
   const archBuckets = topicsArray.filter(t => t.category === 'architecture');
@@ -1270,15 +1413,15 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   // Target: 3 distinct topics representing "2 major, 1 codebase/follow-up"
   const selectedWarmup = [
-    popTopic([archBuckets, implBuckets, eqBuckets]) // Major 1: heavily architecture focused
+    popTopic(wantsArch ? [archBuckets, implBuckets, eqBuckets] : wantsImpl ? [implBuckets, archBuckets, eqBuckets] : [eqBuckets, implBuckets, archBuckets])
   ].filter(Boolean) as Types.InterviewTopic[];
 
   const selectedDeepDive = [
-    popTopic([implBuckets, archBuckets, eqBuckets]) // Major 2: implementation focused
+    popTopic(wantsImpl ? [implBuckets, archBuckets, eqBuckets] : wantsArch ? [archBuckets, implBuckets, eqBuckets] : [eqBuckets, implBuckets, archBuckets])
   ].filter(Boolean) as Types.InterviewTopic[];
 
   const selectedStretch = [
-    popTopic([eqBuckets, implBuckets, archBuckets]) // Topic 3: Engineering quality / codebase specifics
+    popTopic(wantsEQ ? [eqBuckets, implBuckets, archBuckets] : wantsArch ? [archBuckets, implBuckets, eqBuckets] : [implBuckets, archBuckets, eqBuckets])
   ].filter(Boolean) as Types.InterviewTopic[];
 
   let globalMaxFollowUps = 1;
@@ -1312,11 +1455,11 @@ async function handleCreateInterviewSession(event: any, context: any) {
     allTopics: newAllTopics,
     requiredSignals: [
       'architecture_thinking',
-      'implementation_depth',
       'code_quality',
-      'tradeoffs',
-      'scalability',
-      'security'
+      'implementation_depth',
+      'tradeoff_analysis',
+      'scalability_vision',
+      'debugging_communication'
     ],
     generatedAt: new Date().toISOString()
   };
@@ -1330,9 +1473,10 @@ async function handleCreateInterviewSession(event: any, context: any) {
     config: {
       targetRole: role,
       difficulty: interviewPlan.candidateLevel || 'mixed',
-      timeLimit: intensity === 'fast' ? 15 : intensity === 'deep' ? 60 : 30,
+      timeLimit: Number(config?.timeLimit) || (intensity === 'fast' ? 15 : intensity === 'deep' ? 60 : 30),
       feedbackMode: 'immediate' as const,
-      intensity
+      intensity,
+      questionTypes: requestedTypes
     },
     totalQuestions: finalTopics.reduce((sum, t) => sum + (t.maxFollowUps + 1), 0),
     customInterviewPlan: customInterviewPlan
@@ -1348,7 +1492,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
     activeTopicId: firstTopicId,
     currentPhase: 'warmup',
     currentQuestionOverride: firstQuestionText,
-    signals: interviewPlan.requiredSignals.reduce((acc: any, s: string) => ({
+    signals: customInterviewPlan.requiredSignals.reduce((acc: any, s: string) => ({
       ...acc,
       [s]: { signalId: s, name: s.replace(/_/g, ' '), score: 50, evidence: [], confidence: 0 }
     }), {})
@@ -1661,6 +1805,7 @@ async function handleSubmitAnswer(event: any, context: any) {
   await DB.saveInterviewAttempt({
     sessionId,
     questionId,
+    questionText: body.questionText || progress.currentQuestionOverride || `Let's discuss ${topic.title}`,
     userAnswer: answer,
     timeSpentSeconds: timeSpentSeconds || 0,
     evaluation

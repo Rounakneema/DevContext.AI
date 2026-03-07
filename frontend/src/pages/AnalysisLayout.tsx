@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Outlet, useParams } from "react-router-dom";
 import FileExplorer from "../components/dashboard/FileExplorer";
 import api from "../services/api";
+import AiGeneratedNotice from "../components/AiGeneratedNotice";
 
 type Tab = "overview" | "architecture" | "code-review" | "intelligence" | "interview-prep" | "interview" | "history" | "framework";
 
@@ -352,13 +353,16 @@ const AnalysisLayout: React.FC = () => {
       )}
 
       {/* Dash Main Content - Routed dynamically by Outlet! */}
-      <div className="dash-main">
-        <div className="tab-view active">
-          <Outlet context={{ analysisId }} />
+       <div className="dash-main">
+         <div className="tab-view active">
+           <Outlet context={{ analysisId }} />
+         </div>
+        <div style={{ marginTop: 28 }}>
+          <AiGeneratedNotice />
         </div>
-      </div>
-    </div>
-  );
-};
+       </div>
+     </div>
+   );
+ };
 
 export default AnalysisLayout;

@@ -7,12 +7,15 @@ import {
     getSessionAttempts,
     submitAnswer as apiSubmitAnswer,
     completeInterviewSession,
+    continueToStage3,
+    getAnalysisStatus,
     InterviewQuestion,
     AnswerEvaluation,
     InterviewSession,
     InterviewSummary,
 } from "../services/api";
 import InterviewRadarChart from "../components/interview/InterviewRadarChart";
+import AiGeneratedNotice from "../components/AiGeneratedNotice";
 
 type Phase = "config" | "loading" | "active" | "evaluating" | "topic_review" | "done";
 
@@ -22,6 +25,99 @@ function scoreColor(score: number) {
     if (score >= 80) return "#6fcf97";
     if (score >= 60) return "#f6ad55";
     return "var(--danger)";
+}
+
+type FixedSignalId =
+    | "architecture_thinking"
+    | "code_quality"
+    | "implementation_depth"
+    | "tradeoff_analysis"
+    | "scalability_vision"
+    | "debugging_communication";
+
+const FIXED_SIGNALS: Array<{ id: FixedSignalId; name: string }> = [
+    { id: "architecture_thinking", name: "Architecture Thinking" },
+    { id: "code_quality", name: "Code Quality" },
+    { id: "implementation_depth", name: "Implementation Depth" },
+    { id: "tradeoff_analysis", name: "Trade-off Analysis" },
+    { id: "scalability_vision", name: "Scalability Vision" },
+    { id: "debugging_communication", name: "Debugging & Communication" },
+];
+
+const ROADMAP_TIPS: Record<FixedSignalId, string[]> = {
+    architecture_thinking: [
+        "Explain the main components and how data flows between them.",
+        "Call out failure modes (timeouts, retries, partial failures) and how you'd handle them.",
+        "Be explicit about boundaries: what belongs in API, service, storage, and why.",
+    ],
+    code_quality: [
+        "Mention test strategy (unit/integration), error handling, and code organization.",
+        "Use concrete examples: file/module names, patterns, and why they help maintainability.",
+        "Highlight security basics: input validation, authz checks, safe defaults.",
+    ],
+    implementation_depth: [
+        "Give one deep example from your code: what you built, why, and how it works end-to-end.",
+        "Quantify tradeoffs: performance, complexity, reliability, cost.",
+        "Discuss edge cases you intentionally handled (or would handle next).",
+    ],
+    tradeoff_analysis: [
+        "Name 2 alternatives and why you didn't choose them (latency, cost, complexity).",
+        "Use a clear structure: constraints -> options -> decision -> tradeoffs.",
+        "State assumptions explicitly and ask clarifying questions when needed.",
+    ],
+    scalability_vision: [
+        "Talk about bottlenecks: DB hot keys, rate limits, cold starts, network timeouts.",
+        "Propose scaling levers: caching, queues, batching, idempotency, and observability.",
+        "Explain how you'd measure impact: metrics, SLOs, and load testing.",
+    ],
+    debugging_communication: [
+        "Communicate your approach: reproduce, isolate, inspect logs/metrics, then fix.",
+        "Explain what you'd check first and why (most likely causes).",
+        "Summarize before coding: hypothesis, plan, expected outcome.",
+    ],
+};
+
+function mapToFixedSignalId(rawId: string, rawName: string): FixedSignalId | null {
+    const s = `${rawId || ""} ${rawName || ""}`.toLowerCase();
+    if (s.includes("arch")) return "architecture_thinking";
+    if (s.includes("code_quality")) return "code_quality";
+    if (s.includes("quality") && s.includes("code")) return "code_quality";
+    if (s.includes("implementation") || s.includes("depth")) return "implementation_depth";
+    if (s.includes("trade")) return "tradeoff_analysis";
+    if (s.includes("scalability") || s.includes("scale")) return "scalability_vision";
+    if (s.includes("debug") || s.includes("clarity") || s.includes("communication")) return "debugging_communication";
+    return null;
+}
+
+function normalizeSignals(raw: any): Array<{ id: FixedSignalId; name: string; score: number }> {
+    const buckets: Record<FixedSignalId, { score: number; evidence: string[] }> = {
+        architecture_thinking: { score: 0, evidence: [] },
+        code_quality: { score: 0, evidence: [] },
+        implementation_depth: { score: 0, evidence: [] },
+        tradeoff_analysis: { score: 0, evidence: [] },
+        scalability_vision: { score: 0, evidence: [] },
+        debugging_communication: { score: 0, evidence: [] },
+    };
+
+    const entries = raw && typeof raw === "object" ? Object.entries(raw) : [];
+    for (const [k, v] of entries) {
+        const obj: any = v || {};
+        const rawId = String(obj.signalId || k || "");
+        const rawName = String(obj.name || rawId || "");
+        const fixed = mapToFixedSignalId(rawId, rawName);
+        if (!fixed) continue;
+        const score = typeof obj.score === "number" ? obj.score : Number(obj.score) || 0;
+        buckets[fixed].score = Math.max(buckets[fixed].score, Math.max(0, Math.min(100, score)));
+        if (Array.isArray(obj.evidence)) {
+            buckets[fixed].evidence.push(...obj.evidence.filter((x: any) => typeof x === "string" && x.trim().length > 0));
+        }
+    }
+
+    return FIXED_SIGNALS.map(s => ({
+        id: s.id,
+        name: s.name,
+        score: buckets[s.id].score,
+    }));
 }
 
 
@@ -109,18 +205,29 @@ const InterviewPage: React.FC = () => {
     const [focus, setFocus] = useState<"technical" | "behavioral" | "mixed">("technical");
     const [role, setRole] = useState("Senior Software Engineer");
     const [intensity, setIntensity] = useState<"fast" | "normal" | "deep">("normal");
+    const [timeLimitMins, setTimeLimitMins] = useState<number>(30);
+    const [timeLimitAuto, setTimeLimitAuto] = useState(true);
     const [answer, setAnswer] = useState("");
-    const [elapsed, setElapsed] = useState(0);
+    const [questionElapsed, setQuestionElapsed] = useState(0);
     const [startTime, setStartTime] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const autoEndedRef = useRef(false);
+
+    const defaultTimeForIntensity = (v: "fast" | "normal" | "deep") => (v === "fast" ? 15 : v === "deep" ? 60 : 30);
+
+    useEffect(() => {
+        if (timeLimitAuto) setTimeLimitMins(defaultTimeForIntensity(intensity));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [intensity]);
 
     useEffect(() => {
         if (phase === "active" && currentQuestion) {
             const start = Date.now();
             setStartTime(start);
-            setElapsed(0);
-            timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+            setQuestionElapsed(0);
+            autoEndedRef.current = false;
+            timerRef.current = setInterval(() => setQuestionElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
         }
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,6 +244,45 @@ const InterviewPage: React.FC = () => {
                 .finally(() => setIsLoadingSessions(false));
         }
     }, [effectiveAnalysisId, phase]);
+
+    // Auto-resume the most recent active session for this analysis.
+    useEffect(() => {
+        if (!effectiveAnalysisId) return;
+        if (phase !== "config") return;
+        if (session) return;
+        if (!recentSessions || recentSessions.length === 0) return;
+
+        const active = [...recentSessions]
+            .filter(s => s.analysisId === effectiveAnalysisId && s.status === "active")
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+        if (!active?.sessionId) return;
+
+        (async () => {
+            try {
+                const s = await getInterviewSession(active.sessionId);
+                if (!s || s.status !== "active") return;
+                setSession(s);
+                const activeId = (s.progress as any)?.activeTopicId;
+                const topic = s.interviewPlan?.allTopics?.[activeId || ""];
+                setCurrentQuestion({
+                    questionId: activeId || (s.questions?.[0]?.questionId || "topic"),
+                    question: (s.progress as any)?.currentQuestionOverride || (topic ? `Let's discuss ${topic.title}. ${topic.description}` : (s.questions?.[0]?.question || "Let's begin.")),
+                    category: topic?.category || (s.questions?.[0]?.category || "implementation"),
+                    difficulty: topic?.difficulty || (s.questions?.[0]?.difficulty || "mid-level"),
+                    questionNumber: Number((s.progress as any)?.questionsAnswered || 0) + 1,
+                    expectedTopics: [],
+                    groundedIn: [],
+                    hints: [],
+                    followUpQuestions: []
+                } as any);
+                setPhase("active");
+            } catch (e) {
+                console.error("Failed to auto-resume session:", e);
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [effectiveAnalysisId, phase, recentSessions]);
 
     useEffect(() => {
         if (session?.sessionId && phase === "done") {
@@ -156,23 +302,57 @@ const InterviewPage: React.FC = () => {
                 focus === "mixed" ? ["technical", "behavioral", "system-design"]
                     : focus === "behavioral" ? ["behavioral"]
                         : ["technical", "system-design"];
-            const newSession = await createInterviewSession({ analysisId: effectiveAnalysisId, config: { intensity, questionTypes: types, targetRole: role } });
+            const create = () => createInterviewSession({
+                analysisId: effectiveAnalysisId,
+                config: { intensity, questionTypes: types, targetRole: role, timeLimit: timeLimitMins }
+            } as any);
+            let newSession: any;
+            try {
+                newSession = await create();
+            } catch (e: any) {
+                const msg = String(e?.message || e || "");
+                // If Stage 3 hasn't been run (or was run in sheet mode without a plan), trigger Stage 3 live and retry.
+                if (msg.toLowerCase().includes("complete stage 3") || msg.toLowerCase().includes("interview plan not found")) {
+                    setError("Preparing interview (Stage 3). This can take a moment...");
+                    try {
+                        await continueToStage3(effectiveAnalysisId, 'live');
+                    } catch {
+                        // Ignore if already running/completed; we'll poll status below.
+                    }
+                    const started = Date.now();
+                    // Poll for up to ~90s.
+                    while (Date.now() - started < 90_000) {
+                        try {
+                            const st: any = await getAnalysisStatus(effectiveAnalysisId);
+                            const ws = String(st?.workflowState || "");
+                            if (ws === "all_complete" || ws === "stage2_complete_awaiting_approval") break;
+                        } catch {
+                            // ignore transient polling errors
+                        }
+                        await new Promise((r) => setTimeout(r, 2000));
+                    }
+                    newSession = await create();
+                } else {
+                    throw e;
+                }
+            }
             setSession(newSession);
             setCurrentQuestion(newSession.questions?.[0] || null);
             setAnswer(""); setPhase("active");
         } catch (e: any) {
             setError(e.message || "Failed to start interview."); setPhase("config");
         }
-    }, [effectiveAnalysisId, focus, intensity, role]);
+    }, [effectiveAnalysisId, focus, intensity, role, timeLimitMins]);
 
     const submitAnswer = useCallback(async (action: 'submit' | 'skip_question' | 'end_early' = 'submit') => {
         if (!session || !currentQuestion) return;
         if (action === 'submit' && !answer.trim()) return;
         setPhase("evaluating");
-        const timeSpent = Math.floor((Date.now() - startTime) / 1000);
+        const timeSpent = Math.max(0, Number(questionElapsed) || Math.floor((Date.now() - startTime) / 1000));
         try {
             const result = await apiSubmitAnswer(session.sessionId, {
                 questionId: currentQuestion.questionId,
+                questionText: currentQuestion.question,
                 answer: action === 'submit' ? answer.trim() : `[${action.toUpperCase()}]`,
                 timeSpentSeconds: timeSpent,
                 action
@@ -194,7 +374,21 @@ const InterviewPage: React.FC = () => {
         } catch (e: any) {
             setError(e.message || "Failed to submit answer."); setPhase("active");
         }
-    }, [session, currentQuestion, answer, startTime]);
+    }, [session, currentQuestion, answer, startTime, questionElapsed]);
+
+    // Hard-stop the session when time limit is reached.
+    useEffect(() => {
+        const limitMins = Number((session as any)?.config?.timeLimit || 0) || 0;
+        if (phase !== "active") return;
+        if (!limitMins) return;
+        if (autoEndedRef.current) return;
+        const sessionSpent =
+            (Number((session as any)?.progress?.totalTimeSpentSeconds || 0) || 0) + (Number(questionElapsed) || 0);
+        if (sessionSpent < limitMins * 60) return;
+        autoEndedRef.current = true;
+        submitAnswer("end_early");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [questionElapsed, phase, session?.sessionId]);
 
     const nextQuestion = useCallback(async () => {
         if (!session) return;
@@ -274,6 +468,12 @@ const InterviewPage: React.FC = () => {
                             Answer questions about <strong style={{ color: "var(--accent)" }}>your project</strong>.<br />
                             AI evaluates your responses in real-time.
                         </p>
+                        <div style={{ maxWidth: 560, margin: "18px auto 0", textAlign: "left" }}>
+                            <AiGeneratedNotice
+                                note="AI feedback can be wrong or overly strict. Use it to practice structure and clarity, then validate details in your code."
+                                linkToFramework={false}
+                            />
+                        </div>
                     </div>
 
                     {!effectiveAnalysisId && (
@@ -299,6 +499,35 @@ const InterviewPage: React.FC = () => {
                                 {[{ id: "fast", label: "Fast (15m)" }, { id: "normal", label: "Normal (30m)" }, { id: "deep", label: "Deep (60m+)" }].map(opt => (
                                     <button key={opt.id} onClick={() => setIntensity(opt.id as any)} style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: intensity === opt.id ? "1px solid var(--accent)" : "1px solid var(--border)", background: intensity === opt.id ? "var(--accent-light)" : "var(--surface)", color: intensity === opt.id ? "var(--accent)" : "var(--text2)", fontFamily: "Geist, sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{opt.label}</button>
                                 ))}
+                            </div>
+                        </ConfigSection>
+                        <ConfigSection label="Session Time Limit" hint="In minutes. Interview will auto-end when time is up.">
+                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                <input
+                                    type="number"
+                                    min={5}
+                                    max={120}
+                                    value={timeLimitMins}
+                                    onChange={(e) => {
+                                        const raw = Number(e.target.value);
+                                        const v = Math.max(5, Math.min(120, Number.isFinite(raw) ? raw : 0));
+                                        setTimeLimitMins(v || defaultTimeForIntensity(intensity));
+                                        setTimeLimitAuto(false);
+                                    }}
+                                    style={{ ...cfgInputStyle, width: 140 }}
+                                />
+                                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text2)", userSelect: "none", cursor: "pointer" }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={timeLimitAuto}
+                                        onChange={(e) => {
+                                            const next = e.target.checked;
+                                            setTimeLimitAuto(next);
+                                            if (next) setTimeLimitMins(defaultTimeForIntensity(intensity));
+                                        }}
+                                    />
+                                    Auto (from intensity)
+                                </label>
                             </div>
                         </ConfigSection>
                         <div style={{ padding: "0 24px 24px" }}>
@@ -372,6 +601,10 @@ const InterviewPage: React.FC = () => {
     if (phase === "done") {
         const avg = summary ? Math.round((summary as any).overallScore ?? 0) : 0;
         const totalTopics = session?.interviewPlan ? Object.keys(session.interviewPlan.allTopics).length : 0;
+        const fixedSignals = normalizeSignals(session?.progress?.signals);
+        const questionsAnswered =
+            Number((summary as any)?.questionsAnswered ?? session?.progress?.questionsAnswered ?? attempts?.length ?? 0) || 0;
+        const strongAreasCount = fixedSignals.filter(s => s.score >= 80).length;
         return (
             <div style={pageStyle}>
                 <BgBlobs />
@@ -401,9 +634,9 @@ const InterviewPage: React.FC = () => {
                     {summary && (
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 32 }}>
                             {[
-                                ["Questions", `${(summary as any).questionsAnswered} Asked`, "📋"],
+                                ["Questions", `${questionsAnswered} Asked`, "📋"],
                                 ["Avg Score", `${avg}/100`, "📊"],
-                                ["Strong Areas", (summary as any).strongAreas?.length ?? (summary as any).strengths?.length ?? "—", "⚡"]
+                                ["Strong Areas", strongAreasCount, "⚡"]
                             ].map(([label, value, icon], i) => (
                                 <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 16px", textAlign: "center" }}>
                                     <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
@@ -414,9 +647,7 @@ const InterviewPage: React.FC = () => {
                         </div>
                     )}
 
-                    {session?.progress?.signals && (
-                        <InterviewRadarChart signals={session.progress.signals as any} />
-                    )}
+                    <InterviewRadarChart signals={fixedSignals} />
 
                     {summary && (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32 }}>
@@ -436,21 +667,21 @@ const InterviewPage: React.FC = () => {
                     )}
 
                     {/* Improvement Roadmap */}
-                    {session?.progress?.signals && Object.values(session.progress.signals).some(s => s.score < 80) && (
+                    {fixedSignals.some(s => s.score < 80) && (
                         <div style={{ marginBottom: 40, background: "var(--accent-light)", border: "1px solid var(--accent)", borderRadius: 18, padding: "24px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
                                 <div style={{ fontSize: 20 }}>🚀</div>
                                 <h3 style={{ fontSize: 16, fontWeight: 800, color: "var(--accent)" }}>Improvement Roadmap</h3>
                             </div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                                {Object.values(session.progress.signals).filter(s => s.score < 80).map(s => (
-                                    <div key={s.signalId} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px" }}>
-                                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Focus on: {s.name.replace(/_/g, " ")}</div>
+                                {fixedSignals.filter(s => s.score < 80).map(s => (
+                                    <div key={s.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px" }}>
+                                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Focus on: {s.name}</div>
                                         <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
-                                            Based on your interview signals, your {s.name.replace(/_/g, " ")} scored {s.score}%. Consider reviewing:
+                                            Your {s.name} scored {s.score}%. Suggested next steps:
                                             <ul style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
-                                                {s.evidence.slice(-2).map((ev, i) => (
-                                                    <li key={i} style={{ marginBottom: 4 }}>{ev}</li>
+                                                {ROADMAP_TIPS[s.id].map((tip, i) => (
+                                                    <li key={i} style={{ marginBottom: 4 }}>{tip}</li>
                                                 ))}
                                             </ul>
                                         </div>
@@ -526,7 +757,7 @@ const InterviewPage: React.FC = () => {
                                 md += `**Date:** ${new Date(session?.createdAt || "").toLocaleDateString()}\n\n`;
                                 md += `## Detailed Breakdown\n\n`;
                                 attempts.forEach((a, i) => {
-                                    const q = session?.questions?.find(que => que.questionId === a.questionId)?.question || "Question";
+                                    const q = a.questionText || session?.questions?.find(que => que.questionId === a.questionId)?.question || "Question";
                                     md += `### ${i + 1}. ${q}\n`;
                                     md += `**Score:** ${a.evaluation?.overallScore || 0}%\n`;
                                     md += `**Your Answer:** ${a.userAnswer}\n`;
@@ -542,6 +773,9 @@ const InterviewPage: React.FC = () => {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" /></svg>
                                 Export Markdown
                             </button>
+                        </div>
+                        <div style={{ marginTop: 18 }}>
+                            <AiGeneratedNotice note="* This interview report is AI-generated and may contain mistakes. Validate important decisions, scores, and recommendations against your real code and experience." />
                         </div>
                     </div>
                 </div>
@@ -567,10 +801,32 @@ const InterviewPage: React.FC = () => {
                         ))}
                     </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: elapsed > 300 ? "var(--danger)" : "var(--text2)", background: "var(--bg)", borderRadius: 8, padding: "6px 12px", border: "1px solid var(--border)" }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-                    {fmtTime(elapsed)}
-                </div>
+                {(() => {
+                    const limitMins = Number((session as any)?.config?.timeLimit || 0) || 0;
+                    const limitSecs = limitMins > 0 ? limitMins * 60 : 0;
+                    const sessionSpent =
+                        (Number((session as any)?.progress?.totalTimeSpentSeconds || 0) || 0) + (Number(questionElapsed) || 0);
+                    const remaining = limitSecs > 0 ? Math.max(0, limitSecs - sessionSpent) : 0;
+                    const showCountdown = limitSecs > 0;
+                    const isLow = showCountdown && remaining <= 60;
+                    const isWarn = showCountdown && remaining <= 5 * 60;
+                    const color = isLow ? "var(--danger)" : isWarn ? "#f6ad55" : "var(--text2)";
+
+                    return (
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--bg)", borderRadius: 10, padding: "6px 10px", border: "1px solid var(--border)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 800, color }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <polyline points="12 6 12 12 16 14" />
+                                </svg>
+                                {showCountdown ? fmtTime(remaining) : fmtTime(sessionSpent)}
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 800, color: "var(--text3)", letterSpacing: 0.9, textTransform: "uppercase" }}>
+                                {showCountdown ? "Remaining" : "Elapsed"}
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 48, maxWidth: 1200, margin: "0 auto", padding: "40px 24px" }}>
@@ -578,6 +834,14 @@ const InterviewPage: React.FC = () => {
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
                         <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "var(--accent)", background: "var(--accent-light)", borderRadius: 6, padding: "4px 10px" }}>
                             {currentQuestion.category}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 800, color: "var(--text2)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 999, padding: "4px 10px" }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M12 7v5l3 2" />
+                            </svg>
+                            {fmtTime(questionElapsed)}
+                            <span style={{ fontSize: 10, fontWeight: 900, color: "var(--text3)", letterSpacing: 0.9, textTransform: "uppercase" }}>This question</span>
                         </div>
                     </div>
                     <h2 style={{ fontSize: 32, fontWeight: 900, color: "var(--text)", lineHeight: 1.25, letterSpacing: -0.8, marginBottom: 40 }}>
@@ -600,8 +864,8 @@ const InterviewPage: React.FC = () => {
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, textAlign: "left", marginBottom: 48, maxWidth: 1000, margin: "0 auto 48px" }}>
                                 <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "32px" }}>
                                     <h3 style={{ fontSize: 12, fontWeight: 900, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 24 }}>System Performance Signals</h3>
-                                    {session?.progress?.signals && Object.values(session.progress.signals).map(s => (
-                                        <div key={s.signalId} style={{ marginBottom: 24 }}>
+                                    {normalizeSignals(session?.progress?.signals).map(s => (
+                                        <div key={s.id} style={{ marginBottom: 24 }}>
                                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                                                 <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{s.name}</span>
                                                 <span style={{ fontSize: 14, fontWeight: 800, color: scoreColor(s.score) }}>{s.score}%</span>
@@ -610,7 +874,7 @@ const InterviewPage: React.FC = () => {
                                                 <div style={{ height: "100%", width: `${s.score}%`, background: scoreColor(s.score), borderRadius: 3 }} />
                                             </div>
                                             <div style={{ fontSize: 11, color: "var(--text2)", fontStyle: "italic", lineHeight: 1.4 }}>
-                                                "{s.evidence?.[s.evidence.length - 1] || "Consistent performance across related topics."}"
+                                                {s.score >= 80 ? "Strong performance in this signal." : "Opportunity to improve this signal."}
                                             </div>
                                         </div>
                                     ))}
@@ -691,8 +955,8 @@ const InterviewPage: React.FC = () => {
 
                 <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 40 }}>
                     <h3 style={{ fontSize: 12, fontWeight: 800, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 24 }}>Live Signals</h3>
-                    {session?.progress?.signals && Object.values(session.progress.signals).map(s => (
-                        <SignalBar key={s.signalId} label={s.name} score={s.score} />
+                    {normalizeSignals(session?.progress?.signals).map(s => (
+                        <SignalBar key={s.id} label={s.name} score={s.score} />
                     ))}
 
                     <h3 style={{ fontSize: 12, fontWeight: 800, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1.2, marginTop: 40, marginBottom: 20 }}>Topic Mastery</h3>

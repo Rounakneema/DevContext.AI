@@ -667,6 +667,7 @@ export interface QuestionAttempt {
   questionId: string;
   attemptNumber: number;   // Support retries
 
+  questionText?: string;
   userAnswer: string;
   submittedAt: string;
 

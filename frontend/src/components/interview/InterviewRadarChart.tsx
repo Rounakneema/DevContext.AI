@@ -10,13 +10,13 @@ const TypedTooltip = Tooltip as any;
 const TypedRadar = Radar as any;
 
 interface InterviewRadarChartProps {
-    signals: Record<string, { name: string; score: number }>;
+    signals: Array<{ id: string; name: string; score: number }>;
 }
 
 const InterviewRadarChart: React.FC<InterviewRadarChartProps> = ({ signals }) => {
-    const data = Object.values(signals).map(s => ({
+    const data = (signals || []).map(s => ({
         subject: s.name.replace(/_/g, ' '),
-        A: s.score,
+        A: typeof s.score === "number" ? s.score : Number(s.score) || 0,
         fullMark: 100,
     }));
 

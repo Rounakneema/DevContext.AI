@@ -103,6 +103,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
   const loadFiles = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await api.getAnalysisFiles(analysisId);
       // Handle multiple possible response shapes from backend
       const rawFiles: any[] =
@@ -117,6 +118,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
         const topFolders = new Set(tree.filter(n => n.type === 'folder').map(n => n.path));
         setExpandedFolders(topFolders);
       } else {
+        setFileTree([]);
         setError("No files found for this analysis yet.");
       }
     } catch (err: any) {
@@ -379,6 +381,9 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ analysisId, onSelectionChan
   }
 
   if (error) {
+    if (readOnly && error === "No files found for this analysis yet.") {
+      return null;
+    }
     return (
       <div className="file-explorer">
         <div style={{ background: '#FEF4F4', border: '1px solid #FACACA', borderRadius: '8px', padding: '12px 16px', color: '#C0392B', fontSize: '13px' }}>

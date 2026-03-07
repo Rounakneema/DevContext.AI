@@ -5,7 +5,9 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActiveExact = (path: string) => location.pathname === path;
+  const isActivePrefix = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
     <div className="sidebar">
@@ -17,18 +19,7 @@ const Sidebar: React.FC = () => {
       </div>
 
       <button
-        className={`sidebar-btn ${isActive('/app') ? 'active' : ''}`}
-        title="New"
-        onClick={() => navigate('/app', { state: { focusInput: true } })}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      </button>
-
-      <button
-        className={`sidebar-btn ${isActive('/app') ? 'active' : ''}`}
+        className={`sidebar-btn ${isActiveExact('/app') ? 'active' : ''}`}
         title="Home"
         onClick={() => navigate('/app')}
       >
@@ -39,7 +30,7 @@ const Sidebar: React.FC = () => {
       </button>
 
       <button
-        className={`sidebar-btn ${isActive('/app/dashboard') ? 'active' : ''}`}
+        className={`sidebar-btn ${isActivePrefix('/app/dashboard') ? 'active' : ''}`}
         title="Dashboard"
         onClick={() => navigate('/app/dashboard')}
       >
@@ -67,7 +58,7 @@ const Sidebar: React.FC = () => {
       <div className="sidebar-spacer"></div>
 
       <button
-        className={`sidebar-btn ${isActive('/app/settings') ? 'active' : ''}`}
+        className={`sidebar-btn ${isActivePrefix('/app/settings') ? 'active' : ''}`}
         title="Settings"
         onClick={() => navigate('/app/settings')}
       >
@@ -78,7 +69,7 @@ const Sidebar: React.FC = () => {
       </button>
 
       <button
-        className={`sidebar-btn ${isActive('/app/account') ? 'active' : ''}`}
+        className={`sidebar-btn ${isActivePrefix('/app/account') ? 'active' : ''}`}
         title="Account"
         onClick={() => navigate('/app/account')}
         style={{ 

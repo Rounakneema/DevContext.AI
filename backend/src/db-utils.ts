@@ -781,6 +781,7 @@ export async function getIntelligenceReport(analysisId: string): Promise<any | n
 export async function saveInterviewAttempt(params: {
   sessionId: string;
   questionId: string;
+  questionText?: string;
   userAnswer: string;
   timeSpentSeconds: number;
   evaluation: any;
@@ -794,6 +795,7 @@ export async function saveInterviewAttempt(params: {
     attemptId,
     sessionId: params.sessionId,
     questionId: params.questionId,
+    questionText: params.questionText,
     userAnswer: params.userAnswer,
     timeSpentSeconds: params.timeSpentSeconds,
     evaluation: params.evaluation,

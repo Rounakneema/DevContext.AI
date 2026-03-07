@@ -651,6 +651,7 @@ export const submitAnswer = (
   sessionId: string,
   data: {
     questionId: string;
+    questionText?: string;
     answer: string;
     timeSpentSeconds: number;
     action?: 'submit' | 'skip_question' | 'end_early';

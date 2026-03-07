@@ -49,6 +49,7 @@ const ReportPage: React.FC = () => {
 
   const { intelligenceReport, projectReview } = analysis;
   const { designDecisions = [], technicalInsights = [], technologyStack, architecturePatterns = [] } = intelligenceReport;
+  const grounding = (intelligenceReport as any)?.groundingReport;
   const architectureClarity = projectReview?.architectureClarity || {};
   const codeQuality = projectReview?.codeQuality || {};
 
@@ -104,6 +105,11 @@ const ReportPage: React.FC = () => {
           <div className="view-sub">
             AI-reconstructed architectural decisions grounded in your actual code.
           </div>
+          {grounding && typeof grounding.totalClaims === "number" && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--text3)" }} title="Grounding confidence (verified claims / total claims)">
+              {Math.round((Number(grounding.verifiedClaims || 0) / Math.max(Number(grounding.totalClaims || 0), 1)) * 100)}% grounded
+            </div>
+          )}
         </div>
         <ExportDropdown analysisId={analysisId} analysisData={analysis} />
       </div>
