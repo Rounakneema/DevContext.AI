@@ -710,6 +710,12 @@ code {
   height: 18px;
 }
 
+.decision-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
 .decision-secondary {
   display: flex;
   gap: 10px;
