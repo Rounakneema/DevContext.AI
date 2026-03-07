@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
     createInterviewSession,
@@ -10,7 +10,6 @@ import {
     continueToStage3,
     getAnalysisStatus,
     InterviewQuestion,
-    AnswerEvaluation,
     InterviewSession,
     InterviewSummary,
 } from "../services/api";
@@ -195,7 +194,6 @@ const InterviewPage: React.FC = () => {
     const [phase, setPhase] = useState<Phase>("config");
     const [session, setSession] = useState<InterviewSession | null>(null);
     const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
-    const [currentEval, setCurrentEval] = useState<AnswerEvaluation | null>(null);
     const [summary, setSummary] = useState<InterviewSummary | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [recentSessions, setRecentSessions] = useState<InterviewSession[]>([]);
@@ -389,7 +387,7 @@ const InterviewPage: React.FC = () => {
             });
         }
 
-        setAnswer(""); setCurrentEval(null); setPhase("active");
+        setAnswer(""); setPhase("active");
         setTimeout(() => textareaRef.current?.focus(), 100);
     }, [session]);
 
@@ -427,7 +425,7 @@ const InterviewPage: React.FC = () => {
                 }
                 const activeTopic = updatedSession.interviewPlan?.allTopics[updatedSession.progress?.activeTopicId || ""];
                 setAnswer("");
-                setCurrentEval(null);
+
                 if (action === 'end_early') {
                     // End-early is a session-level completion, not a topic celebration.
                     await nextQuestion(updatedSession);
@@ -443,7 +441,7 @@ const InterviewPage: React.FC = () => {
 
             // Fallback: if refresh fails, still clear and continue based on current local state.
             setAnswer("");
-            setCurrentEval(null);
+
             setPhase("active");
             await nextQuestion();
         } catch (e: any) {
@@ -465,21 +463,11 @@ const InterviewPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [questionElapsed, phase, session?.sessionId]);
 
-    const handleContinueFromEval = useCallback(() => {
-        if (!session) return;
-        const activeTopic = session.interviewPlan?.allTopics[session.progress?.activeTopicId || ""];
-        if (activeTopic?.isCompleted) {
-            setPhase("topic_review");
-        } else {
-            nextQuestion();
-        }
-    }, [session, nextQuestion]);
-
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); submitAnswer(); }
     };
 
-    /* ── CONFIG ── */
+    /* â”€â”€ CONFIG â”€â”€ */
     if (phase === "config") {
         return (
             <div style={pageStyle}>
@@ -491,7 +479,7 @@ const InterviewPage: React.FC = () => {
                     </button>
 
                     <div style={{ textAlign: "center", marginBottom: 48, marginTop: 32 }}>
-                        <div style={{ fontSize: 48, marginBottom: 16 }}>🎙️</div>
+                        <div style={{ fontSize: 48, marginBottom: 16 }}>ðŸŽ™ï¸</div>
                         <h1 style={{ fontSize: 32, fontWeight: 900, color: "var(--text)", letterSpacing: -1, marginBottom: 12 }}>Mock Interview</h1>
                         <p style={{ fontSize: 16, color: "var(--text2)", lineHeight: 1.6 }}>
                             Answer questions about <strong style={{ color: "var(--accent)" }}>your project</strong>.<br />
@@ -507,7 +495,7 @@ const InterviewPage: React.FC = () => {
 
                     {!effectiveAnalysisId && (
                         <div style={{ background: "var(--danger-light)", border: "1px solid var(--danger-light)", borderRadius: 12, padding: "16px 20px", marginBottom: 28, fontSize: 14, color: "var(--danger)", lineHeight: 1.6 }}>
-                            ⚠️ No analysis selected. Please <span onClick={() => navigate("/app")} style={{ textDecoration: "underline", cursor: "pointer" }}>start an analysis</span> first.
+                            âš ï¸ No analysis selected. Please <span onClick={() => navigate("/app")} style={{ textDecoration: "underline", cursor: "pointer" }}>start an analysis</span> first.
                         </div>
                     )}
                     {error && <div style={{ background: "var(--danger-light)", border: "1px solid var(--danger-light)", borderRadius: 10, padding: "14px 18px", color: "var(--danger)", fontSize: 14, marginBottom: 24 }}>{error}</div>}
@@ -561,10 +549,10 @@ const InterviewPage: React.FC = () => {
                         </ConfigSection>
                         <div style={{ padding: "0 24px 24px" }}>
                             <div style={{ fontSize: 12, color: "var(--text2)", marginBottom: 16, padding: "12px 16px", background: "var(--surface)", borderRadius: 10 }}>
-                                ⏱ Timer per question · Real-time AI evaluation · Full session summary
+                                â± Timer per question Â· Real-time AI evaluation Â· Full session summary
                             </div>
                             <button onClick={startSession} disabled={!effectiveAnalysisId} style={{ width: "100%", padding: "15px", background: "var(--accent)", border: "none", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 16, fontWeight: 800, color: "#fff", cursor: effectiveAnalysisId ? "pointer" : "not-allowed", opacity: effectiveAnalysisId ? 1 : 0.4 }}>
-                                Start Interview →
+                                Start Interview â†’
                             </button>
                         </div>
                     </div>
@@ -583,7 +571,7 @@ const InterviewPage: React.FC = () => {
                                 </div>
                             ) : recentSessions.length === 0 ? (
                                 <div style={{ textAlign: "center", padding: "48px 24px", background: "var(--surface)", borderRadius: 18, border: "1px dashed var(--border)" }}>
-                                    <div style={{ fontSize: 32, marginBottom: 16 }}>📋</div>
+                                    <div style={{ fontSize: 32, marginBottom: 16 }}>ðŸ“‹</div>
                                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>No sessions yet</div>
                                     <div style={{ fontSize: 13, color: "var(--text3)" }}>Complete your first interview to see history here.</div>
                                 </div>
@@ -597,7 +585,7 @@ const InterviewPage: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{s.config?.targetRole || "Software Engineer"}</div>
-                                                    <div style={{ fontSize: 12, color: "var(--text3)" }}>{new Date(s.createdAt).toLocaleDateString()} · {s.progress?.questionsAnswered} questions</div>
+                                                    <div style={{ fontSize: 12, color: "var(--text3)" }}>{new Date(s.createdAt).toLocaleDateString()} Â· {s.progress?.questionsAnswered} questions</div>
                                                 </div>
                                             </div>
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text3)" }}><polyline points="9 18 15 12 9 6" /></svg>
@@ -612,21 +600,21 @@ const InterviewPage: React.FC = () => {
         );
     }
 
-    /* ── LOADING ── */
+    /* â”€â”€ LOADING â”€â”€ */
     if (phase === "loading") {
         return (
             <div style={{ ...pageStyle, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <BgBlobs />
                 <div style={{ textAlign: "center" }}>
                     <div style={{ width: 56, height: 56, border: "4px solid var(--accent-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 24px" }} />
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Preparing your interview…</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Preparing your interviewâ€¦</div>
                     <div style={{ fontSize: 14, color: "var(--text2)" }}>Generating project-specific questions</div>
                 </div>
             </div>
         );
     }
 
-    /* ── DONE / SUMMARY ── */
+    /* â”€â”€ DONE / SUMMARY â”€â”€ */
     if (phase === "done") {
         const sObj = (summary as any)?.summary || summary; // Handle session wrapper vs direct summary
         const summaryScoreRaw =
@@ -695,7 +683,7 @@ const InterviewPage: React.FC = () => {
                 <BgBlobs />
                 <div style={{ maxWidth: 680, margin: "0 auto", padding: "60px 24px" }}>
                     <div style={{ textAlign: "center", marginBottom: 48 }}>
-                        <div style={{ fontSize: 56, marginBottom: 16 }}>{avg >= 80 ? "🏆" : avg >= 60 ? "🎯" : "📈"}</div>
+                        <div style={{ fontSize: 56, marginBottom: 16 }}>{avg >= 80 ? "ðŸ†" : avg >= 60 ? "ðŸŽ¯" : "ðŸ“ˆ"}</div>
                         <h1 style={{ fontSize: 36, fontWeight: 900, color: "var(--text)", letterSpacing: -1, marginBottom: 12 }}>Interview Complete!</h1>
                         <p style={{ fontSize: 16, color: "var(--text2)" }}>Here's how you performed across {totalTopics} topics</p>
                     </div>
@@ -719,9 +707,9 @@ const InterviewPage: React.FC = () => {
                     {(summary || attempts.length > 0) && (
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 32 }}>
                             {[
-                                ["Questions", `${questionsAnswered} Asked`, "📋"],
-                                ["Avg Score", `${avg}/100`, "📊"],
-                                ["Strong Areas", strongAreasCount, "⚡"]
+                                ["Questions", `${questionsAnswered} Asked`, "ðŸ“‹"],
+                                ["Avg Score", `${avg}/100`, "ðŸ“Š"],
+                                ["Strong Areas", strongAreasCount, "âš¡"]
                             ].map(([label, value, icon], i) => (
                                 <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 16px", textAlign: "center" }}>
                                     <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
@@ -735,16 +723,16 @@ const InterviewPage: React.FC = () => {
                     <InterviewRadarChart signals={fixedSignals} />
 
                     {(summary || attempts.length > 0) && (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32, alignItems: "stretch" }}>
                             {([
                                 {
-                                    title: "💪 Strengths",
+                                    title: "ðŸ’ª Strengths",
                                     items: ((summary as any).strongAreas || (summary as any).strengths || []) as string[],
                                     fallback: derivedStrengths,
                                     color: "#6fcf97"
                                 },
                                 {
-                                    title: "📈 Areas to Improve",
+                                    title: "ðŸ“ˆ Areas to Improve",
                                     items: ((summary as any).weakAreas || (summary as any).weaknesses || []) as string[],
                                     fallback: derivedImprovements,
                                     color: "#f6ad55"
@@ -754,14 +742,14 @@ const InterviewPage: React.FC = () => {
                                 const nestedItems = ((summary as any)?.summary?.weakAreas || (summary as any)?.summary?.strongAreas || []) as string[];
                                 const finalList = list.length > 0 ? list : (nestedItems.length > 0 ? nestedItems : fallback);
                                 return (
-                                    <div key={title} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px" }}>
+                                    <div key={title} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px", display: "flex", flexDirection: "column", height: "100%" }}>
                                         <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>{title}</div>
                                         {finalList.length === 0 ? (
-                                            <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div>
+                                            <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>â€”</div>
                                         ) : (
                                             finalList.map((item, i) => (
                                                 <div key={i} style={{ fontSize: 13, color: color, marginBottom: 6, display: "flex", gap: 8 }}>
-                                                    <span style={{ fontVariantNumeric: "tabular-nums" }}>{i + 1}.</span>
+                                                    <span style={{ fontVariantNumeric: "tabular-nums", minWidth: 20 }}>{i + 1}.</span>
                                                     <span>{item}</span>
                                                 </div>
                                             ))
@@ -776,7 +764,7 @@ const InterviewPage: React.FC = () => {
                     {fixedSignals.some(s => s.score < 80) && (
                         <div style={{ marginBottom: 40, background: "var(--accent-light)", border: "1px solid var(--accent)", borderRadius: 18, padding: "24px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                                <div style={{ fontSize: 20 }}>🚀</div>
+                                <div style={{ fontSize: 20 }}>ðŸš€</div>
                                 <h3 style={{ fontSize: 16, fontWeight: 800, color: "var(--accent)" }}>Improvement Roadmap</h3>
                             </div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -831,43 +819,7 @@ const InterviewPage: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            {(() => {
-                                                const strengths = (attempt.evaluation?.strengths || []) as string[];
-                                                const improvements = (attempt.evaluation?.improvementSuggestions || attempt.evaluation?.weaknesses || []) as string[];
-                                                const hasStrengths = Array.isArray(strengths) && strengths.filter(Boolean).length > 0;
-                                                const hasImprovements = Array.isArray(improvements) && improvements.filter(Boolean).length > 0;
-                                                if (!hasStrengths && !hasImprovements) return null;
-                                                return (
-                                                    <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                                                        <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
-                                                            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase" }}>Strengths</div>
-                                                            {hasStrengths ? (
-                                                                strengths.filter(Boolean).slice(0, 6).map((s: string, idx: number) => (
-                                                                    <div key={idx} style={{ fontSize: 13, color: "#6fcf97", marginBottom: 6, display: "flex", gap: 8 }}>
-                                                                        <span style={{ fontVariantNumeric: "tabular-nums" }}>{idx + 1}.</span>
-                                                                        <span>{s}</span>
-                                                                    </div>
-                                                                ))
-                                                            ) : (
-                                                                <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div>
-                                                            )}
-                                                        </div>
-                                                        <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
-                                                            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase" }}>Improvements</div>
-                                                            {hasImprovements ? (
-                                                                improvements.filter(Boolean).slice(0, 6).map((s: string, idx: number) => (
-                                                                    <div key={idx} style={{ fontSize: 13, color: "#f6ad55", marginBottom: 6, display: "flex", gap: 8 }}>
-                                                                        <span style={{ fontVariantNumeric: "tabular-nums" }}>{idx + 1}.</span>
-                                                                        <span>{s}</span>
-                                                                    </div>
-                                                                ))
-                                                            ) : (
-                                                                <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })()}
+
                                         </div>
                                     </div>
                                 ))}
@@ -877,11 +829,11 @@ const InterviewPage: React.FC = () => {
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                         <div style={{ display: "flex", gap: 12 }}>
-                            <button onClick={() => { setPhase("config"); setSession(null); setSummary(null); setCurrentEval(null); setAnswer(""); setAttempts([]); }} style={{ flex: 1, padding: "14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "var(--text)", cursor: "pointer" }}>
+                            <button onClick={() => { setPhase("config"); setSession(null); setSummary(null); setAnswer(""); setAttempts([]); }} style={{ flex: 1, padding: "14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "var(--text)", cursor: "pointer" }}>
                                 Retry Interview
                             </button>
                             <button onClick={() => navigate("/app/dashboard")} style={{ flex: 1, padding: "14px", background: "var(--accent)", border: "none", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "#fff", cursor: "pointer" }}>
-                                View Dashboard →
+                                View Dashboard â†’
                             </button>
                         </div>
                         <div style={{ display: "flex", gap: 12 }}>
@@ -899,10 +851,6 @@ const InterviewPage: React.FC = () => {
                                     md += `### ${i + 1}. ${q}\n`;
                                     md += `**Score:** ${a.evaluation?.overallScore || 0}%\n`;
                                     md += `**Your Answer:** ${a.userAnswer}\n`;
-                                    const s = (a.evaluation?.strengths || []).filter(Boolean);
-                                    const im = (a.evaluation?.improvementSuggestions || a.evaluation?.weaknesses || []).filter(Boolean);
-                                    if (s.length) md += `**Strengths:** ${s.slice(0, 6).join("; ")}\n`;
-                                    if (im.length) md += `**Improvements:** ${im.slice(0, 6).join("; ")}\n`;
                                     md += `\n`;
                                 });
                                 const blob = new Blob([md], { type: "text/markdown" });
@@ -925,7 +873,7 @@ const InterviewPage: React.FC = () => {
         );
     }
 
-    /* ── ACTIVE / EVALUATING ── */
+    /* â”€â”€ ACTIVE / EVALUATING â”€â”€ */
     if (!currentQuestion) return null;
 
     return (
@@ -997,7 +945,7 @@ const InterviewPage: React.FC = () => {
                         </div>
                     ) : phase === "topic_review" ? (
                         <div style={{ textAlign: "center", padding: "40px 0" }}>
-                            <div style={{ fontSize: 64, marginBottom: 24 }}>🏆</div>
+                            <div style={{ fontSize: 64, marginBottom: 24 }}>ðŸ†</div>
                             <h2 style={{ fontSize: 32, fontWeight: 900, color: "var(--text)", marginBottom: 12 }}>Topic Mastered!</h2>
                             <p style={{ fontSize: 18, color: "var(--text2)", marginBottom: 40, maxWidth: 500, margin: "0 auto 40px" }}>
                                 You've successfully completed the deep-dive into <strong>{session?.interviewPlan?.allTopics[session?.progress?.activeTopicId || ""]?.title}</strong>.
@@ -1053,35 +1001,9 @@ const InterviewPage: React.FC = () => {
                             </div>
 
                             <button onClick={nextQuestion} style={{ padding: "18px 48px", background: "var(--accent)", border: "none", borderRadius: 12, fontSize: 18, fontWeight: 800, color: "#fff", cursor: "pointer", boxShadow: "0 10px 20px -5px var(--accent-light)" }}>
-                                Move to Next Topic →
+                                Move to Next Topic â†’
                             </button>
-                        </div>) : currentEval ? (
-                            <div>
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
-                                    {[["Score", `${Math.round(currentEval.overallScore)}/100`], ["Accuracy", `${currentEval.criteriaScores.technicalAccuracy}%`], ["Depth", `${currentEval.criteriaScores.depthOfUnderstanding}%`]].map(([l, v]) => (
-                                        <div key={l} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 16px", textAlign: "center" }}>
-                                            <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text)" }}>{v}</div>
-                                            <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 700, textTransform: "uppercase" }}>{l}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px 24px", marginBottom: 24 }}>
-                                    <p style={{ fontSize: 15, color: "var(--text)", lineHeight: 1.7, margin: "0 0 16px 0" }}>{currentEval.detailedFeedback || currentEval.feedback}</p>
-
-                                    {((currentEval.keyPointsCoverage?.missed && currentEval.keyPointsCoverage.missed.length > 0) || (currentEval.missingKeyPoints && currentEval.missingKeyPoints.length > 0)) && (
-                                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-                                            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--danger)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>What was missing:</div>
-                                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, color: "var(--text2)", lineHeight: 1.6 }}>
-                                                {(currentEval.keyPointsCoverage?.missed || currentEval.missingKeyPoints || []).map((p: string, i: number) => <li key={i}>{p}</li>)}
-                                            </ul>
-                                        </div>
-                                    )}
-                                </div>
-                                <button onClick={handleContinueFromEval} style={{ width: "100%", padding: "16px", background: "var(--accent)", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 800, color: "#fff", cursor: "pointer" }}>
-                                    Continue Interview →
-                                </button>
-                            </div>
-                        ) : (
+                        </div>) : (
                         <div>
                             <textarea ref={textareaRef} value={answer} onChange={e => setAnswer(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type your answer here..." style={{ width: "100%", minHeight: 240, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px", fontSize: 16, color: "var(--text)", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.6 }} autoFocus />
                             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
@@ -1117,3 +1039,4 @@ const InterviewPage: React.FC = () => {
 };
 
 export default InterviewPage;
+
