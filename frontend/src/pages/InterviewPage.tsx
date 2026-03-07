@@ -479,7 +479,7 @@ const InterviewPage: React.FC = () => {
                     </button>
 
                     <div style={{ textAlign: "center", marginBottom: 48, marginTop: 32 }}>
-                        <div style={{ fontSize: 48, marginBottom: 16 }}></div>
+                        <div style={{ fontSize: 48, marginBottom: 16 }}>🎙️</div>
                         <h1 style={{ fontSize: 32, fontWeight: 900, color: "var(--text)", letterSpacing: -1, marginBottom: 12 }}>Mock Interview</h1>
                         <p style={{ fontSize: 16, color: "var(--text2)", lineHeight: 1.6 }}>
                             Answer questions about <strong style={{ color: "var(--accent)" }}>your project</strong>.<br />
@@ -552,7 +552,7 @@ const InterviewPage: React.FC = () => {
                                 Timer per question - Real-time AI evaluation - Full session summary
                             </div>
                             <button onClick={startSession} disabled={!effectiveAnalysisId} style={{ width: "100%", padding: "15px", background: "var(--accent)", border: "none", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 16, fontWeight: 800, color: "#fff", cursor: effectiveAnalysisId ? "pointer" : "not-allowed", opacity: effectiveAnalysisId ? 1 : 0.4 }}>
-                                Start Interview ->
+                                Start Interview &rarr;
                             </button>
                         </div>
                     </div>
@@ -571,7 +571,7 @@ const InterviewPage: React.FC = () => {
                                 </div>
                             ) : recentSessions.length === 0 ? (
                                 <div style={{ textAlign: "center", padding: "48px 24px", background: "var(--surface)", borderRadius: 18, border: "1px dashed var(--border)" }}>
-                                    <div style={{ fontSize: 32, marginBottom: 16 }}></div>
+                                    <div style={{ fontSize: 32, marginBottom: 16 }}>📋</div>
                                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>No sessions yet</div>
                                     <div style={{ fontSize: 13, color: "var(--text3)" }}>Complete your first interview to see history here.</div>
                                 </div>
@@ -585,7 +585,7 @@ const InterviewPage: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{s.config?.targetRole || "Software Engineer"}</div>
-                                                    <div style={{ fontSize: 12, color: "var(--text3)" }}>{new Date(s.createdAt).toLocaleDateString()} - {s.progress?.questionsAnswered} questions</div>
+                                                    <div style={{ fontSize: 12, color: "var(--text3)" }}>{new Date(s.createdAt).toLocaleDateString()} · {s.progress?.questionsAnswered} questions</div>
                                                 </div>
                                             </div>
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text3)" }}><polyline points="9 18 15 12 9 6" /></svg>
@@ -683,7 +683,7 @@ const InterviewPage: React.FC = () => {
                 <BgBlobs />
                 <div style={{ maxWidth: 680, margin: "0 auto", padding: "60px 24px" }}>
                     <div style={{ textAlign: "center", marginBottom: 48 }}>
-                        <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text2)", marginBottom: 16 }}>{avg >= 80 ? "WIN" : avg >= 60 ? "GOOD" : "GROW"}</div>
+                        <div style={{ fontSize: 56, marginBottom: 16 }}>{avg >= 80 ? "🏆" : avg >= 60 ? "🎯" : "📈"}</div>
                         <h1 style={{ fontSize: 36, fontWeight: 900, color: "var(--text)", letterSpacing: -1, marginBottom: 12 }}>Interview Complete!</h1>
                         <p style={{ fontSize: 16, color: "var(--text2)" }}>Here's how you performed across {totalTopics} topics</p>
                     </div>
@@ -707,9 +707,9 @@ const InterviewPage: React.FC = () => {
                     {(summary || attempts.length > 0) && (
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 32 }}>
                             {[
-                                ["Questions", `${questionsAnswered} Asked`, "Q"],
-                                ["Avg Score", `${avg}/100`, "AVG"],
-                                ["Strong Areas", strongAreasCount, "SIG"]
+                                ["Questions", `${questionsAnswered} Asked`, "📋"],
+                                ["Avg Score", `${avg}/100`, "📊"],
+                                ["Strong Areas", strongAreasCount, "⚡"]
                             ].map(([label, value, icon], i) => (
                                 <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 16px", textAlign: "center" }}>
                                     <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
@@ -726,13 +726,13 @@ const InterviewPage: React.FC = () => {
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32, alignItems: "stretch" }}>
                             {([
                                 {
-                                    title: "Strengths",
+                                    title: "💪 Strengths",
                                     items: ((summary as any).strongAreas || (summary as any).strengths || []) as string[],
                                     fallback: derivedStrengths,
                                     color: "#6fcf97"
                                 },
                                 {
-                                    title: "Areas to Improve",
+                                    title: "📈 Areas to Improve",
                                     items: ((summary as any).weakAreas || (summary as any).weaknesses || []) as string[],
                                     fallback: derivedImprovements,
                                     color: "#f6ad55"
@@ -764,7 +764,7 @@ const InterviewPage: React.FC = () => {
                     {fixedSignals.some(s => s.score < 80) && (
                         <div style={{ marginBottom: 40, background: "var(--accent-light)", border: "1px solid var(--accent)", borderRadius: 18, padding: "24px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                                <div style={{ fontSize: 12, fontWeight: 900, color: "var(--accent)", letterSpacing: 0.6 }}>PLAN</div>
+                                <div style={{ fontSize: 20 }}>🚀</div>
                                 <h3 style={{ fontSize: 16, fontWeight: 800, color: "var(--accent)" }}>Improvement Roadmap</h3>
                             </div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -833,7 +833,7 @@ const InterviewPage: React.FC = () => {
                                 Retry Interview
                             </button>
                             <button onClick={() => navigate("/app/dashboard")} style={{ flex: 1, padding: "14px", background: "var(--accent)", border: "none", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "#fff", cursor: "pointer" }}>
-                                View Dashboard ->
+                                View Dashboard &rarr;
                             </button>
                         </div>
                         <div style={{ display: "flex", gap: 12 }}>
@@ -945,7 +945,7 @@ const InterviewPage: React.FC = () => {
                         </div>
                     ) : phase === "topic_review" ? (
                         <div style={{ textAlign: "center", padding: "40px 0" }}>
-                            <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text2)", marginBottom: 24 }}>TOPIC COMPLETE</div>
+                            <div style={{ fontSize: 64, marginBottom: 24 }}>🏆</div>
                             <h2 style={{ fontSize: 32, fontWeight: 900, color: "var(--text)", marginBottom: 12 }}>Topic Mastered!</h2>
                             <p style={{ fontSize: 18, color: "var(--text2)", marginBottom: 40, maxWidth: 500, margin: "0 auto 40px" }}>
                                 You've successfully completed the deep-dive into <strong>{session?.interviewPlan?.allTopics[session?.progress?.activeTopicId || ""]?.title}</strong>.
@@ -1001,7 +1001,7 @@ const InterviewPage: React.FC = () => {
                             </div>
 
                             <button onClick={nextQuestion} style={{ padding: "18px 48px", background: "var(--accent)", border: "none", borderRadius: 12, fontSize: 18, fontWeight: 800, color: "#fff", cursor: "pointer", boxShadow: "0 10px 20px -5px var(--accent-light)" }}>
-                                Move to Next Topic ->
+                                Move to Next Topic &rarr;
                             </button>
                         </div>) : (
                         <div>
