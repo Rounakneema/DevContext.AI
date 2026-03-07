@@ -99,47 +99,53 @@ const SettingsPage: React.FC = () => {
             )}
             {error && <div style={S.toast('error')}>{error}</div>}
 
-            {/* Interview Preferences */}
+            {/* Interview Preferences — Target Role (active) */}
             <div style={S.section}>
               <div style={S.sectionHeader}>Interview Preferences</div>
-              <div style={S.field}>
+              <div style={{ ...S.field, borderBottom: 'none' }}>
                 <label style={S.label}>Target Role</label>
                 <p style={S.hint}>Questions will be calibrated to this role and experience level</p>
                 <select style={S.select} value={profile.targetRole} onChange={e => setProfile(p => ({ ...p, targetRole: e.target.value }))}>
                   {['Junior SDE', 'Mid-Level SDE', 'Senior SDE', 'Full Stack Developer', 'Backend Developer', 'DevOps Engineer', 'Data Engineer', 'ML Engineer'].map(r => <option key={r}>{r}</option>)}
                 </select>
               </div>
+            </div>
+            <div style={{ fontSize: 12, color: '#ababab', fontStyle: 'italic', marginTop: -8, marginBottom: 16, paddingLeft: 4 }}>Other settings will be enabled soon</div>
+
+            {/* Preferred Language (disabled) */}
+            <div style={{ ...S.section, opacity: 0.4, pointerEvents: 'none' as const }}>
+              <div style={S.sectionHeader}>Language</div>
               <div style={{ ...S.field, borderBottom: 'none' }}>
                 <label style={S.label}>Preferred Language</label>
                 <p style={S.hint}>Language for analysis reports and AI feedback</p>
-                <select style={S.select} value={profile.language} onChange={e => setProfile(p => ({ ...p, language: e.target.value }))}>
+                <select style={S.select} value={profile.language} disabled>
                   <option value="en">English</option>
                   <option value="hinglish">Hinglish</option>
                 </select>
               </div>
             </div>
 
-            {/* Notifications */}
-            <div style={S.section}>
+            {/* Notifications (disabled) */}
+            <div style={{ ...S.section, opacity: 0.4, pointerEvents: 'none' as const }}>
               <div style={S.sectionHeader}>Notifications</div>
               <div style={S.toggleRow}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Analysis Complete Alerts</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>Get notified when your analysis finishes</div>
                 </div>
-                <Toggle checked={profile.notifications} onChange={v => setProfile(p => ({ ...p, notifications: v }))} />
+                <Toggle checked={profile.notifications} onChange={() => {}} />
               </div>
               <div style={{ ...S.toggleRow, borderBottom: 'none' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Weekly Progress Digest</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>Email summary of your interview performance</div>
                 </div>
-                <Toggle checked={profile.emailDigest} onChange={v => setProfile(p => ({ ...p, emailDigest: v }))} />
+                <Toggle checked={profile.emailDigest} onChange={() => {}} />
               </div>
             </div>
 
-            {/* AI Model */}
-            <div style={{ ...S.section, opacity: 0.6 }}>
+            {/* AI Model (disabled) */}
+            <div style={{ ...S.section, opacity: 0.4, pointerEvents: 'none' as const }}>
               <div style={S.sectionHeader}>AI Model</div>
               <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>

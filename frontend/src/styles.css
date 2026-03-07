@@ -4134,3 +4134,18 @@ code {
   .lp-footer-links { justify-content: center; flex-wrap: wrap; }
   .lp-cta-inner { padding: 40px 24px; }
 }
+
+/* ── Prompt pulse for "select analysis" nudge ── */
+.ds-nav-item.prompt-pulse {
+  animation: promptPulse 1s ease-in-out infinite;
+}
+
+@keyframes promptPulse {
+  0%, 100% { background: transparent; color: var(--text2); }
+  50% { background: rgba(124,92,219,0.12); color: #7C5CDB; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
