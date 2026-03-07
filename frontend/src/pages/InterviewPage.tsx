@@ -8,11 +8,13 @@ import {
     submitAnswer as apiSubmitAnswer,
     completeInterviewSession,
     continueToStage3,
+    getAnalysis,
     getAnalysisStatus,
     InterviewQuestion,
     InterviewSession,
     InterviewSummary,
 } from "../services/api";
+import { renderAndPrintQuestionSheet } from "../utils/exportReport";
 import InterviewRadarChart from "../components/interview/InterviewRadarChart";
 import AiGeneratedNotice from "../components/AiGeneratedNotice";
 
@@ -212,6 +214,7 @@ const InterviewPage: React.FC = () => {
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const autoEndedRef = useRef(false);
+    const [isDownloading, setIsDownloading] = useState(false);
 
     const defaultTimeForIntensity = (v: "fast" | "normal" | "deep") => (v === "fast" ? 15 : v === "deep" ? 60 : 30);
 
@@ -308,27 +311,35 @@ const InterviewPage: React.FC = () => {
             let newSession: any;
             try {
                 newSession = await create();
+                // If it returned a 202 or processing status without throwing
+                if (newSession && newSession.status === 'processing') {
+                    throw new Error(newSession.error || "Interview plan not found");
+                }
             } catch (e: any) {
                 const msg = String(e?.message || e || "");
-                // If Stage 3 hasn't been run (or was run in sheet mode without a plan), trigger Stage 3 live and retry.
-                if (msg.toLowerCase().includes("complete stage 3") || msg.toLowerCase().includes("interview plan not found")) {
-                    setError("Preparing interview (Stage 3). This can take a moment...");
+                if (msg.toLowerCase().includes("complete stage 3") || msg.toLowerCase().includes("stage 2") || msg.toLowerCase().includes("plan not found") || msg.toLowerCase().includes("in progress")) {
+                    setError("Initializing interview topics based on your code. Please wait...");
                     try {
                         await continueToStage3(effectiveAnalysisId, 'live');
                     } catch {
-                        // Ignore if already running/completed; we'll poll status below.
+                        // Ignore if already running
                     }
+
+                    // Small delay to ensure backend has updated the state
+                    await new Promise(r => setTimeout(r, 1500));
+
                     const started = Date.now();
-                    // Poll for up to ~90s.
-                    while (Date.now() - started < 90_000) {
+                    while (Date.now() - started < 120_000) {
                         try {
                             const st: any = await getAnalysisStatus(effectiveAnalysisId);
-                            const ws = String(st?.workflowState || "");
-                            if (ws === "all_complete" || ws === "stage2_complete_awaiting_approval") break;
-                        } catch {
-                            // ignore transient polling errors
+                            const stage3 = st?.stages?.interview_simulation;
+                            // Check specific stage status instead of global workflow state to be safer
+                            if (stage3?.status === "completed") break;
+                            if (stage3?.status === "failed") throw new Error(stage3.errorMessage || "Stage 3 failed");
+                        } catch (stErr: any) {
+                            if (stErr.message?.includes("failed")) throw stErr;
                         }
-                        await new Promise((r) => setTimeout(r, 2000));
+                        await new Promise((r) => setTimeout(r, 3000));
                     }
                     newSession = await create();
                 } else {
@@ -485,6 +496,40 @@ const InterviewPage: React.FC = () => {
                             Answer questions about <strong style={{ color: "var(--accent)" }}>your project</strong>.<br />
                             AI evaluates your responses in real-time.
                         </p>
+
+                        {effectiveAnalysisId && (
+                            <div style={{ marginTop: 20 }}>
+                                <button
+                                    onClick={async () => {
+                                        setIsDownloading(true);
+                                        try {
+                                            const full = await getAnalysis(effectiveAnalysisId);
+                                            const win = window.open('', '_blank');
+                                            if (win) {
+                                                renderAndPrintQuestionSheet(win, full);
+                                            } else {
+                                                alert("Popup blocked. Please allow popups to download the PDF.");
+                                            }
+                                        } catch (e) {
+                                            console.error("Failed to download questions", e);
+                                            alert("Failed to load question bank.");
+                                        } finally {
+                                            setIsDownloading(false);
+                                        }
+                                    }}
+                                    disabled={isDownloading}
+                                    style={{ ...backBtnStyle, background: "var(--surface)", borderColor: "var(--accent)", color: "var(--accent)", padding: "10px 18px", fontSize: 13, display: "flex", margin: "0 auto" }}
+                                >
+                                    {isDownloading ? (
+                                        <div style={{ width: 14, height: 14, border: "2px solid var(--accent-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                                    ) : (
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ marginRight: 4 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                                    )}
+                                    {isDownloading ? "Generating..." : "Download Question Bank (PDF)"}
+                                </button>
+                            </div>
+                        )}
+
                         <div style={{ maxWidth: 560, margin: "18px auto 0", textAlign: "left" }}>
                             <AiGeneratedNotice
                                 note="AI feedback can be wrong or overly strict. Use it to practice structure and clarity, then validate details in your code."

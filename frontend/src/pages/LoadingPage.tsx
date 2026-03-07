@@ -181,9 +181,11 @@ const LoadingPage: React.FC = () => {
 
         // Auto-redirect when all complete
         if (data.workflowState === 'all_complete') {
-          setTimeout(() => {
-            navigate(`/app/dashboard?id=${analysisId}&tab=interview`);
-          }, 1500);
+          if (stage3Mode !== 'sheet') {
+            setTimeout(() => {
+              navigate(`/app/dashboard?id=${analysisId}&tab=interview`);
+            }, 1500);
+          }
         }
       } catch (err: any) {
         console.error('Polling error:', err);
@@ -623,7 +625,31 @@ const LoadingPage: React.FC = () => {
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <div className="complete-text">Redirecting to Interview Dashboard...</div>
+            <div className="complete-text">All complete! 50 questions generated.</div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <button
+                className="btn-accent"
+                onClick={async () => {
+                  try {
+                    const full = await getAnalysis(analysisId);
+                    const win = window.open('', '_blank');
+                    if (win) {
+                      renderAndPrintQuestionSheet(win, full);
+                    } else {
+                      alert("Popup blocked. Please allow popups or download the Markdown report below.");
+                    }
+                  } catch (e) {
+                    console.error("Manual print failed", e);
+                  }
+                }}
+                style={{ padding: '8px 16px', fontSize: 13 }}
+              >
+                Download Question Bank (PDF)
+              </button>
+              <button className="btn-secondary" onClick={handleGoToDashboard} style={{ padding: '8px 16px', fontSize: 13 }}>
+                Go to Dashboard
+              </button>
+            </div>
           </div>
         )}
 

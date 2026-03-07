@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { evaluateAnswerComprehensive } from './answer-eval';
+import { initializeTopicDrivenInterview } from './stage3-questions';
 
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
@@ -806,7 +807,8 @@ async function handleContinueStage2(event: any, context: any) {
   // Start Stage 2 in background
   processStage2(analysisId, context);
 
-  // Update workflow state to indicate Stage 2 is now in progress
+  // Update status and workflow state to indicate Stage 2 is now in progress
+  await DB.updateAnalysisStatus(analysisId, 'processing');
   await DB.updateWorkflowState(analysisId, 'stage2_pending');
 
   return {
@@ -866,6 +868,7 @@ async function handleContinueStage3(event: any, context: any) {
       const currentMode = full?.interviewSimulation?.mode || 'sheet';
       if (currentMode !== 'live') {
         processStage3(analysisId, 'live', context);
+        await DB.updateAnalysisStatus(analysisId, 'processing');
         await DB.updateWorkflowState(analysisId, 'stage3_pending');
         return {
           statusCode: 200,
@@ -895,7 +898,8 @@ async function handleContinueStage3(event: any, context: any) {
   const mode = body.mode || 'sheet';
   processStage3(analysisId, mode, context);
 
-  // Update workflow state to indicate Stage 3 is now in progress
+  // Update status and workflow state to indicate Stage 3 is now in progress
+  await DB.updateAnalysisStatus(analysisId, 'processing');
   await DB.updateWorkflowState(analysisId, 'stage3_pending');
 
   return {
@@ -1056,6 +1060,10 @@ async function processStage3(analysisId: string, mode: string, context: any) {
       s3Key: repoMetadata.s3Key,
       mode // Pass mode to Stage 3
     });
+
+    if (!stage3Result || stage3Result.success === false) {
+      throw new Error(stage3Result?.error || 'Stage 3 Lambda failed without error message');
+    }
 
     const duration = Date.now() - startTime;
 
@@ -1228,9 +1236,15 @@ async function handleGetUserProgress(event: any) {
 // ============================================================================
 
 function buildFallbackInterviewPlanFromSimulation(fullAnalysis: any, analysisId: string, targetRole?: string): Types.InterviewPlan | null {
+  console.log(`[DEBUG] buildFallback: analysisId=${analysisId}, targetRole=${targetRole}`);
   const sim = fullAnalysis?.interviewSimulation;
+  console.log(`[DEBUG] sim mode=${sim?.mode}, sim hasQuestions=${!!sim?.questions}`);
   const questions: any[] = sim?.questions || [];
-  if (!Array.isArray(questions) || questions.length === 0) return null;
+  console.log(`[DEBUG] questions length=${questions.length}`);
+  if (!Array.isArray(questions) || questions.length === 0) {
+    console.error(`[DEBUG] buildFallback: No questions found in simulation for analysis ${analysisId}`);
+    return null;
+  }
 
   const role =
     targetRole ||
@@ -1368,19 +1382,105 @@ async function handleCreateInterviewSession(event: any, context: any) {
   let interviewPlan = fullAnalysis.interviewPlan;
 
   if (!interviewPlan) {
-    // Stage 3 "sheet" mode produces a question bank but not a topic-driven plan.
-    // Build a lightweight plan from the existing questions so users can still run a live interview.
-    const fallback = buildFallbackInterviewPlanFromSimulation(fullAnalysis, analysisId, config?.targetRole);
-    if (!fallback) {
+    // 1. Try to build fallback from simulation (50q sheet) if available
+    interviewPlan = buildFallbackInterviewPlanFromSimulation(fullAnalysis, analysisId, config?.targetRole) || undefined;
+
+    // 2. DETACHMENT LOGIC: If still no plan, try lazy initialization if Stage 2 is complete
+    if (!interviewPlan && fullAnalysis.analysis.stages.intelligence_report.status === 'completed') {
+      console.log(`🚀 Lazy initializing interview plan for ${analysisId}`);
+      try {
+        const repoMetadata = await DB.getRepositoryMetadata(analysisId);
+
+        // Load userCodeFiles from S3
+        let userCodeFiles: string[] = [];
+        if (repoMetadata.userCodeFilesS3Key) {
+          try {
+            const s3Response = await s3Client.send(new GetObjectCommand({
+              Bucket: CACHE_BUCKET,
+              Key: repoMetadata.userCodeFilesS3Key
+            }));
+            const s3Data = await s3Response.Body?.transformToString();
+            if (s3Data) {
+              userCodeFiles = JSON.parse(s3Data).userCodeFiles || [];
+            }
+          } catch (s3Err) {
+            console.warn('⚠️ S3 load failed during lazy init:', s3Err);
+          }
+        }
+
+        const projectReview = await DB.getProjectReview(analysisId);
+        const intelligenceReport = await DB.getIntelligenceReport(analysisId);
+
+        // Call extraction directly (detaching from Stage 3 Lambda)
+        const initializedPlan = await initializeTopicDrivenInterview(
+          {
+            totalFiles: repoMetadata.totalFiles,
+            frameworks: repoMetadata.frameworks,
+            entryPoints: repoMetadata.entryPoints,
+            coreModules: repoMetadata.coreModules,
+            userCodeFiles: userCodeFiles,
+            languages: repoMetadata.languages
+          } as any,
+          projectReview || {},
+          intelligenceReport || {},
+          repoMetadata.s3Key,
+          'live'
+        );
+
+        if (initializedPlan) {
+          interviewPlan = initializedPlan as any;
+          await DB.saveInterviewPlan(analysisId, interviewPlan!);
+          console.log(`✅ Lazy initialization complete for ${analysisId}`);
+        }
+      } catch (err) {
+        console.error('❌ Failed to lazy initialize interview plan:', err);
+      }
+    }
+
+    if (!interviewPlan) {
+      if (fullAnalysis.analysis.stages.interview_simulation.status === 'processing') {
+        return {
+          statusCode: 202,
+          headers: getCorsHeaders(getRequestOrigin(event)),
+          body: JSON.stringify({
+            message: 'Interview plan is being generated. Please wait...',
+            retryAfter: 10
+          })
+        };
+      }
+
       return {
         statusCode: 404,
-        headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-        body: JSON.stringify({ error: 'Interview plan not found. Complete Stage 3 first.' })
+        headers: getCorsHeaders(getRequestOrigin(event)),
+        body: JSON.stringify({ error: 'Interview plan not found. Ensure Step 2 is complete.' })
       };
     }
-    await DB.saveInterviewPlan(analysisId, fallback);
-    interviewPlan = fallback;
   }
+
+  // ============================================================================
+  // NON-REPETITION LOGIC: Filter out mastered topics
+  // ============================================================================
+  const userProgress = await DB.getUserProgress(userId);
+  const completedTopicsIds = userProgress?.completedTopics || [];
+
+  // Filter core topics to exclude mastered ones
+  let filteredTopics = Object.values(interviewPlan.allTopics || {}).filter(
+    topic => !completedTopicsIds.includes(topic.topicId)
+  );
+
+  // Fallback: If EVERYTHING is completed, reset and allow repeats (edge case)
+  if (filteredTopics.length === 0 && Object.values(interviewPlan.allTopics || {}).length > 0) {
+    console.warn('⚠️ All topics mastered. Allowing repeats for session.');
+    filteredTopics = Object.values(interviewPlan.allTopics || {});
+  }
+
+  // Use filtered topics if available, else original
+  const effectiveTopics = filteredTopics.length > 0 ? filteredTopics : Object.values(interviewPlan.allTopics || {});
+
+  // Pick session topics from the effective list
+  const shuffleArray = (array: any[]) => array.sort(() => Math.random() - 0.5);
+  const selectedTopics = shuffleArray([...effectiveTopics]).slice(0, 3);
+
 
   // 1. Level Calibration & Intensity Mapping
   const intensity = config?.intensity || 'normal';
@@ -2465,14 +2565,25 @@ async function handleExportAnalysis(event: any) {
       exportFormat: format
     };
 
-    // Convert to JSON
-    const fileContent = JSON.stringify(exportData, null, 2);
-    const contentType = 'application/json';
-    const fileExtension = 'json';
+    // Determine file extension and content type
+    let fileExtension = 'json';
+    let contentType = 'application/json';
+    let fileContent = JSON.stringify(exportData, null, 2);
 
-    // Upload to S3 (bucket is in ap-southeast-1, S3 client uses same region)
+    if (format === 'markdown' || format === 'pdf') {
+      // For PDF, we currently generate the HTML/PDF on the client side, 
+      // but we'll return a specifically marked JSON or a text format if needed.
+      // For now, let's allow the extension to be .md if markdown is requested.
+      if (format === 'markdown') {
+        fileExtension = 'md';
+        contentType = 'text/markdown';
+        // We'll still return the JSON for the API response, but the S3 export can be MD if we had a generator.
+        // For simplicity and to match frontend expectations, we'll keep the body as JSON but update the fileName hint.
+      }
+    }
+
     const s3Key = `exports/${analysisId}-${Date.now()}.${fileExtension}`;
-    const s3Client = new S3Client({ region: 'ap-southeast-1' }); // S3 bucket region
+    const s3Client = new S3Client({ region: 'ap-southeast-1' });
 
     await s3Client.send(new PutObjectCommand({
       Bucket: bucketName,
@@ -2495,7 +2606,7 @@ async function handleExportAnalysis(event: any) {
         format,
         message: 'Export generated successfully',
         data: exportData,
-        fileName: `${analysis.analysis.repositoryName || 'analysis'}-${analysisId.substring(0, 8)}.${fileExtension}`
+        fileName: `${analysis.analysis.repositoryName || 'analysis'}-${analysisId.substring(0, 8)}.${format === 'json' ? 'json' : format === 'markdown' ? 'md' : 'pdf'}`
       })
     };
   } catch (error) {

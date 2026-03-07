@@ -159,7 +159,7 @@ async function generateQuestionSheet(
 /**
  * MODE 2: Initialize topic-driven live interview
  */
-async function initializeTopicDrivenInterview(
+export async function initializeTopicDrivenInterview(
   contextMap: ProjectContextMap,
   projectReview: any,
   intelligenceReport: any,
