@@ -23,7 +23,7 @@ const UserStatsPanel: React.FC<UserStatsPanelProps> = ({ stats, loading }) => {
   }
 
   const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return 'Never';
+    if (!dateStr) return '—';
     const date = new Date(dateStr);
     const now = new Date();
     const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
@@ -36,9 +36,9 @@ const UserStatsPanel: React.FC<UserStatsPanelProps> = ({ stats, loading }) => {
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return '#27AE60';
-    if (score >= 60) return '#E67E22';
-    return '#E74C3C';
+    if (score >= 80) return '#7C5CDB';
+    if (score >= 60) return '#9B7FE6';
+    return '#BBA8F0';
   };
 
   return (
@@ -60,13 +60,13 @@ const UserStatsPanel: React.FC<UserStatsPanelProps> = ({ stats, loading }) => {
 
         {/* Code Quality Score */}
         <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#F4FCF8', color: getScoreColor(stats.averageCodeQuality) }}>
+          <div className="stat-icon" style={{ background: 'rgba(124,92,219,0.1)', color: '#7C5CDB' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
           </div>
           <div className="stat-content">
-            <div className="stat-value" style={{ color: getScoreColor(stats.averageCodeQuality) }}>
+            <div className="stat-value" style={{ color: '#1a1a1a' }}>
               {stats.averageCodeQuality}%
             </div>
             <div className="stat-label">Avg. Code Quality</div>
@@ -84,7 +84,7 @@ const UserStatsPanel: React.FC<UserStatsPanelProps> = ({ stats, loading }) => {
 
         {/* Interview Sessions */}
         <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#EBF5FB', color: '#3498DB' }}>
+          <div className="stat-icon" style={{ background: 'rgba(124,92,219,0.1)', color: '#7C5CDB' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
@@ -98,13 +98,13 @@ const UserStatsPanel: React.FC<UserStatsPanelProps> = ({ stats, loading }) => {
 
         {/* Interview Score */}
         <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#FEF8F0', color: getScoreColor(stats.averageInterviewScore) }}>
+          <div className="stat-icon" style={{ background: 'rgba(124,92,219,0.1)', color: '#7C5CDB' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
           </div>
           <div className="stat-content">
-            <div className="stat-value" style={{ color: getScoreColor(stats.averageInterviewScore) }}>
+            <div className="stat-value" style={{ color: '#1a1a1a' }}>
               {stats.averageInterviewScore}%
             </div>
             <div className="stat-label">Avg. Interview Score</div>

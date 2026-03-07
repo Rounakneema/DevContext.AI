@@ -690,8 +690,8 @@ export async function getUserStats(userId: string): Promise<any> {
     averageCodeQuality: codeQualityCount > 0 ? Math.round(totalCodeQuality / codeQualityCount) : 0,
     averageEmployabilityScore: codeQualityCount > 0 ? Math.round(totalEmployability / codeQualityCount) : 0,
     averageInterviewScore: completedSessions.length > 0 ? Math.round(totalInterviewScore / completedSessions.length) : 0,
-    lastAnalysisDate: completedAnalyses[0]?.completedAt || null,
-    lastInterviewDate: completedSessions[0]?.completedAt || null
+    lastAnalysisDate: completedAnalyses[0]?.completedAt || completedAnalyses[0]?.createdAt || null,
+    lastInterviewDate: completedSessions[0]?.completedAt || completedSessions[0]?.createdAt || null
   };
 }
 

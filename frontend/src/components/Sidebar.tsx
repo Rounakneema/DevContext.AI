@@ -54,7 +54,7 @@ const Sidebar: React.FC = () => {
       <button
         className="sidebar-btn"
         title="History"
-        onClick={() => navigate('/app/dashboard?tab=history')}
+        onClick={() => navigate('/app/dashboard/history')}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <circle cx="12" cy="12" r="9" />
