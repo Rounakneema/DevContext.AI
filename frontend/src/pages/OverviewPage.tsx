@@ -103,7 +103,7 @@ const OverviewPage: React.FC = () => {
             </a>
           )}
         </div>
-        <ExportDropdown analysisId={analysisId} />
+        <ExportDropdown analysisId={analysisId} analysisData={analysis} />
       </div>
 
       {/* Authenticity warning */}

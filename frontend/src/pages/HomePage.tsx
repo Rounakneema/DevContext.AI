@@ -13,7 +13,7 @@ const HomePage: React.FC = () => {
   const [checkingInProgress, setCheckingInProgress] = useState(true);
   const charCount = inputValue.length;
   const maxChars = 500;
-  const [displayName, setDisplayName] = useState('Dev');
+  const [displayName, setDisplayName] = useState('');
 
   // Check if repo URL was passed from landing page
   useEffect(() => {
