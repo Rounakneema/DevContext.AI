@@ -34,9 +34,9 @@ export function generateCareerImpactMarkdown(data: any): string {
 
   md += `## Scores Overview\n\n`;
   md += `| Metric | Score |\n|---|---|\n`;
-  md += `| **Employability Signal** | ${emp.overall ?? '-'}\/100 |\n`;
-  md += `| **Code Quality** | ${cq.overall ?? '-'}\/100 |\n`;
-  md += `| **Authenticity** | ${auth.score ?? '-'}\/100 |\n\n`;
+  md += `| **Employability Signal** | ${emp.overall ?? '-'}/100 |\n`;
+  md += `| **Code Quality** | ${cq.overall ?? '-'}/100 |\n`;
+  md += `| **Authenticity** | ${auth.score ?? '-'}/100 |\n\n`;
 
   if (emp.companyTierMatch) {
     md += `## Company Tier Match\n\n`;
@@ -52,7 +52,7 @@ export function generateCareerImpactMarkdown(data: any): string {
   for (const key of ['readability', 'maintainability', 'errorHandling', 'security', 'performance', 'documentation']) {
     if (cq[key] !== undefined) {
       const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (s: string) => s.toUpperCase());
-      md += `| ${label} | ${cq[key]}\/100 |\n`;
+      md += `| ${label} | ${cq[key]}/100 |\n`;
     }
   }
   md += `\n`;
