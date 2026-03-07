@@ -86,7 +86,7 @@ const ArchitectureTab: React.FC = () => {
                 <ExportDropdown analysisId={analysisId} analysisData={fullData} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 7fr) minmax(0, 3fr)', gap: '24px', alignItems: 'start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
                 {/* Diagram Viewer */}
                 <div className="panel" style={{ padding: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>

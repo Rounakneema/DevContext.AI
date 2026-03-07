@@ -82,7 +82,7 @@ const CodeReviewTab: React.FC = () => {
                 <ExportDropdown analysisId={analysisId} analysisData={fullData} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '24px', alignItems: 'start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
                 {/* Left: Score & Radar */}
                 <div className="panel" style={{ padding: '24px' }}>
@@ -97,8 +97,8 @@ const CodeReviewTab: React.FC = () => {
                         </div>
                     </div>
 
-                    <div style={{ height: '300px', width: '100%' }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div style={{ height: '300px', width: '100%', minWidth: 0 }}>
+                        <ResponsiveContainer width="99%" height="100%">
                             <TypedRadarChart cx="50%" cy="50%" outerRadius="80%" data={stats.radarData}>
                                 <TypedPolarGrid stroke="var(--border)" />
                                 <TypedPolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text2)', fontSize: 12 }} />

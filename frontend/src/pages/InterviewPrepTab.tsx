@@ -78,7 +78,7 @@ const InterviewPrepTab: React.FC = () => {
                 <ExportDropdown analysisId={analysisId} analysisData={fullData} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '24px', alignItems: 'start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
                 {/* Elevator Pitch Panel */}
                 <div className="panel" style={{ padding: '0', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>

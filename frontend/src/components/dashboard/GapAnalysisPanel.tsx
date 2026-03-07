@@ -8,14 +8,17 @@ interface GapAnalysisPanelProps {
     weaknesses: Array<{
         weaknessId?: string;
         issue: string;
+        name?: string;
         impact?: string;
         recommendation?: string;
+        actionableSuggestion?: string;
         severity?: string;
         fileReferences?: Array<{ file: string; line?: number }>;
     }>;
     strengths: Array<{
         strengthId?: string;
         pattern: string;
+        name?: string;
         description: string;
         impact?: string;
     }>;

@@ -308,7 +308,11 @@ export interface InterviewSession {
     feedbackMode?: string;
     questionCount?: number;
     questionTypes?: string[];
+    intensity?: 'fast' | 'normal' | 'deep';
   };
+  interviewPlan?: InterviewPlan;
+  createdAt: string;
+  ttl?: number;
   progress: {
     questionsAnswered: number;
     questionsSkipped: number;
@@ -336,7 +340,6 @@ export interface InterviewSession {
     timeSpentSeconds?: number;
     evaluation?: AnswerEvaluation;
   }>;
-  interviewPlan?: InterviewPlan;
   summary?: InterviewSummary;
 }
 
@@ -637,6 +640,12 @@ export const createInterviewSession = (data: {
 
 export const getInterviewSession = (sessionId: string) =>
   apiCall<InterviewSession>(`/interview/sessions/${sessionId}`);
+
+export const getInterviewSessions = (analysisId?: string) =>
+  apiCall<InterviewSession[]>(`/interview/sessions${analysisId ? `?analysisId=${analysisId}` : ''}`);
+
+export const getSessionAttempts = (sessionId: string) =>
+  apiCall<any[]>(`/interview/sessions/${sessionId}/attempts`);
 
 export const submitAnswer = (
   sessionId: string,

@@ -3,6 +3,8 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
     createInterviewSession,
     getInterviewSession,
+    getInterviewSessions,
+    getSessionAttempts,
     submitAnswer as apiSubmitAnswer,
     completeInterviewSession,
     InterviewQuestion,
@@ -10,6 +12,7 @@ import {
     InterviewSession,
     InterviewSummary,
 } from "../services/api";
+import InterviewRadarChart from "../components/interview/InterviewRadarChart";
 
 type Phase = "config" | "loading" | "active" | "evaluating" | "topic_review" | "done";
 
@@ -98,6 +101,10 @@ const InterviewPage: React.FC = () => {
     const [currentEval, setCurrentEval] = useState<AnswerEvaluation | null>(null);
     const [summary, setSummary] = useState<InterviewSummary | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [recentSessions, setRecentSessions] = useState<InterviewSession[]>([]);
+    const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+    const [attempts, setAttempts] = useState<any[]>([]);
+    const [isLoadingAttempts, setIsLoadingAttempts] = useState(false);
 
     const [focus, setFocus] = useState<"technical" | "behavioral" | "mixed">("technical");
     const [role, setRole] = useState("Senior Software Engineer");
@@ -120,6 +127,26 @@ const InterviewPage: React.FC = () => {
     }, [phase, currentQuestion?.questionId]);
 
     // removing legacy totalQuestions reference
+
+    useEffect(() => {
+        if (effectiveAnalysisId && phase === "config") {
+            setIsLoadingSessions(true);
+            getInterviewSessions(effectiveAnalysisId)
+                .then(setRecentSessions)
+                .catch(err => console.error("Failed to fetch sessions", err))
+                .finally(() => setIsLoadingSessions(false));
+        }
+    }, [effectiveAnalysisId, phase]);
+
+    useEffect(() => {
+        if (session?.sessionId && phase === "done") {
+            setIsLoadingAttempts(true);
+            getSessionAttempts(session.sessionId)
+                .then(setAttempts)
+                .catch(err => console.error("Failed to fetch attempts", err))
+                .finally(() => setIsLoadingAttempts(false));
+        }
+    }, [session?.sessionId, phase]);
 
     const startSession = useCallback(async () => {
         if (!effectiveAnalysisId) { setError("No analysis ID. Please run an analysis first."); return; }
@@ -283,6 +310,45 @@ const InterviewPage: React.FC = () => {
                             </button>
                         </div>
                     </div>
+
+                    {/* Recent Sessions */}
+                    {effectiveAnalysisId && (
+                        <div style={{ marginTop: 48 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                                <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>Recent Sessions</h3>
+                                <div style={{ fontSize: 12, color: "var(--text3)", fontWeight: 600 }}>{recentSessions.length} total</div>
+                            </div>
+
+                            {isLoadingSessions ? (
+                                <div style={{ textAlign: "center", padding: "40px var(--surface)", background: "var(--surface)", borderRadius: 18, border: "1px solid var(--border)" }}>
+                                    <div style={{ width: 24, height: 24, border: "3px solid var(--accent-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+                                </div>
+                            ) : recentSessions.length === 0 ? (
+                                <div style={{ textAlign: "center", padding: "48px 24px", background: "var(--surface)", borderRadius: 18, border: "1px dashed var(--border)" }}>
+                                    <div style={{ fontSize: 32, marginBottom: 16 }}>📋</div>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>No sessions yet</div>
+                                    <div style={{ fontSize: 13, color: "var(--text3)" }}>Complete your first interview to see history here.</div>
+                                </div>
+                            ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                    {recentSessions.slice(0, 5).map(s => (
+                                        <div key={s.sessionId} onClick={() => { setSession(s); setPhase("done"); setSummary(s.progress as any); }} style={{ padding: "16px 20px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", transition: "all 0.2s" }}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                                                <div style={{ width: 44, height: 44, borderRadius: 12, background: scoreColor(s.progress?.averageScore || 0) + "15", color: scoreColor(s.progress?.averageScore || 0), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 900 }}>
+                                                    {Math.round(s.progress?.averageScore || 0)}
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{s.config?.targetRole || "Software Engineer"}</div>
+                                                    <div style={{ fontSize: 12, color: "var(--text3)" }}>{new Date(s.createdAt).toLocaleDateString()} · {s.progress?.questionsAnswered} questions</div>
+                                                </div>
+                                            </div>
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text3)" }}><polyline points="9 18 15 12 9 6" /></svg>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -348,9 +414,13 @@ const InterviewPage: React.FC = () => {
                         </div>
                     )}
 
+                    {session?.progress?.signals && (
+                        <InterviewRadarChart signals={session.progress.signals as any} />
+                    )}
+
                     {summary && (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32 }}>
-                            {([{ title: "💪 Strengths", items: (summary as any).strongAreas || [], color: "#6fcf97" }, { title: "📈 Areas to Improve", items: (summary as any).weakAreas || [], color: "#f6ad55" }] as const).map(({ title, items, color }) => (
+                            {([{ title: "💪 Strengths", items: (summary as any).strongAreas || (summary as any).strengths || [], color: "#6fcf97" }, { title: "📈 Areas to Improve", items: (summary as any).weakAreas || (summary as any).weaknesses || [], color: "#f6ad55" }] as const).map(({ title, items, color }) => (
                                 <div key={title} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px" }}>
                                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>{title}</div>
                                     {(items as string[]).length === 0 ? <div style={{ fontSize: 13, color: "var(--text3)", fontStyle: "italic" }}>—</div> :
@@ -365,13 +435,114 @@ const InterviewPage: React.FC = () => {
                         </div>
                     )}
 
-                    <div style={{ display: "flex", gap: 12 }}>
-                        <button onClick={() => { setPhase("config"); setSession(null); setSummary(null); setCurrentEval(null); setAnswer(""); }} style={{ flex: 1, padding: "14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "var(--text)", cursor: "pointer" }}>
-                            Retry Interview
-                        </button>
-                        <button onClick={() => navigate("/app/dashboard")} style={{ flex: 1, padding: "14px", background: "var(--accent)", border: "none", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "#fff", cursor: "pointer" }}>
-                            View Dashboard →
-                        </button>
+                    {/* Improvement Roadmap */}
+                    {session?.progress?.signals && Object.values(session.progress.signals).some(s => s.score < 80) && (
+                        <div style={{ marginBottom: 40, background: "var(--accent-light)", border: "1px solid var(--accent)", borderRadius: 18, padding: "24px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                                <div style={{ fontSize: 20 }}>🚀</div>
+                                <h3 style={{ fontSize: 16, fontWeight: 800, color: "var(--accent)" }}>Improvement Roadmap</h3>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                {Object.values(session.progress.signals).filter(s => s.score < 80).map(s => (
+                                    <div key={s.signalId} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px" }}>
+                                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Focus on: {s.name.replace(/_/g, " ")}</div>
+                                        <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
+                                            Based on your interview signals, your {s.name.replace(/_/g, " ")} scored {s.score}%. Consider reviewing:
+                                            <ul style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
+                                                {s.evidence.slice(-2).map((ev, i) => (
+                                                    <li key={i} style={{ marginBottom: 4 }}>{ev}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Question Breakdown */}
+                    <div style={{ marginBottom: 40 }}>
+                        <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", marginBottom: 20 }}>Detailed Breakdown</h3>
+                        {isLoadingAttempts ? (
+                            <div style={{ textAlign: "center", padding: "40px", background: "var(--surface)", borderRadius: 18, border: "1px solid var(--border)" }}>
+                                <div style={{ width: 24, height: 24, border: "3px solid var(--accent-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+                            </div>
+                        ) : attempts.length === 0 ? (
+                            <div style={{ textAlign: "center", padding: "32px", background: "var(--surface)", borderRadius: 18, border: "1px solid var(--border)", color: "var(--text3)", fontSize: 14 }}>
+                                No question data available.
+                            </div>
+                        ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                                {attempts.map((attempt, idx) => (
+                                    <div key={attempt.attemptId} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 18, overflow: "hidden" }}>
+                                        <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                                                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--accent)", textTransform: "uppercase", letterSpacing: 0.5 }}>Question {idx + 1}</div>
+                                                <div style={{ fontSize: 12, fontWeight: 800, color: scoreColor(attempt.evaluation?.overallScore || 0) }}>
+                                                    {attempt.evaluation?.overallScore || 0}% Score
+                                                </div>
+                                            </div>
+                                            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", lineHeight: 1.4 }}>
+                                                {session?.questions?.find(q => q.questionId === attempt.questionId)?.question || "Question"}
+                                            </div>
+                                        </div>
+                                        <div style={{ padding: "20px 24px" }}>
+                                            <div style={{ marginBottom: 16 }}>
+                                                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text3)", marginBottom: 8, textTransform: "uppercase" }}>Your Answer</div>
+                                                <div style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.6, whiteSpace: "pre-wrap", padding: "12px", background: "var(--bg)", borderRadius: 10, border: "1px solid var(--border)" }}>
+                                                    {attempt.userAnswer}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text3)", marginBottom: 8, textTransform: "uppercase" }}>AI Feedback</div>
+                                                <div style={{ fontSize: 14, color: "var(--text)", lineHeight: 1.6 }}>
+                                                    {attempt.evaluation?.narrative}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div style={{ display: "flex", gap: 12 }}>
+                            <button onClick={() => { setPhase("config"); setSession(null); setSummary(null); setCurrentEval(null); setAnswer(""); setAttempts([]); }} style={{ flex: 1, padding: "14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "var(--text)", cursor: "pointer" }}>
+                                Retry Interview
+                            </button>
+                            <button onClick={() => navigate("/app/dashboard")} style={{ flex: 1, padding: "14px", background: "var(--accent)", border: "none", borderRadius: 12, fontFamily: "Geist, sans-serif", fontSize: 15, fontWeight: 700, color: "#fff", cursor: "pointer" }}>
+                                View Dashboard →
+                            </button>
+                        </div>
+                        <div style={{ display: "flex", gap: 12 }}>
+                            <button onClick={() => window.print()} style={{ flex: 1, padding: "12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "var(--text2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" /></svg>
+                                Print PDF Report
+                            </button>
+                            <button onClick={() => {
+                                let md = `# Interview Report - ${session?.config?.targetRole || "Software Engineer"}\n\n`;
+                                md += `**Overall Score:** ${summary ? Math.round((summary as any).overallScore || 0) : 0}%\n`;
+                                md += `**Date:** ${new Date(session?.createdAt || "").toLocaleDateString()}\n\n`;
+                                md += `## Detailed Breakdown\n\n`;
+                                attempts.forEach((a, i) => {
+                                    const q = session?.questions?.find(que => que.questionId === a.questionId)?.question || "Question";
+                                    md += `### ${i + 1}. ${q}\n`;
+                                    md += `**Score:** ${a.evaluation?.overallScore || 0}%\n`;
+                                    md += `**Your Answer:** ${a.userAnswer}\n`;
+                                    md += `**AI Feedback:** ${a.evaluation?.narrative}\n\n`;
+                                });
+                                const blob = new Blob([md], { type: "text/markdown" });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement("a");
+                                link.href = url;
+                                link.download = `interview-report-${session?.sessionId}.md`;
+                                link.click();
+                            }} style={{ flex: 1, padding: "12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "var(--text2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" /></svg>
+                                Export Markdown
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

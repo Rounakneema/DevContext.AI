@@ -108,7 +108,7 @@ const ReportPage: React.FC = () => {
         <ExportDropdown analysisId={analysisId} analysisData={analysis} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 7fr) minmax(0, 3fr)', gap: '20px', alignItems: 'start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Architecture Overview — now always has content */}
           <div className="panel" style={{ margin: 0 }}>

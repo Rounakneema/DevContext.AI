@@ -36,12 +36,14 @@ export function generateUserKeys(userId: string, email: string) {
   };
 }
 
-export function generateSessionKeys(sessionId: string, userId: string, createdAt: string) {
+export function generateSessionKeys(sessionId: string, userId: string, analysisId: string, createdAt: string) {
   return {
     PK: `SESSION#${sessionId}`,
     SK: 'METADATA',
     GSI1PK: `USER#${userId}`,
-    GSI1SK: `SESSION#${createdAt}`
+    GSI1SK: `SESSION#${createdAt}`,
+    GSI2PK: `ANALYSIS#${analysisId}`,
+    GSI2SK: `SESSION#${createdAt}`
   };
 }
 
@@ -370,7 +372,7 @@ export async function createInterviewSession(params: {
 }): Promise<Types.InterviewSession> {
   const sessionId = uuidv4();
   const createdAt = new Date().toISOString();
-  const keys = generateSessionKeys(sessionId, params.userId, createdAt);
+  const keys = generateSessionKeys(sessionId, params.userId, params.analysisId, createdAt);
 
   const session: Types.InterviewSession = {
     ...keys,
@@ -697,7 +699,23 @@ export async function getUserStats(userId: string): Promise<any> {
   };
 }
 
-export async function getUserInterviewSessions(userId: string): Promise<any[]> {
+export async function getUserInterviewSessions(userId: string, analysisId?: string): Promise<any[]> {
+  if (analysisId) {
+    // Efficient query for specific analysis
+    const result = await dynamoClient.send(new QueryCommand({
+      TableName: MAIN_TABLE,
+      IndexName: 'GSI2',
+      KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `ANALYSIS#${analysisId}`,
+        ':sk': 'SESSION#'
+      },
+      ScanIndexForward: false
+    }));
+    return result.Items || [];
+  }
+
+  // Fallback to user-level list (e.g. for global history)
   const result = await dynamoClient.send(new QueryCommand({
     TableName: MAIN_TABLE,
     IndexName: 'GSI1',

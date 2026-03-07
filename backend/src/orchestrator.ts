@@ -56,7 +56,7 @@ const getCorsHeaders = (requestOrigin?: string) => {
 const CORS_HEADERS = getCorsHeaders();
 
 export const handler: APIGatewayProxyHandler = async (event, context) => {
-  const path = event.path;
+  const path = event.resource || event.path;
   const method = event.httpMethod;
 
   // Handle OPTIONS requests for CORS preflight
@@ -70,7 +70,7 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
 
   try {
     // Log event for audit
-    console.log(`Request: ${method} ${path}`);
+    console.log(`Request: ${method} ${path} (resource: ${event.resource})`);
 
     if (path === '/analyze' && method === 'POST') {
       return await handleAnalyze(event, context);
@@ -163,6 +163,15 @@ export const handler: APIGatewayProxyHandler = async (event, context) => {
 
     if (path.match(/\/interview\/sessions\/[^/]+$/) && method === 'GET') {
       return await handleGetInterviewSession(event);
+    }
+
+    if ((path === '/interview/sessions' || path.endsWith('/interview/sessions')) && method === 'GET') {
+      return await handleListInterviewSessions(event);
+    }
+
+    const attemptsMatch = path.match(/\/interview\/sessions\/([^/]+)\/attempts$/);
+    if (attemptsMatch && method === 'GET') {
+      return await handleGetSessionAttempts(event);
     }
 
     if (path.endsWith('/answer') && method === 'POST') {
@@ -1317,6 +1326,43 @@ async function handleGetInterviewSession(event: any) {
     })
   };
 }
+
+async function handleListInterviewSessions(event: any) {
+  const userId = event.requestContext?.authorizer?.claims?.sub || 'demo-user';
+  const analysisId = event.queryStringParameters?.analysisId;
+
+  const sessions = await DB.getUserInterviewSessions(userId, analysisId);
+
+  return {
+    statusCode: 200,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    body: JSON.stringify(sessions)
+  };
+}
+
+async function handleGetSessionAttempts(event: any) {
+  // Use regex to extract sessionId from path /interview/sessions/{sessionId}/attempts
+  const path = event.path;
+  const match = path.match(/\/interview\/sessions\/([^/]+)\/attempts/);
+  const sessionId = match ? match[1] : null;
+
+  if (!sessionId) {
+    return {
+      statusCode: 400,
+      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+      body: JSON.stringify({ error: 'sessionId is required in path' })
+    };
+  }
+
+  const attempts = await DB.getSessionAttempts(sessionId);
+
+  return {
+    statusCode: 200,
+    headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+    body: JSON.stringify(attempts)
+  };
+}
+
 /**
  * POST /interview/sessions/{sessionId}/answer
  */

@@ -125,9 +125,9 @@ const ResumeBulletsPanel: React.FC<ResumeBulletsPanelProps> = ({ resumeBullets }
                                         }}>
                                             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
                                                 <div style={{ fontSize: '12.5px', color: 'var(--text)', lineHeight: 1.6, flex: 1 }}>
-                                                    "{typeof b === 'string' ? b : (b.text || JSON.stringify(b))}"
+                                                    "{typeof (b as any) === 'string' ? (b as any) : (b.text || JSON.stringify(b))}"
                                                 </div>
-                                                <CopyButton text={typeof b === 'string' ? b : (b.text || JSON.stringify(b))} />
+                                                <CopyButton text={typeof (b as any) === 'string' ? (b as any) : (b.text || JSON.stringify(b))} />
                                             </div>
                                             {b.verified && (
                                                 <div style={{ marginTop: '6px', fontSize: '10px', color: '#27AE60', fontWeight: 600 }}>
