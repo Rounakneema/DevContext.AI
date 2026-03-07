@@ -345,13 +345,61 @@ const InterviewPage: React.FC = () => {
         }
     }, [effectiveAnalysisId, focus, intensity, role, timeLimitMins]);
 
+    const nextQuestion = useCallback(async (prefetchedSession?: any) => {
+        const base = prefetchedSession || session;
+        if (!base) return;
+
+        // Refresh session state (unless a fresh session was already provided)
+        let currentSdt = base;
+        if (!prefetchedSession) {
+            try {
+                currentSdt = await getInterviewSession(base.sessionId);
+            } catch (e) {
+                console.error("Failed to refresh session:", e);
+                return;
+            }
+        }
+        setSession(currentSdt);
+
+        if (currentSdt.status === 'completed') {
+            setPhase("loading");
+            try {
+                const sum = await completeInterviewSession(currentSdt.sessionId);
+                setSummary(sum as any); setPhase("done");
+            } catch {
+                setSummary(null); setPhase("done");
+            }
+            return;
+        }
+
+        const activeId = currentSdt.progress.activeTopicId;
+        const topic = currentSdt.interviewPlan?.allTopics[activeId || ""];
+
+        if (topic) {
+            setCurrentQuestion({
+                questionId: topic.topicId,
+                question: currentSdt.progress.currentQuestionOverride || `Let's discuss ${topic.title}. ${topic.description}`,
+                category: topic.category,
+                difficulty: topic.difficulty,
+                questionNumber: currentSdt.progress.questionsAnswered + 1,
+                expectedTopics: [],
+                groundedIn: [],
+                hints: [],
+                followUpQuestions: []
+            });
+        }
+
+        setAnswer(""); setCurrentEval(null); setPhase("active");
+        setTimeout(() => textareaRef.current?.focus(), 100);
+    }, [session]);
+
     const submitAnswer = useCallback(async (action: 'submit' | 'skip_question' | 'end_early' = 'submit') => {
         if (!session || !currentQuestion) return;
         if (action === 'submit' && !answer.trim()) return;
         setPhase("evaluating");
         const timeSpent = Math.max(0, Number(questionElapsed) || Math.floor((Date.now() - startTime) / 1000));
         try {
-            const result = await apiSubmitAnswer(session.sessionId, {
+            await apiSubmitAnswer(session.sessionId, {
                 questionId: currentQuestion.questionId,
                 questionText: currentQuestion.question,
                 answer: action === 'submit' ? answer.trim() : `[${action.toUpperCase()}]`,
@@ -416,54 +464,6 @@ const InterviewPage: React.FC = () => {
         submitAnswer("end_early");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [questionElapsed, phase, session?.sessionId]);
-
-    const nextQuestion = useCallback(async (prefetchedSession?: any) => {
-        const base = prefetchedSession || session;
-        if (!base) return;
-
-        // Refresh session state (unless a fresh session was already provided)
-        let currentSdt = base;
-        if (!prefetchedSession) {
-            try {
-                currentSdt = await getInterviewSession(base.sessionId);
-            } catch (e) {
-                console.error("Failed to refresh session:", e);
-                return;
-            }
-        }
-        setSession(currentSdt);
-
-        if (currentSdt.status === 'completed') {
-            setPhase("loading");
-            try {
-                const sum = await completeInterviewSession(currentSdt.sessionId);
-                setSummary(sum as any); setPhase("done");
-            } catch {
-                setSummary(null); setPhase("done");
-            }
-            return;
-        }
-
-        const activeId = currentSdt.progress.activeTopicId;
-        const topic = currentSdt.interviewPlan?.allTopics[activeId || ""];
-
-        if (topic) {
-            setCurrentQuestion({
-                questionId: topic.topicId,
-                question: currentSdt.progress.currentQuestionOverride || `Let's discuss ${topic.title}. ${topic.description}`,
-                category: topic.category,
-                difficulty: topic.difficulty,
-                questionNumber: currentSdt.progress.questionsAnswered + 1,
-                expectedTopics: [],
-                groundedIn: [],
-                hints: [],
-                followUpQuestions: []
-            });
-        }
-
-        setAnswer(""); setCurrentEval(null); setPhase("active");
-        setTimeout(() => textareaRef.current?.focus(), 100);
-    }, [session]);
 
     const handleContinueFromEval = useCallback(() => {
         if (!session) return;
