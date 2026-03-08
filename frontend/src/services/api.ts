@@ -248,7 +248,6 @@ export interface UserProfile {
   displayName: string;
   targetRole: string;
   language: string;
-  githubConnected: boolean;
   subscription: {
     tier: string;
     analysisQuota: number;
@@ -593,7 +592,6 @@ export const createUserProfile = (data: {
   displayName: string;
   targetRole: string;
   language: string;
-  githubConnected: boolean;
 }) =>
   apiCall<UserProfile>('/user/profile', {
     method: 'POST',
