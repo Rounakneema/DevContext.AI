@@ -240,6 +240,11 @@ export interface InterviewSimulation {
     medium: number;
     hard: number;
   };
+  mode?: 'sheet' | 'live';
+  completedModes?: {
+    sheet: boolean;
+    live: boolean;
+  };
 }
 
 export interface UserProfile {

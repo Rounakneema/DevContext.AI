@@ -18,7 +18,7 @@ import { renderAndPrintQuestionSheet } from "../utils/exportReport";
 import InterviewRadarChart from "../components/interview/InterviewRadarChart";
 import AiGeneratedNotice from "../components/AiGeneratedNotice";
 
-type Phase = "config" | "loading" | "active" | "evaluating" | "topic_review" | "done";
+type Phase = "config" | "loading" | "active" | "evaluating" | "topic_review" | "feedback" | "done";
 
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
@@ -197,6 +197,7 @@ const InterviewPage: React.FC = () => {
     const [session, setSession] = useState<InterviewSession | null>(null);
     const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
     const [summary, setSummary] = useState<InterviewSummary | null>(null);
+    const [lastEvaluation, setLastEvaluation] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
     const [recentSessions, setRecentSessions] = useState<InterviewSession[]>([]);
     const [isLoadingSessions, setIsLoadingSessions] = useState(false);
@@ -408,7 +409,7 @@ const InterviewPage: React.FC = () => {
         setPhase("evaluating");
         const timeSpent = Math.max(0, Number(questionElapsed) || Math.floor((Date.now() - startTime) / 1000));
         try {
-            await apiSubmitAnswer(session.sessionId, {
+            const evalResult = await apiSubmitAnswer(session.sessionId, {
                 questionId: currentQuestion.questionId,
                 questionText: currentQuestion.question,
                 answer: action === 'submit' ? answer.trim() : `[${action.toUpperCase()}]`,
@@ -416,13 +417,13 @@ const InterviewPage: React.FC = () => {
                 action
             });
 
+            setLastEvaluation(evalResult);
+
             // Refresh session to get updated signals/progress
             try {
                 const updatedSession = await getInterviewSession(session.sessionId);
                 setSession(updatedSession);
 
-                // Keep the evaluation for the final report, but do not interrupt the interview flow with
-                // per-question feedback screens. Move forward immediately.
                 if (updatedSession.status === 'completed' || String(updatedSession.progress?.currentPhase || '') === 'completed') {
                     setPhase("loading");
                     try {
@@ -434,27 +435,18 @@ const InterviewPage: React.FC = () => {
                     setPhase("done");
                     return;
                 }
-                const activeTopic = updatedSession.interviewPlan?.allTopics[updatedSession.progress?.activeTopicId || ""];
-                setAnswer("");
 
-                if (action === 'end_early') {
-                    // End-early is a session-level completion, not a topic celebration.
-                    await nextQuestion(updatedSession);
-                } else if (activeTopic?.isCompleted) {
-                    setPhase("topic_review");
-                } else {
-                    await nextQuestion(updatedSession);
-                }
+                setAnswer("");
+                setPhase("feedback");
                 return;
             } catch (e) {
                 console.error("Failed to refresh session:", e);
+                setPhase("feedback");
             }
 
             // Fallback: if refresh fails, still clear and continue based on current local state.
             setAnswer("");
-
-            setPhase("active");
-            await nextQuestion();
+            setPhase("feedback");
         } catch (e: any) {
             setError(e.message || "Failed to submit answer."); setPhase("active");
         }
@@ -503,7 +495,27 @@ const InterviewPage: React.FC = () => {
                                     onClick={async () => {
                                         setIsDownloading(true);
                                         try {
-                                            const full = await getAnalysis(effectiveAnalysisId);
+                                            let full = await getAnalysis(effectiveAnalysisId);
+
+                                            // Check if 50 questions exist or if sheet mode was marked complete
+                                            const hasSheet = (full?.interviewSimulation?.mode === 'sheet') || ((full?.interviewSimulation?.questions?.length ?? 0) > 10);
+
+                                            if (!hasSheet) {
+                                                await continueToStage3(effectiveAnalysisId, 'sheet');
+
+                                                // Polling logic similar to Live Interview
+                                                const started = Date.now();
+                                                while (Date.now() - started < 150_000) { // 2.5 mins for 50 questions
+                                                    const st: any = await getAnalysisStatus(effectiveAnalysisId);
+                                                    if (st?.stages?.interview_simulation?.status === "completed") {
+                                                        full = await getAnalysis(effectiveAnalysisId);
+                                                        if ((full?.interviewSimulation?.questions?.length ?? 0) > 5) break;
+                                                    }
+                                                    if (st?.stages?.interview_simulation?.status === "failed") throw new Error("Generation failed");
+                                                    await new Promise(r => setTimeout(r, 4000));
+                                                }
+                                            }
+
                                             const win = window.open('', '_blank');
                                             if (win) {
                                                 renderAndPrintQuestionSheet(win, full);
@@ -512,7 +524,7 @@ const InterviewPage: React.FC = () => {
                                             }
                                         } catch (e) {
                                             console.error("Failed to download questions", e);
-                                            alert("Failed to load question bank.");
+                                            alert("Failed to load or generate question bank. Please try again.");
                                         } finally {
                                             setIsDownloading(false);
                                         }
@@ -1048,7 +1060,48 @@ const InterviewPage: React.FC = () => {
                             <button onClick={nextQuestion} style={{ padding: "18px 48px", background: "var(--accent)", border: "none", borderRadius: 12, fontSize: 18, fontWeight: 800, color: "#fff", cursor: "pointer", boxShadow: "0 10px 20px -5px var(--accent-light)" }}>
                                 Move to Next Topic &rarr;
                             </button>
-                        </div>) : (
+                        </div>) : phase === "feedback" ? (
+                            <div style={{ textAlign: "center", padding: "20px 0" }}>
+                                <div style={{ fontSize: 56, marginBottom: 16 }}>{lastEvaluation?.evaluation?.overallScore >= 80 ? "✨" : lastEvaluation?.evaluation?.overallScore >= 60 ? "👍" : "💡"}</div>
+                                <h2 style={{ fontSize: 28, fontWeight: 900, color: "var(--text)", marginBottom: 8 }}>Question Feedback</h2>
+                                <p style={{ fontSize: 16, color: "var(--text2)", marginBottom: 32 }}>Great job! Here's how you did on this specific question.</p>
+
+                                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "32px", textAlign: "left", maxWidth: 640, margin: "0 auto 40px" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                                        <div style={{ fontSize: 12, fontWeight: 900, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1.5 }}>AI Evaluation</div>
+                                        <div style={{ fontSize: 24, fontWeight: 900, color: scoreColor(lastEvaluation?.evaluation?.overallScore || 0) }}>
+                                            {lastEvaluation?.evaluation?.overallScore || 0}%
+                                        </div>
+                                    </div>
+
+                                    <div style={{ fontSize: 16, color: "var(--text)", lineHeight: 1.6, marginBottom: 24, padding: "16px", background: "var(--bg)", borderRadius: 12, border: "1px solid var(--border)" }}>
+                                        {lastEvaluation?.evaluation?.coreEvaluation || "No specific evaluation provided."}
+                                    </div>
+
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                                        <div>
+                                            <div style={{ fontSize: 11, fontWeight: 800, color: "#6fcf97", textTransform: "uppercase", marginBottom: 10 }}>Strengths</div>
+                                            {((lastEvaluation?.evaluation?.strengths || []) as string[]).map((s, i) => (
+                                                <div key={i} style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4, display: "flex", gap: 6 }}>
+                                                    <span>•</span> {s}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: 11, fontWeight: 800, color: "#f6ad55", textTransform: "uppercase", marginBottom: 10 }}>Improvements</div>
+                                            {((lastEvaluation?.evaluation?.improvementSuggestions || []) as string[]).map((s, i) => (
+                                                <div key={i} style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4, display: "flex", gap: 6 }}>
+                                                    <span>•</span> {s}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button onClick={() => nextQuestion()} style={{ padding: "18px 48px", background: "var(--accent)", border: "none", borderRadius: 12, fontSize: 18, fontWeight: 800, color: "#fff", cursor: "pointer", boxShadow: "0 10px 20px -5px var(--accent-light)" }}>
+                                    Next Question &rarr;
+                                </button>
+                            </div>) : (
                         <div>
                             <textarea ref={textareaRef} value={answer} onChange={e => setAnswer(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type your answer here..." style={{ width: "100%", minHeight: 240, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px", fontSize: 16, color: "var(--text)", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.6 }} autoFocus />
                             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>

@@ -31,7 +31,7 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
   const { analysisId, projectContextMap, projectReview, intelligenceReport, s3Key, mode = 'sheet' } = event;
 
   try {
-    console.log(`Starting Stage 3 (${mode === 'sheet' ? 'Question Sheet' : 'Live Interview'}) for: ${analysisId}`);
+    console.log(`🎯 Stage 3 - Mode: ${mode} for ${analysisId}`);
 
     // Load code context
     const codeContext = await loadCodeContext(s3Key, projectContextMap);
@@ -42,44 +42,103 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
 
     console.log(`Loaded ${codeContext.length} chars of code`);
 
-    let interviewSimulation;
-    let interviewPlan;
+    // ✅ LOAD EXISTING DATA
+    const existingSimulation = await DB.getInterviewSimulation(analysisId);
+    const existingPlan = await DB.getInterviewPlan(analysisId);
 
-    if (mode === 'sheet') {
-      // MODE 1: Generate complete question sheet (legacy support)
-      interviewSimulation = await generateQuestionSheet(
-        projectContextMap,
-        projectReview,
-        intelligenceReport,
-        codeContext,
-        analysisId
-      );
-    } else {
-      // MODE 2: Initialize live interview (Topic-Driven)
-      const result = await initializeTopicDrivenInterview(
-        projectContextMap,
-        projectReview,
-        intelligenceReport,
-        codeContext,
-        analysisId
-      );
-      interviewSimulation = result.simulation;
-      interviewPlan = result.plan;
+    // ✅ CHECK: Has this mode already been generated?
+    const sheetComplete = existingSimulation?.completedModes?.sheet || false;
+    const liveComplete = existingSimulation?.completedModes?.live || false;
+
+    console.log(`📊 Status: Sheet=${sheetComplete}, Live=${liveComplete}`);
+
+    let interviewSimulation = existingSimulation;
+    let interviewPlan = existingPlan;
+
+    // ═══════════════════════════════════════════════════════════
+    //                    MODE: LIVE INTERVIEW
+    // ═══════════════════════════════════════════════════════════
+    if (mode === 'live') {
+      if (liveComplete && interviewPlan) {
+        console.log('✅ Live mode already complete, skipping regeneration');
+        // Just ensure simulation metadata exists
+        if (!interviewSimulation) {
+          interviewSimulation = {
+            questions: [],
+            mode: 'live',
+            completedModes: { sheet: sheetComplete, live: true },
+            generatedAt: new Date().toISOString()
+          };
+        }
+      } else {
+        console.log('🚀 Generating live mode (topic-driven interview)...');
+        const result = await initializeTopicDrivenInterview(
+          projectContextMap,
+          projectReview,
+          intelligenceReport,
+          codeContext,
+          analysisId
+        );
+
+        interviewPlan = result.plan;
+        interviewSimulation = {
+          ...result.simulation,
+          completedModes: {
+            sheet: sheetComplete,  // Preserve sheet status
+            live: true             // Mark live as complete
+          }
+        };
+      }
     }
 
-    // Save to DynamoDB
-    await DB.saveInterviewSimulation(analysisId, interviewSimulation);
+    // ═══════════════════════════════════════════════════════════
+    //                    MODE: QUESTION SHEET
+    // ═══════════════════════════════════════════════════════════
+    else {  // mode === 'sheet'
+      if (sheetComplete && existingSimulation?.questions?.length >= 40) {
+        console.log('✅ Sheet mode already complete, skipping regeneration');
+        // Use existing simulation
+      } else {
+        console.log('🚀 Generating sheet mode (50 questions)...');
+
+        // ✅ IMPORTANT: Pass existing topics to avoid collision
+        const existingTopics = interviewPlan?.allTopics;
+
+        const sheet = await generateQuestionSheet(
+          projectContextMap,
+          projectReview,
+          intelligenceReport,
+          codeContext,
+          analysisId,
+          existingTopics
+        );
+
+        interviewSimulation = {
+          ...sheet,
+          completedModes: {
+            sheet: true,           // Mark sheet as complete
+            live: liveComplete     // Preserve live status
+          }
+        };
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //                    SAVE TO DATABASE
+    // ═══════════════════════════════════════════════════════════
+    if (interviewSimulation) {
+      await DB.saveInterviewSimulation(analysisId, interviewSimulation);
+    }
     if (interviewPlan) {
       await DB.saveInterviewPlan(analysisId, interviewPlan);
     }
 
-    console.log(`Stage 3 completed: ${mode} mode`);
+    console.log(`✅ Stage 3 completed: ${mode} mode`);
 
     return {
       success: true,
       analysisId,
-      interviewSimulation,
-      interviewPlan
+      interviewSimulation
     };
 
   } catch (error) {
@@ -101,12 +160,13 @@ async function generateQuestionSheet(
   projectReview: any,
   intelligenceReport: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  topics?: Record<string, any>
 ): Promise<any> {
 
   console.log('Generating complete question sheet (50 questions)...');
 
-  const prompt = buildQuestionSheetPrompt(contextMap, projectReview, intelligenceReport, codeContext);
+  const prompt = buildQuestionSheetPrompt(contextMap, projectReview, intelligenceReport, codeContext, topics);
 
   const { text: content, inferenceTimeMs, inputTokens, outputTokens } = await callBedrockConverse(
     prompt,
@@ -210,12 +270,7 @@ export async function initializeTopicDrivenInterview(
     mode: 'live',
     modelMetadata: { modelId: MODEL_ID, tokensIn: 0, tokensOut: 0, inferenceTimeMs: 0, temperature: 0 },
     generatedAt: new Date().toISOString(),
-    usage: {
-      type: 'topic_driven_interview',
-      instructions: 'Live interview: topics are prepared upfront; each question is asked dynamically and saved as you answer.',
-      topicCount: topics.length,
-      estimatedDuration: '30-60 minutes'
-    }
+    completedModes: { sheet: false, live: true }
   };
 
   return { simulation, plan };
@@ -453,14 +508,18 @@ Return ONLY valid JSON array:
 
   const rawQuestions = parseQuestionsFromResponse(content);
 
-  return rawQuestions.map((q: any, index: number) => ({
+  const questions = rawQuestions.map((q: any, index: number) => ({
     ...q,
-    questionId: q.questionId || `CORE-${String(index + 1).padStart(2, '0')}`,
+    questionId: q.questionId || `SHEET-Q${String(index + 1).padStart(3, '0')}`,
+    source: 'question_sheet',
     category: normalizeCategory(q.category || 'implementation'),
     difficulty: normalizeDifficulty(q.difficulty || 'mid-level'),
     priority: 'critical',
     type: 'core'
   }));
+
+  // Organize into tracks
+  return organizeIntoTracks(questions, 'sheet');
 }
 
 /**
@@ -492,10 +551,25 @@ function buildQuestionSheetPrompt(
   contextMap: ProjectContextMap,
   projectReview: any,
   intelligenceReport: any,
-  codeContext: string
+  codeContext: string,
+  topics?: Record<string, any>
 ): string {
+  const topicsToAvoid = topics
+    ? `\n═══════════════════════════════════════════════════════════\n                 AVOID THESE TOPICS (Already in Live Interview)\n═══════════════════════════════════════════════════════════\n${Object.values(topics).map((t: any) => `• ${t.title}: ${t.description}`).join('\n')}
+
+⚠️ CRITICAL: Your 50 questions must be DIFFERENT from the topics above. 
+Focus on broader coverage across the entire codebase, not just the core modules.
+Include questions about:
+- Edge cases and error scenarios
+- Code organization and structure
+- Testing approaches (if any)
+- Configuration and setup
+- Utility functions and helpers
+- Documentation quality\n═══════════════════════════════════════════════════════════\n`
+    : '';
 
   return `You are a Staff Software Engineer at Google creating a comprehensive 50-question technical interview bank based on a candidate's actual codebase. Your questions must be deeply grounded in the code — never generic. A great interviewer asks questions that reveal whether the candidate truly understands what they built and WHY.
+${topicsToAvoid}
 
 ═══════════════════════════════════════════════════════════
                     REPOSITORY METADATA
@@ -578,7 +652,9 @@ QUESTION QUALITY GUIDELINES:
 - Each question must have complete expectedAnswer with keyPoints, acceptableApproaches, and redFlags
 
 Return ONLY valid JSON array. Each question must include:
-questionId, question (referencing specific files/code), category, difficulty, context (with fileReferences and relatedConcepts), expectedAnswer (with keyPoints, acceptableApproaches, redFlags), followUpQuestions (2-3 per question), evaluationCriteria (weights summing to 1.0), tags.`;
+questionId, question (referencing specific files/code), category, difficulty, context (with fileReferences and relatedConcepts), expectedAnswer (with keyPoints, acceptableApproaches, redFlags), followUpQuestions (2-3 per question), evaluationCriteria (weights summing to 1.0), tags.
+
+IMPORTANT: The "question" text must be DIFFERENT from any of the pre-identified topics listed above. Provide a broader coverage of the codebase.`;
 }
 
 /**

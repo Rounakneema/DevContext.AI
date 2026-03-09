@@ -829,24 +829,21 @@ async function handleContinueStage2(event: any, context: any) {
  */
 async function handleContinueStage3(event: any, context: any) {
   const analysisId = event.pathParameters?.id;
-
   if (!analysisId) {
     return {
       statusCode: 400,
       headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({ error: 'analysisId is required' })
-    };
+      body: JSON.stringify({ error: 'Missing analysis ID' })
+    }
   }
 
-  await assertOwnsAnalysisOrNotFound(event, analysisId);
   const analysis = await DB.getAnalysis(analysisId);
-
   if (!analysis) {
     return {
       statusCode: 404,
       headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
       body: JSON.stringify({ error: 'Analysis not found' })
-    };
+    }
   }
 
   // Check if Stage 2 is complete
@@ -858,47 +855,71 @@ async function handleContinueStage3(event: any, context: any) {
     };
   }
 
+  const body = JSON.parse(event.body || '{}');
+  const requestedMode = body.mode || 'sheet';
+  const repoContext = { userId: getUserIdFromEvent(event) };
+
   // Check if Stage 3 already completed
   if (analysis.stages.interview_simulation.status === 'completed') {
-    const body = JSON.parse(event.body || '{}');
-    const requestedMode = body.mode || 'sheet';
-    // Allow switching from sheet -> live by rerunning Stage 3 to generate an interview plan.
-    if (requestedMode === 'live') {
-      const full = await DB.getFullAnalysis(analysisId);
-      const currentMode = full?.interviewSimulation?.mode || 'sheet';
-      if (currentMode !== 'live') {
-        processStage3(analysisId, 'live', context);
-        await DB.updateAnalysisStatus(analysisId, 'processing');
-        await DB.updateWorkflowState(analysisId, 'stage3_pending');
-        return {
-          statusCode: 200,
-          headers: getCorsHeaders(getRequestOrigin(event)),
-          body: JSON.stringify({
-            analysisId,
-            message: 'Stage 3 (Interview Questions - live mode) started',
-            status: 'processing',
-            estimatedCompletionTime: 90
-          })
-        };
-      }
-    }
+    // LOAD EXISTING DATA
+    const full = await DB.getFullAnalysis(analysisId);
+    const simulation = full?.interviewSimulation;
+    const plan = full?.interviewPlan;
 
-    return {
-      statusCode: 200,
-      headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
-      body: JSON.stringify({
-        message: 'Stage 3 already completed',
-        status: 'completed'
-      })
-    };
+    // Check completedModes
+    const sheetComplete = simulation?.completedModes?.sheet || false;
+    const liveComplete = simulation?.completedModes?.live || false;
+
+    console.log(`📊 Modes status: sheet=${sheetComplete}, live=${liveComplete}, requested=${requestedMode}`);
+
+    // DECISION: Re-trigger only if requested mode is NOT complete
+    const needsRegeneration =
+      (requestedMode === 'sheet' && !sheetComplete) ||
+      (requestedMode === 'live' && !liveComplete);
+
+    if (needsRegeneration) {
+      console.log(`🔄 Re-triggering Stage 3 for missing ${requestedMode} mode`);
+
+      // Update status to processing immediately so frontend loop waits
+      await DB.updateStageStatus(analysisId, 'interview_simulation', {
+        status: 'processing',
+        startedAt: new Date().toISOString()
+      });
+
+      processStage3(analysisId, requestedMode, repoContext);
+      await DB.updateAnalysisStatus(analysisId, 'processing');
+      await DB.updateWorkflowState(analysisId, 'stage3_pending');
+
+      return {
+        statusCode: 200,
+        headers: getCorsHeaders(getRequestOrigin(event)),
+        body: JSON.stringify({
+          analysisId,
+          message: `Stage 3 (${requestedMode} mode) started`,
+          status: 'processing',
+          estimatedCompletionTime: requestedMode === 'sheet' ? 120 : 60
+        })
+      };
+    } else {
+      // Requested mode already complete
+      console.log(`✅ ${requestedMode} mode already complete`);
+      return {
+        statusCode: 200,
+        headers: getCorsHeaders(event.headers?.origin || event.headers?.Origin),
+        body: JSON.stringify({
+          message: `${requestedMode} mode already completed`,
+          status: 'completed',
+          data: {
+            simulation: requestedMode === 'sheet' ? simulation : null,
+            plan: requestedMode === 'live' ? plan : null
+          }
+        })
+      };
+    }
   }
 
-  // Start Stage 3 in background with mode if provided
-  const body = JSON.parse(event.body || '{}');
-  const mode = body.mode || 'sheet';
-  processStage3(analysisId, mode, context);
-
-  // Update status and workflow state to indicate Stage 3 is now in progress
+  // First time running Stage 3
+  processStage3(analysisId, requestedMode, context);
   await DB.updateAnalysisStatus(analysisId, 'processing');
   await DB.updateWorkflowState(analysisId, 'stage3_pending');
 
@@ -907,9 +928,9 @@ async function handleContinueStage3(event: any, context: any) {
     headers: getCorsHeaders(getRequestOrigin(event)),
     body: JSON.stringify({
       analysisId,
-      message: `Stage 3 (Interview Questions - ${mode} mode) started`,
+      message: `Stage 3 (${requestedMode} mode) started`,
       status: 'processing',
-      estimatedCompletionTime: 90
+      estimatedCompletionTime: requestedMode === 'sheet' ? 120 : 60
     })
   };
 }
@@ -1381,80 +1402,44 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   let interviewPlan = fullAnalysis.interviewPlan;
 
+  // 1. [DEPRECATED] buildFallbackInterviewPlanFromSimulation is now discouraged 
+  // to ensure we always use the rich topic-driven plans from Stage 3.
+  // interviewPlan = buildFallbackInterviewPlanFromSimulation(fullAnalysis, analysisId, config?.targetRole) || undefined;
+
+  // 2. If plan is missing, return a 404 with a specific message that triggers the frontend to call continueToStage3
   if (!interviewPlan) {
-    // 1. Try to build fallback from simulation (50q sheet) if available
-    interviewPlan = buildFallbackInterviewPlanFromSimulation(fullAnalysis, analysisId, config?.targetRole) || undefined;
+    const simulationStatus = fullAnalysis.analysis.stages.interview_simulation.status;
 
-    // 2. DETACHMENT LOGIC: If still no plan, try lazy initialization if Stage 2 is complete
-    if (!interviewPlan && fullAnalysis.analysis.stages.intelligence_report.status === 'completed') {
-      console.log(`🚀 Lazy initializing interview plan for ${analysisId}`);
-      try {
-        const repoMetadata = await DB.getRepositoryMetadata(analysisId);
-
-        // Load userCodeFiles from S3
-        let userCodeFiles: string[] = [];
-        if (repoMetadata.userCodeFilesS3Key) {
-          try {
-            const s3Response = await s3Client.send(new GetObjectCommand({
-              Bucket: CACHE_BUCKET,
-              Key: repoMetadata.userCodeFilesS3Key
-            }));
-            const s3Data = await s3Response.Body?.transformToString();
-            if (s3Data) {
-              userCodeFiles = JSON.parse(s3Data).userCodeFiles || [];
-            }
-          } catch (s3Err) {
-            console.warn('⚠️ S3 load failed during lazy init:', s3Err);
-          }
-        }
-
-        const projectReview = await DB.getProjectReview(analysisId);
-        const intelligenceReport = await DB.getIntelligenceReport(analysisId);
-
-        // Call extraction directly (detaching from Stage 3 Lambda)
-        const initializedPlan = await initializeTopicDrivenInterview(
-          {
-            totalFiles: repoMetadata.totalFiles,
-            frameworks: repoMetadata.frameworks,
-            entryPoints: repoMetadata.entryPoints,
-            coreModules: repoMetadata.coreModules,
-            userCodeFiles: userCodeFiles,
-            languages: repoMetadata.languages
-          } as any,
-          projectReview || {},
-          intelligenceReport || {},
-          repoMetadata.s3Key,
-          'live'
-        );
-
-        if (initializedPlan) {
-          interviewPlan = initializedPlan as any;
-          await DB.saveInterviewPlan(analysisId, interviewPlan!);
-          console.log(`✅ Lazy initialization complete for ${analysisId}`);
-        }
-      } catch (err) {
-        console.error('❌ Failed to lazy initialize interview plan:', err);
-      }
-    }
-
-    if (!interviewPlan) {
-      if (fullAnalysis.analysis.stages.interview_simulation.status === 'processing') {
-        return {
-          statusCode: 202,
-          headers: getCorsHeaders(getRequestOrigin(event)),
-          body: JSON.stringify({
-            message: 'Interview plan is being generated. Please wait...',
-            retryAfter: 10
-          })
-        };
-      }
-
+    if (simulationStatus === 'completed') {
+      // This likely means only SHEET mode was run, so we need to run LIVE mode now.
       return {
         statusCode: 404,
         headers: getCorsHeaders(getRequestOrigin(event)),
-        body: JSON.stringify({ error: 'Interview plan not found. Ensure Step 2 is complete.' })
+        body: JSON.stringify({ error: 'Interview topics (live plan) not found. Triggering generation...' })
       };
     }
+
+    if (simulationStatus === 'processing' || simulationStatus === 'pending') {
+      const msg = simulationStatus === 'pending'
+        ? 'Interview topics are not yet generated. Starting generation...'
+        : 'Interview plan is in progress and being generated. Please wait...';
+
+      return {
+        statusCode: 202,
+        headers: getCorsHeaders(getRequestOrigin(event)),
+        body: JSON.stringify({
+          message: msg,
+          status: 'processing',
+          retryAfter: 15
+        })
+      };
+    }
+
+    return {
+      statusCode: 404,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({ error: 'Interview plan not found. Ensure Step 2 is complete.' })
+    };
   }
 
   // ============================================================================
@@ -1493,7 +1478,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   const wantsImpl = wantsTechnical || (!wantsSystemDesign && !wantsBehavioral && requestedTypes.length === 0);
   const wantsEQ = wantsBehavioral || wantsTechnical || (!wantsSystemDesign && !wantsTechnical && requestedTypes.length === 0);
 
-  const topicsArray = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>);
+  const topicsArray = Object.values((interviewPlan.allTopics || {}) as Record<string, Types.InterviewTopic>);
   const archBuckets = topicsArray.filter(t => t.category === 'architecture');
   const implBuckets = topicsArray.filter(t => t.category === 'implementation');
   const eqBuckets = topicsArray.filter(t => t.category === 'engineering_quality');
@@ -1663,13 +1648,13 @@ async function handleGetInterviewSession(event: any) {
     // Hydrate topicState from session progress
     if (session.progress?.topicState) {
       Object.entries(session.progress.topicState).forEach(([tId, state]) => {
-        if (interviewPlan.allTopics[tId]) {
+        if (interviewPlan.allTopics && interviewPlan.allTopics[tId]) {
           Object.assign(interviewPlan.allTopics[tId], state);
         }
       });
     }
 
-    questions = Object.values(interviewPlan.allTopics as Record<string, Types.InterviewTopic>).map(t => ({
+    questions = Object.values((interviewPlan.allTopics || {}) as Record<string, Types.InterviewTopic>).map(t => ({
       questionId: t.topicId,
       question: (t.topicId === activeTopicId && override) ? override : `Let's discuss ${t.title}`,
       category: t.category,

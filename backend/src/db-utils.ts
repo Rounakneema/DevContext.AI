@@ -317,16 +317,46 @@ export async function saveIntelligenceReport(
 
 export async function saveInterviewSimulation(
   analysisId: string,
-  simulation: Omit<Types.InterviewSimulation, 'PK' | 'SK'>
+  simulation: any
 ): Promise<void> {
+  // Ensure completedModes exists
+  const completedModes = simulation.completedModes || {
+    sheet: simulation.mode === 'sheet' || (simulation.questions?.length || 0) >= 40,
+    live: simulation.mode === 'live'
+  };
+
   await dynamoClient.send(new PutCommand({
     TableName: MAIN_TABLE,
     Item: {
       PK: `ANALYSIS#${analysisId}`,
       SK: 'INTERVIEW_SIMULATION',
-      ...simulation
+      ...simulation,
+      completedModes,
+      updatedAt: new Date().toISOString()
     }
   }));
+}
+
+export async function getInterviewSimulation(analysisId: string): Promise<any | null> {
+  const result = await dynamoClient.send(new GetCommand({
+    TableName: MAIN_TABLE,
+    Key: {
+      PK: `ANALYSIS#${analysisId}`,
+      SK: 'INTERVIEW_SIMULATION'
+    }
+  }));
+
+  if (!result.Item) return null;
+
+  // Ensure completedModes exists for backward compatibility
+  if (!result.Item.completedModes) {
+    result.Item.completedModes = {
+      sheet: (result.Item.questions?.length || 0) >= 40,
+      live: result.Item.mode === 'live'
+    };
+  }
+
+  return result.Item;
 }
 
 // ============================================================================

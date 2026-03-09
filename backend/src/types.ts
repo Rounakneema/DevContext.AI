@@ -523,6 +523,11 @@ export interface InterviewSimulation {
   coreQuestions?: InterviewQuestion[];
   tracks?: any; // For sheet mode organization
 
+  completedModes?: {
+    sheet: boolean;
+    live: boolean;
+  };
+
   modelMetadata: ModelMetadata;
   generatedAt: string;
 }
