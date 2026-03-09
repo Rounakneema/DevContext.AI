@@ -1419,7 +1419,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   const requestedRole = config?.targetRole;
 
   // 1. If role is explicitly provided and DIFFERENT from the existing plan, trigger regeneration
-  if (requestedRole && interviewPlan && interviewPlan.targetRole !== requestedRole) {
+  if (requestedRole && interviewPlan && interviewPlan.targetRole?.toLowerCase().trim() !== requestedRole.toLowerCase().trim()) {
     console.log(`[ORCH] Role mismatch (${interviewPlan.targetRole} vs ${requestedRole}). Triggering Stage 3 regeneration...`);
 
     // Clear the current plan so we don't use the old one

@@ -199,6 +199,7 @@ const InterviewPage: React.FC = () => {
     const [summary, setSummary] = useState<InterviewSummary | null>(null);
     const [lastEvaluation, setLastEvaluation] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
     const [recentSessions, setRecentSessions] = useState<InterviewSession[]>([]);
     const [isLoadingSessions, setIsLoadingSessions] = useState(false);
     const [attempts, setAttempts] = useState<any[]>([]);
@@ -328,7 +329,7 @@ const InterviewPage: React.FC = () => {
                     msg.toLowerCase().includes("in progress") ||
                     msg.toLowerCase().includes("regeneration")
                 ) {
-                    setError("Initializing interview topics based on your code. Please wait...");
+                    setLoadingMessage("Detecting role change. Preparing fresh, role-specific questions for you...");
                     try {
                         await continueToStage3(effectiveAnalysisId, 'live');
                     } catch {
@@ -346,10 +347,15 @@ const InterviewPage: React.FC = () => {
                             console.log(`[FRONTEND] Polling Stage 3 status: ${stage3?.status}`);
                             // Check specific stage status instead of global workflow state to be safer
                             if (stage3?.status === "completed") {
-                                console.log("[FRONTEND] Stage 3 completed! Fetching fresh session.");
+                                setLoadingMessage("Questions ready! Finalizing your session...");
                                 break;
                             }
                             if (stage3?.status === "failed") throw new Error(stage3.errorMessage || "Stage 3 failed");
+
+                            // Update message based on progress if available
+                            if (stage3?.progress) {
+                                setLoadingMessage(`Tailoring questions for ${role}... (${stage3.progress}%)`);
+                            }
                         } catch (stErr: any) {
                             if (stErr.message?.includes("failed")) throw stErr;
                         }
@@ -359,6 +365,8 @@ const InterviewPage: React.FC = () => {
                 } else {
                     throw e;
                 }
+            } finally {
+                setLoadingMessage(null);
             }
             if (!newSession.questions || newSession.questions.length === 0) {
                 console.warn("[FRONTEND] Session created but no questions found. Persisting loading state.");
@@ -697,8 +705,12 @@ const InterviewPage: React.FC = () => {
                 <BgBlobs />
                 <div style={{ textAlign: "center" }}>
                     <div style={{ width: 56, height: 56, border: "4px solid var(--accent-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 24px" }} />
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Preparing your interview...</div>
-                    <div style={{ fontSize: 14, color: "var(--text2)" }}>Generating project-specific questions</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
+                        {loadingMessage || "Preparing your interview..."}
+                    </div>
+                    <div style={{ fontSize: 14, color: "var(--text2)" }}>
+                        {loadingMessage ? "This ensures the evaluation is accurate for your specific role." : "Generating project-specific questions"}
+                    </div>
                 </div>
             </div>
         );
