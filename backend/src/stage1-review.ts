@@ -52,9 +52,10 @@ export const handler: Handler<Stage1Event, Stage1Response> = async (event) => {
     }
 
     console.log(`Loaded ${code.length} characters of code context`);
+    await DB.updateStageProgress(analysisId, 'project_review', 20);
 
     // Generate project review using enhanced industry-standard prompt
-    const projectReview = await generateProjectReview(projectContextMap, code);
+    const projectReview = await generateProjectReview(analysisId, projectContextMap, code);
 
     // Validate grounding
     const groundingChecker = new GroundingChecker();
@@ -175,6 +176,7 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
 }
 
 async function generateProjectReview(
+  analysisId: string,
   contextMap: ProjectContextMap,
   codeContext: string
 ): Promise<any> {
@@ -413,6 +415,7 @@ Return VALID JSON:
 `;
 
   console.log('🚀 Launching parallel Stage 1 analysis...');
+  await DB.updateStageProgress(analysisId, 'project_review', 30);
 
   // 2. Execute Parallel Calls
   const [techRes, archRes, riskRes] = await Promise.all([
@@ -422,6 +425,7 @@ Return VALID JSON:
   ]);
 
   console.log('✅ Parallel analysis complete. Synthesizing Stage 1 Review...');
+  await DB.updateStageProgress(analysisId, 'project_review', 75);
 
   // 3. Synthesis Prompt
   const synthesisPrompt = `You are a Principal Software Engineer producing a final industry-grade code review.
@@ -538,6 +542,8 @@ Structure:
     maxTokens: 8000,
     temperature: 0.4
   });
+
+  await DB.updateStageProgress(analysisId, 'project_review', 95);
 
   const parsed = extractJson(finalRes.text);
   if (!parsed) {

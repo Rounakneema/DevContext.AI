@@ -42,6 +42,7 @@ export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
     }
 
     console.log(`Loaded ${codeContext.length} characters of code for analysis`);
+    await DB.updateStageProgress(analysisId, 'intelligence_report', 15);
 
     // Run parallel agents for different aspects
     console.log('Launching parallel analysis agents...');
@@ -61,6 +62,8 @@ export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
       projectReview,
       analysisId
     );
+
+    await DB.updateStageProgress(analysisId, 'intelligence_report', 95);
 
     // Save to DynamoDB
     await DB.saveIntelligenceReport(analysisId, intelligenceReport);
@@ -130,23 +133,36 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
   return fileContents.join('\n\n');
 }
 
-/**
- * Run parallel agents for different aspects of intelligence gathering
- */
 async function runParallelAgents(
   contextMap: ProjectContextMap,
   projectReview: any,
   codeContext: string,
   analysisId: string
 ): Promise<any[]> {
+  await DB.updateStageProgress(analysisId, 'intelligence_report', 25);
+  let completedCount = 0;
+  const totalAgents = 5;
+
+  const trackAgent = async (promise: Promise<any>) => {
+    try {
+      const res = await promise;
+      completedCount++;
+      const progress = 25 + Math.round((completedCount / totalAgents) * 60); // 25 -> 85
+      await DB.updateStageProgress(analysisId, 'intelligence_report', progress);
+      return res;
+    } catch (err) {
+      completedCount++; // Still count as "processed" to move progress bar
+      throw err;
+    }
+  };
 
   // Define 5 specialized agents
   const agentPromises = [
-    runArchitectureAgent(contextMap, projectReview, codeContext, analysisId),
-    runDesignDecisionsAgent(contextMap, projectReview, codeContext, analysisId),
-    runTradeoffsAgent(contextMap, projectReview, codeContext, analysisId),
-    runScalabilityAgent(contextMap, projectReview, codeContext, analysisId),
-    runResumeBulletsAgent(contextMap, projectReview, codeContext, analysisId)
+    trackAgent(runArchitectureAgent(contextMap, projectReview, codeContext, analysisId)),
+    trackAgent(runDesignDecisionsAgent(contextMap, projectReview, codeContext, analysisId)),
+    trackAgent(runTradeoffsAgent(contextMap, projectReview, codeContext, analysisId)),
+    trackAgent(runScalabilityAgent(contextMap, projectReview, codeContext, analysisId)),
+    trackAgent(runResumeBulletsAgent(contextMap, projectReview, codeContext, analysisId))
   ];
 
   // Run all agents in parallel

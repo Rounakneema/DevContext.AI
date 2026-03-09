@@ -17,7 +17,8 @@ type WorkflowState =
 interface Stage {
   name: string;
   detail: string;
-  status: 'done' | 'running' | 'pending' | 'awaiting';
+  status: 'done' | 'running' | 'pending' | 'awaiting' | 'failed';
+  progress?: number;
 }
 
 const LoadingPage: React.FC = () => {
@@ -34,6 +35,7 @@ const LoadingPage: React.FC = () => {
   const [stage3Mode, setStage3Mode] = useState<'sheet' | 'live' | null>(null);
   const [sheetWindow, setSheetWindow] = useState<Window | null>(null);
   const [autoPrinted, setAutoPrinted] = useState(false);
+  const [overallProgress, setOverallProgress] = useState(5);
 
   // Redirect if no analysisId
   React.useEffect(() => {
@@ -43,12 +45,77 @@ const LoadingPage: React.FC = () => {
     }
   }, [analysisId, navigate]);
 
+  const [stages, setStages] = useState<Stage[]>([
+    {
+      name: 'Repository cloning & processing',
+      detail: 'Extracting files and tokens',
+      status: 'done',
+      progress: 100
+    },
+    {
+      name: 'Stage 1 — Project Review',
+      detail: 'Scoring code quality',
+      status: 'running',
+      progress: 0
+    },
+    {
+      name: 'Stage 2 — Intelligence Report',
+      detail: 'Architecture reconstruction',
+      status: 'pending',
+      progress: 0
+    },
+    {
+      name: 'Stage 3 — Interview Simulation',
+      detail: 'Generating interview questions',
+      status: 'pending',
+      progress: 0
+    },
+  ]);
+
+  // Update stages based on workflow state and raw data
+  const syncStagesWithData = useCallback((data: any) => {
+    const state = data.workflowState as WorkflowState;
+    const backendStages = data.stages || {};
+
+    setOverallProgress(data.progress || 0);
+    setWorkflowState(state);
+
+    setStages((prev) => {
+      const next = [...prev];
+
+      // Stage 1
+      const s1 = backendStages.project_review || {};
+      next[1] = {
+        ...next[1],
+        status: s1.status === 'processing' ? 'running' : (s1.status === 'completed' ? 'done' : (s1.status === 'failed' ? 'failed' : 'pending')),
+        progress: s1.progress || (s1.status === 'completed' ? 100 : 0)
+      };
+
+      // Stage 2
+      const s2 = backendStages.intelligence_report || {};
+      next[2] = {
+        ...next[2],
+        status: s2.status === 'processing' ? 'running' : (s2.status === 'completed' ? 'done' : (s2.status === 'failed' ? 'failed' : (state === 'stage1_complete_awaiting_approval' ? 'awaiting' : 'pending'))),
+        progress: s2.progress || (s2.status === 'completed' ? 100 : 0)
+      };
+
+      // Stage 3
+      const s3 = backendStages.interview_simulation || {};
+      next[3] = {
+        ...next[3],
+        status: s3.status === 'processing' ? 'running' : (s3.status === 'completed' ? 'done' : (s3.status === 'failed' ? 'failed' : (state === 'stage2_complete_awaiting_approval' ? 'awaiting' : 'pending'))),
+        progress: s3.progress || (s3.status === 'completed' ? 100 : 0)
+      };
+
+      return next;
+    });
+  }, [analysisId, navigate, stage3Mode, autoPrinted, sheetWindow]); // Added deps
+
   // WebSocket — instant stage-complete notifications (polling is the fallback)
   useWebSocket(analysisId, {
     onStageComplete: (payload) => {
       if (payload.workflowState) {
-        setWorkflowState(payload.workflowState as WorkflowState);
-        updateStagesFromWorkflow(payload.workflowState as WorkflowState);
+        syncStagesWithData(payload);
         if (payload.workflowState === 'all_complete') {
           if (stage3Mode === 'sheet') {
             // Print dialog needs focus; don't auto-redirect for sheet mode.
@@ -77,77 +144,11 @@ const LoadingPage: React.FC = () => {
     },
     onAnalysisComplete: () => {
       setWorkflowState('all_complete');
-      updateStagesFromWorkflow('all_complete');
       if (stage3Mode !== 'sheet') {
         setTimeout(() => navigate(`/app/dashboard?id=${analysisId}&tab=interview`), 1500);
       }
     },
   });
-
-  const [stages, setStages] = useState<Stage[]>([
-    {
-      name: 'Repository cloning & processing',
-      detail: 'Extracting files and tokens',
-      status: 'done',
-    },
-    {
-      name: 'Stage 1 — Project Review',
-      detail: 'Scoring code quality · Llama 3.3 70B',
-      status: 'running',
-    },
-    {
-      name: 'Stage 2 — Intelligence Report',
-      detail: 'Architecture reconstruction · Llama 3.3 70B',
-      status: 'pending',
-    },
-    {
-      name: 'Stage 3 — Interview Simulation',
-      detail: 'Generating interview questions · Cohere Command R+',
-      status: 'pending',
-    },
-  ]);
-
-  // Update stages based on workflow state
-  const updateStagesFromWorkflow = useCallback((state: WorkflowState) => {
-    setStages((prev) => {
-      const newStages = [...prev];
-
-      switch (state) {
-        case 'stage1_pending':
-          newStages[1] = { ...newStages[1], status: 'running' };
-          newStages[2] = { ...newStages[2], status: 'pending' };
-          newStages[3] = { ...newStages[3], status: 'pending' };
-          break;
-        case 'stage1_complete_awaiting_approval':
-          newStages[1] = { ...newStages[1], status: 'done' };
-          newStages[2] = { ...newStages[2], status: 'awaiting' };
-          newStages[3] = { ...newStages[3], status: 'pending' };
-          break;
-        case 'stage2_pending':
-          newStages[1] = { ...newStages[1], status: 'done' };
-          newStages[2] = { ...newStages[2], status: 'running' };
-          newStages[3] = { ...newStages[3], status: 'pending' };
-          break;
-        case 'stage2_complete_awaiting_approval':
-          newStages[1] = { ...newStages[1], status: 'done' };
-          newStages[2] = { ...newStages[2], status: 'done' };
-          newStages[3] = { ...newStages[3], status: 'awaiting' };
-          break;
-        case 'stage3_pending':
-          newStages[1] = { ...newStages[1], status: 'done' };
-          newStages[2] = { ...newStages[2], status: 'done' };
-          newStages[3] = { ...newStages[3], status: 'running' };
-          break;
-        case 'all_complete':
-          newStages[1] = { ...newStages[1], status: 'done' };
-          newStages[2] = { ...newStages[2], status: 'done' };
-          newStages[3] = { ...newStages[3], status: 'done' };
-          break;
-      }
-
-      return newStages;
-    });
-  }, []);
 
   // Poll for status
   useEffect(() => {
@@ -156,8 +157,7 @@ const LoadingPage: React.FC = () => {
     const pollStatus = async () => {
       try {
         const data = await getAnalysisStatus(analysisId);
-        setWorkflowState(data.workflowState as WorkflowState);
-        updateStagesFromWorkflow(data.workflowState as WorkflowState);
+        syncStagesWithData(data);
 
         // Detect backend failure or cancellation
         if (data.workflowState === 'failed') {
@@ -200,7 +200,7 @@ const LoadingPage: React.FC = () => {
     pollStatus();
     pollInterval = setInterval(pollStatus, 3000);
     return () => clearInterval(pollInterval);
-  }, [analysisId, navigate, updateStagesFromWorkflow, stage3Mode]);
+  }, [analysisId, navigate, syncStagesWithData, stage3Mode]);
 
   // Cancel analysis
   const handleCancel = async () => {
@@ -227,14 +227,13 @@ const LoadingPage: React.FC = () => {
       await continueToStage2(analysisId);
 
       setWorkflowState('stage2_pending');
-      updateStagesFromWorkflow('stage2_pending');
+      syncStagesWithData({ workflowState: 'stage2_pending', stages: { intelligence_report: { status: 'processing', progress: 0 } } });
 
       // Resume polling
       const pollInterval = setInterval(async () => {
         try {
           const data = await getAnalysisStatus(analysisId);
-          setWorkflowState(data.workflowState as WorkflowState);
-          updateStagesFromWorkflow(data.workflowState as WorkflowState);
+          syncStagesWithData(data);
 
           if (data.workflowState === 'stage2_complete_awaiting_approval') {
             clearInterval(pollInterval);
@@ -267,7 +266,7 @@ const LoadingPage: React.FC = () => {
       await continueToStage3(analysisId, mode);
 
       setWorkflowState('stage3_pending');
-      updateStagesFromWorkflow('stage3_pending');
+      syncStagesWithData({ workflowState: 'stage3_pending', stages: { interview_simulation: { status: 'processing', progress: 0 } } });
 
       // For live mode, take the user directly to the interview UI. InterviewPage will
       // handle waiting/retrying if Stage 3 is still running.
@@ -280,8 +279,7 @@ const LoadingPage: React.FC = () => {
       const pollInterval = setInterval(async () => {
         try {
           const data = await getAnalysisStatus(analysisId);
-          setWorkflowState(data.workflowState as WorkflowState);
-          updateStagesFromWorkflow(data.workflowState as WorkflowState);
+          syncStagesWithData(data);
 
           if (data.workflowState === 'all_complete') {
             clearInterval(pollInterval);
@@ -474,9 +472,10 @@ const LoadingPage: React.FC = () => {
               </div>
               <div className="stage-tag">
                 {stage.status === 'done' && 'Done'}
-                {stage.status === 'running' && 'Running'}
+                {stage.status === 'running' && (stage.progress ? `${stage.progress}%` : 'Running')}
                 {stage.status === 'pending' && 'Queued'}
                 {stage.status === 'awaiting' && 'Your Decision'}
+                {stage.status === 'failed' && 'Failed'}
               </div>
             </div>
           ))}
@@ -486,7 +485,7 @@ const LoadingPage: React.FC = () => {
         {isProcessing && (
           <>
             <div className="progress-bar-wrap">
-              <div className="progress-bar-fill"></div>
+              <div className="progress-bar-fill" style={{ width: `${overallProgress}%` }}></div>
             </div>
             <div className="loading-hint">Results stream progressively — Stage 1 arrives first</div>
             <button

@@ -570,9 +570,21 @@ async function handleGetStatus(event: any) {
   }
 
   // Calculate progress based on stages
-  const stages = analysis.stages;
-  const completedStages = Object.values(stages).filter((s: any) => s.status === 'completed').length;
-  const progress = Math.round((completedStages / 3) * 100);
+  const stages = analysis.stages || {};
+
+  const getStageProgress = (s: any) => {
+    if (!s) return 0;
+    if (s.status === 'completed') return 100;
+    if (s.status === 'failed') return 0;
+    return s.progress || 0;
+  };
+
+  const p1 = getStageProgress(stages.project_review);
+  const p2 = getStageProgress(stages.intelligence_report);
+  const p3 = getStageProgress(stages.interview_simulation);
+
+  // Total progress is the average of the 3 stages
+  const progress = Math.round((p1 + p2 + p3) / 3);
 
   return {
     statusCode: 200,
@@ -584,25 +596,22 @@ async function handleGetStatus(event: any) {
       progress,
       stages: {
         project_review: {
-          status: stages.project_review.status,
-          progress: stages.project_review.status === 'completed' ? 100 :
-            stages.project_review.status === 'processing' ? 50 : 0,
-          startedAt: stages.project_review.startedAt,
-          completedAt: stages.project_review.completedAt
+          status: stages.project_review?.status || 'pending',
+          progress: p1,
+          startedAt: stages.project_review?.startedAt,
+          completedAt: stages.project_review?.completedAt
         },
         intelligence_report: {
-          status: stages.intelligence_report.status,
-          progress: stages.intelligence_report.status === 'completed' ? 100 :
-            stages.intelligence_report.status === 'processing' ? 50 : 0,
-          startedAt: stages.intelligence_report.startedAt,
-          completedAt: stages.intelligence_report.completedAt
+          status: stages.intelligence_report?.status || 'pending',
+          progress: p2,
+          startedAt: stages.intelligence_report?.startedAt,
+          completedAt: stages.intelligence_report?.completedAt
         },
         interview_simulation: {
-          status: stages.interview_simulation.status,
-          progress: stages.interview_simulation.status === 'completed' ? 100 :
-            stages.interview_simulation.status === 'processing' ? 50 : 0,
-          startedAt: stages.interview_simulation.startedAt,
-          completedAt: stages.interview_simulation.completedAt
+          status: stages.interview_simulation?.status || 'pending',
+          progress: p3,
+          startedAt: stages.interview_simulation?.startedAt,
+          completedAt: stages.interview_simulation?.completedAt
         }
       },
       errorMessage: analysis.errorMessage

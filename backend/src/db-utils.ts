@@ -162,6 +162,29 @@ export async function updateStageStatus(
   }));
 }
 
+export async function updateStageProgress(
+  analysisId: string,
+  stage: keyof Types.StageTracking,
+  progress: number
+): Promise<void> {
+  await dynamoClient.send(new UpdateCommand({
+    TableName: MAIN_TABLE,
+    Key: {
+      PK: `ANALYSIS#${analysisId}`,
+      SK: 'METADATA'
+    },
+    UpdateExpression: 'SET stages.#stage.#progress = :progress, updatedAt = :time',
+    ExpressionAttributeNames: {
+      '#stage': stage as string,
+      '#progress': 'progress'
+    },
+    ExpressionAttributeValues: {
+      ':progress': progress,
+      ':time': new Date().toISOString()
+    }
+  }));
+}
+
 export async function updateWorkflowState(
   analysisId: string,
   workflowState: Types.Analysis['workflowState']

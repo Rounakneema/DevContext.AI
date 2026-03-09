@@ -41,6 +41,7 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
     }
 
     console.log(`Loaded ${codeContext.length} chars of code`);
+    await DB.updateStageProgress(analysisId, 'interview_simulation', 30);
 
     // ✅ LOAD EXISTING DATA
     const existingSimulation = await DB.getInterviewSimulation(analysisId);
@@ -72,6 +73,7 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
         }
       } else {
         console.log('🚀 Generating live mode (topic-driven interview)...');
+        await DB.updateStageProgress(analysisId, 'interview_simulation', 40);
         const result = await initializeTopicDrivenInterview(
           projectContextMap,
           projectReview,
@@ -100,6 +102,7 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
         // Use existing simulation
       } else {
         console.log('🚀 Generating sheet mode (50 questions)...');
+        await DB.updateStageProgress(analysisId, 'interview_simulation', 40);
 
         // ✅ IMPORTANT: Pass existing topics to avoid collision
         const existingTopics = interviewPlan?.allTopics;
@@ -163,6 +166,8 @@ async function generateQuestionSheet(
   analysisId: string,
   topics?: Record<string, any>
 ): Promise<any> {
+  const startTime = Date.now();
+  await DB.updateStageProgress(analysisId, 'interview_simulation', 45);
 
   console.log('Generating complete question sheet (50 questions)...');
 
@@ -226,6 +231,7 @@ export async function initializeTopicDrivenInterview(
   codeContext: string,
   analysisId: string
 ): Promise<{ simulation: any, plan: any }> {
+  await DB.updateStageProgress(analysisId, 'interview_simulation', 45);
 
   console.log('Initializing topic-driven interview mode...');
 
@@ -244,6 +250,7 @@ export async function initializeTopicDrivenInterview(
     candidateLevel,
     analysisId
   );
+  await DB.updateStageProgress(analysisId, 'interview_simulation', 70);
 
   // 2. Build Interview Plan (Phases)
   const plan = {
@@ -262,6 +269,7 @@ export async function initializeTopicDrivenInterview(
     ],
     generatedAt: new Date().toISOString()
   };
+  await DB.updateStageProgress(analysisId, 'interview_simulation', 95);
 
   const simulation = {
     questions: [],

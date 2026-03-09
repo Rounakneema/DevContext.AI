@@ -86,6 +86,7 @@ export interface StageTracking {
 
 export interface StageStatus {
   status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress?: number; // 0-100
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
