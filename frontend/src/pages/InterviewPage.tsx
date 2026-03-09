@@ -313,9 +313,9 @@ const InterviewPage: React.FC = () => {
             try {
                 newSession = await create();
                 // If it returned a 202 or processing status without throwing
-                if (newSession && newSession.status === 'processing') {
-                    console.log("[FRONTEND] Session in processing state, triggering re-poll logic.");
-                    throw new Error(newSession.error || "Interview plan not found");
+                if (newSession && (newSession.status === 'processing' || newSession.status === 'regeneration_triggered')) {
+                    console.log("[FRONTEND] Session in processing/regeneration state, triggering re-poll logic.");
+                    throw new Error(newSession.message || newSession.error || "Interview plan not found");
                 }
             } catch (e: any) {
                 const msg = String(e?.message || e?.error || e || "");
@@ -325,7 +325,8 @@ const InterviewPage: React.FC = () => {
                     msg.toLowerCase().includes("stage 2") ||
                     msg.toLowerCase().includes("plan not found") ||
                     msg.toLowerCase().includes("plan not yet generated") ||
-                    msg.toLowerCase().includes("in progress")
+                    msg.toLowerCase().includes("in progress") ||
+                    msg.toLowerCase().includes("regeneration")
                 ) {
                     setError("Initializing interview topics based on your code. Please wait...");
                     try {

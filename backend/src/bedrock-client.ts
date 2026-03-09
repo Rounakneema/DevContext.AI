@@ -75,39 +75,57 @@ export async function callBedrockConverse(
 export function extractJson(text: string): any {
     if (!text) return null;
 
+    // Remove any potential non-printable characters or whitespace at the beginning/end
+    const cleanedText = text.trim();
+
     try {
         // 1. Try to find JSON block in markdown
-        const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        const cleanText = jsonMatch ? jsonMatch[1] : text;
+        const jsonMatch = cleanedText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        const codeBlockText = jsonMatch ? jsonMatch[1].trim() : cleanedText;
 
         // 2. Try standard parse first (performance)
         try {
-            return JSON.parse(cleanText);
+            return JSON.parse(codeBlockText);
         } catch (e) {
             // 3. Fallback: Try repairing and parsing
-            const repaired = jsonrepair(cleanText);
+            const repaired = jsonrepair(codeBlockText);
             return JSON.parse(repaired);
         }
     } catch (err) {
-        console.error("JSON extraction/repair failed:", err);
+        console.error("JSON extraction/repair failed, attempting deep rescue...");
 
-        // 4. Last resort: Try to find anything between { } or [ ]
+        // 4. Try to find anything between { } or [ ]
         try {
-            const firstBrace = text.indexOf('{');
-            const lastBrace = text.lastIndexOf('}');
-            const firstBracket = text.indexOf('[');
-            const lastBracket = text.lastIndexOf(']');
+            const firstBrace = cleanedText.indexOf('{');
+            const lastBrace = cleanedText.lastIndexOf('}');
+            const firstBracket = cleanedText.indexOf('[');
+            const lastBracket = cleanedText.lastIndexOf(']');
 
-            let substring = "";
+            let candidate = "";
+            let isObject = false;
+
             if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
-                substring = text.substring(firstBrace, lastBrace + 1);
+                candidate = cleanedText.substring(firstBrace, lastBrace + 1);
+                isObject = true;
             } else if (firstBracket !== -1) {
-                substring = text.substring(firstBracket, lastBracket + 1);
+                candidate = cleanedText.substring(firstBracket, lastBracket + 1);
             }
 
-            if (substring) {
-                const repaired = jsonrepair(substring);
-                return JSON.parse(repaired);
+            if (candidate) {
+                try {
+                    const repaired = jsonrepair(candidate);
+                    return JSON.parse(repaired);
+                } catch (rescueErr) {
+                    console.error("Deep rescue jsonrepair failed, trying substring match...");
+
+                    // 5. Final effort: if it's truncated, try to close it manually
+                    if (candidate.startsWith('[') && !candidate.endsWith(']')) {
+                        try { return JSON.parse(jsonrepair(candidate + ']')); } catch (e) { }
+                    }
+                    if (candidate.startsWith('{') && !candidate.endsWith('}')) {
+                        try { return JSON.parse(jsonrepair(candidate + '}')); } catch (e) { }
+                    }
+                }
             }
         } catch (innerErr) {
             console.error("Deep rescue JSON repair failed:", innerErr);

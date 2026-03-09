@@ -1033,7 +1033,7 @@ async function processStage2(analysisId: string, context: any) {
   }
 }
 
-async function processStage3(analysisId: string, mode: string, context: any) {
+async function processStage3(analysisId: string, mode: string, context: any, roleOverride?: string, levelOverride?: string) {
   try {
     console.log(`Starting Stage 3 (${mode}) for analysis: ${analysisId}`);
 
@@ -1092,7 +1092,9 @@ async function processStage3(analysisId: string, mode: string, context: any) {
       intelligenceReport: intelligenceReport || {},
       s3Key: repoMetadata.s3Key,
       mode, // Pass mode to Stage 3
-      domainInfo: repoMetadata.domainInfo
+      domainInfo: repoMetadata.domainInfo,
+      targetRole: roleOverride,
+      candidateLevel: levelOverride
     });
 
     if (!stage3Result || stage3Result.success === false) {
@@ -1414,6 +1416,30 @@ async function handleCreateInterviewSession(event: any, context: any) {
   }
 
   let interviewPlan = fullAnalysis.interviewPlan;
+  const requestedRole = config?.targetRole;
+
+  // 1. If role is explicitly provided and DIFFERENT from the existing plan, trigger regeneration
+  if (requestedRole && interviewPlan && interviewPlan.targetRole !== requestedRole) {
+    console.log(`[ORCH] Role mismatch (${interviewPlan.targetRole} vs ${requestedRole}). Triggering Stage 3 regeneration...`);
+
+    // Clear the current plan so we don't use the old one
+    await DB.updateStageStatus(analysisId, 'interview_simulation', {
+      status: 'processing',
+      startedAt: new Date().toISOString()
+    });
+
+    processStage3(analysisId, 'live', { userId }, requestedRole);
+
+    return {
+      statusCode: 202,
+      headers: getCorsHeaders(getRequestOrigin(event)),
+      body: JSON.stringify({
+        message: 'Regenerating interview topics for requested role: ' + requestedRole,
+        status: 'regeneration_triggered',
+        retryAfter: 15
+      })
+    };
+  }
 
   // 1. [DEPRECATED] buildFallbackInterviewPlanFromSimulation is now discouraged 
   // to ensure we always use the rich topic-driven plans from Stage 3.
@@ -1433,7 +1459,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
         startedAt: new Date().toISOString()
       });
 
-      processStage3(analysisId, 'live', { userId });
+      processStage3(analysisId, 'live', { userId }, requestedRole);
       await DB.updateAnalysisStatus(analysisId, 'processing');
       await DB.updateWorkflowState(analysisId, 'stage3_pending');
 
@@ -1877,7 +1903,15 @@ async function handleSubmitAnswer(event: any, context: any) {
       expectedAnswer: { keyPoints: [topic.description] }
     };
 
-    evaluation = await evaluateAnswerComprehensive(currentQuestion, answer, timeSpentSeconds || 0, topic, plan.domainInfo);
+    evaluation = await evaluateAnswerComprehensive(
+      currentQuestion,
+      answer,
+      timeSpentSeconds || 0,
+      topic,
+      plan.domainInfo,
+      plan.targetRole,
+      plan.candidateLevel
+    );
   }
 
   // 2. Update Performance Signals
@@ -1886,7 +1920,9 @@ async function handleSubmitAnswer(event: any, context: any) {
     for (const [rawId, score] of Object.entries(evaluation.signalScores)) {
       const sId = normalizeSignalId(rawId);
       const sig = updatedSignals[sId] || { signalId: sId, name: sId.replace(/_/g, ' '), score: 50, evidence: [], confidence: 0 };
-      sig.score = Math.round((sig.score + (score as number)) / 2); // Moving average
+
+      const numericScore = typeof score === 'number' && !isNaN(score) ? score : 50;
+      sig.score = Math.round(((sig.score || 50) + numericScore) / 2); // Moving average
       sig.evidence = [...(sig.evidence || []), ...(evaluation.signalEvidence?.[rawId] || [])].slice(-5);
       sig.confidence = Math.min(1, (sig.confidence || 0) + 0.2);
       updatedSignals[sId] = sig;
@@ -1946,7 +1982,7 @@ async function handleSubmitAnswer(event: any, context: any) {
     currentPhase: nextStep.nextPhase,
     currentQuestionOverride: nextQuestionText,
     questionsAnswered: progress.questionsAnswered + 1,
-    averageScore: calculateAverageScore(session, evaluation.overallScore),
+    averageScore: calculateAverageScore(session, evaluation.overallScore ?? 0),
     totalTimeSpentSeconds: progress.totalTimeSpentSeconds + (timeSpentSeconds || 0)
   };
 
@@ -2101,9 +2137,10 @@ async function handleCompleteSession(event: any, context: any) {
 
 
 function calculateAverageScore(session: any, newScore: number): number {
-  const totalAnswered = session.progress.questionsAnswered;
-  const currentAvg = session.progress.averageScore;
-  return Math.round((currentAvg * totalAnswered + newScore) / (totalAnswered + 1));
+  const totalAnswered = session.progress.questionsAnswered || 0;
+  const currentAvg = session.progress.averageScore || 0;
+  const score = typeof newScore === 'number' && !isNaN(newScore) ? newScore : 0;
+  return Math.round((currentAvg * totalAnswered + score) / (totalAnswered + 1));
 }
 
 function generateSessionSummary(session: any, attempts: any[], progress: any) {

@@ -16,7 +16,9 @@ export async function evaluateAnswerComprehensive(
   userAnswer: string,
   timeSpent: number,
   topic?: any,
-  domainInfo?: any
+  domainInfo?: any,
+  targetRole?: string,
+  candidateLevel?: string
 ): Promise<any> {
   const expectedKeyPoints = question.expectedAnswer?.keyPoints || [];
   const redFlags = question.expectedAnswer?.redFlags || [];
@@ -28,7 +30,8 @@ export async function evaluateAnswerComprehensive(
 INTERVIEW QUESTION
 ═══════════════════════════════════════════════════════════════════════════
 Category: ${question.category}
-Difficulty: ${question.difficulty}
+Difficulty: ${question.difficulty} (Target Level: ${candidateLevel || 'N/A'})
+Target Role: ${targetRole || 'Software Engineer'}
 Project Domain: ${domainInfo?.primary_domain || 'general_software_engineering'}
 
 Question:
@@ -301,6 +304,26 @@ Before finishing the response:
 
     evaluation.evaluatedAt = new Date().toISOString();
     evaluation.questionId = question.questionId;
+
+    // Sanitize numeric scores to prevent NaN propagation
+    evaluation.overallScore = typeof evaluation.overallScore === 'number' && !isNaN(evaluation.overallScore) ? evaluation.overallScore : 50;
+    evaluation.topicFulfillment = typeof evaluation.topicFulfillment === 'number' && !isNaN(evaluation.topicFulfillment) ? evaluation.topicFulfillment : 50;
+
+    if (evaluation.criteriaScores) {
+      for (const key of Object.keys(evaluation.criteriaScores)) {
+        if (typeof evaluation.criteriaScores[key] !== 'number' || isNaN(evaluation.criteriaScores[key])) {
+          evaluation.criteriaScores[key] = 50;
+        }
+      }
+    }
+
+    if (evaluation.signalScores) {
+      for (const key of Object.keys(evaluation.signalScores)) {
+        if (typeof evaluation.signalScores[key] !== 'number' || isNaN(evaluation.signalScores[key])) {
+          evaluation.signalScores[key] = 50;
+        }
+      }
+    }
 
     return evaluation;
 

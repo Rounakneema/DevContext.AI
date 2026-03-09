@@ -167,7 +167,7 @@ Resources:
 
       # CORS configuration
       Cors:
-        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
         AllowOrigin: "'*'"
         MaxAge: "'3600'"
@@ -180,16 +180,16 @@ Resources:
             UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
         AddDefaultAuthorizerToCorsPreflight: false
 
-      # Throttling
-      MethodSettings:
-        - ResourcePath: "/*"
-          HttpMethod: "*"
-          ThrottlingBurstLimit: 100
-          ThrottlingRateLimit: 50
+    # Throttling
+    MethodSettings:
+      - ResourcePath: "/*"
+        HttpMethod: "*"
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
 
-      Tags:
-        Environment: Production
-        Application: DevContext-AI
+    Tags:
+      Environment: Production
+      Application: DevContext-AI
 
   # ============================================================================
   # LAMBDA FUNCTIONS

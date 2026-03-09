@@ -18,6 +18,8 @@ interface Stage3Event {
   intelligenceReport: any;
   s3Key: string;
   mode?: 'sheet' | 'live';
+  targetRole?: string;
+  candidateLevel?: string;
   domainInfo?: import('./types').DomainInfo;
 }
 
@@ -31,7 +33,7 @@ interface Stage3Response {
 import { DomainInfo } from './types';
 
 export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
-  const { analysisId, projectContextMap, projectReview, intelligenceReport, s3Key, mode = 'sheet', domainInfo } = event;
+  const { analysisId, projectContextMap, projectReview, intelligenceReport, s3Key, mode = 'sheet', domainInfo, targetRole: roleOverride, candidateLevel: levelOverride } = event;
 
   try {
     console.log(`🎯 Stage 3 - Mode: ${mode} for ${analysisId}`);
@@ -100,7 +102,9 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
           intelligenceReport,
           codeContext,
           analysisId,
-          effectiveDomainInfo
+          effectiveDomainInfo,
+          roleOverride,
+          levelOverride
         );
 
         interviewPlan = result.plan;
@@ -254,15 +258,17 @@ export async function initializeTopicDrivenInterview(
   intelligenceReport: any,
   codeContext: string,
   analysisId: string,
-  domainInfo: DomainInfo
+  domainInfo: DomainInfo,
+  roleOverride?: string,
+  levelOverride?: string
 ): Promise<{ simulation: any, plan: any }> {
   await DB.updateStageProgress(analysisId, 'interview_simulation', 45);
 
   console.log('Initializing topic-driven interview mode...');
 
   const userProfile = await DB.getUserProfile(analysisId);
-  const targetRole = userProfile?.targetRole || 'Senior SDE';
-  const candidateLevel = detectCandidateLevel(userProfile, projectReview);
+  const targetRole = roleOverride || userProfile?.targetRole || 'Senior SDE';
+  const candidateLevel = levelOverride || detectCandidateLevel(userProfile, projectReview);
 
   console.log(`👤 Candidate: ${analysisId} | Role: ${targetRole} | Level: ${candidateLevel} | Domain: ${domainInfo.primary_domain}`);
 
@@ -356,7 +362,7 @@ CODE SNIPPETS:
 ${codeContext.substring(0, 5000)}
 
 YOUR TASK:
-Extract 12-15 INTERVIEW TOPICS for a technical interview.
+Extract 8-10 DEEP-DIVE INTERVIEW TOPICS for a technical interview. (Fewer topics with higher quality/depth is PREFERRED over many generic ones).
 
 CRITICAL RULES:
 
@@ -364,15 +370,14 @@ CRITICAL RULES:
    - Focus on concepts central to ${domainInfo.primary_domain}.
    - DO NOT ask about generic frameworks unless they are fundamental to the domain.
 
-2. **FOLLOW 5-STAGE PATTERN**: 
-   - Topics 1-3: Project Understanding (Vision, Problem, Key Decisions)
-   - Topics 4-8: Implementation Details (Data Flow, Structure)
-   - Topics 9-12: Domain Expertise (Trade-offs, Core Algorithms/Logic)
-   - Topics 13-15: Edge Cases & Scaling (Production readiness, bottlenecks)
+2. **FOLLOW PHASES**: 
+   - Topics 1-2: Project Vision & Architecture (High-level)
+   - Topics 3-6: Technical Implementation & Core Logic (Deep-dive)
+   - Topics 7-10: Trade-offs, Edge Cases & Performance (Advanced)
 
 3. **MANDATORY FIRST TOPICS**:
-   - You MUST include a "Project Overview" topic that asks the candidate to walk through their project purpose and high-level structure.
-   - You MUST include a "Key Decisions" topic that focuses on the most critical technical choice identified.
+   - You MUST include a "Project Overview" topic.
+   - You MUST include a "Key Decisions" topic.
 
 4. **MATCH DIFFICULTY TO LEVEL**:
    - ${candidateLevel}: focus on ${candidateLevel === 'junior' ? 'implementation & basic clean code' : 'architecture, tradeoffs, and system design'}.
@@ -400,7 +405,44 @@ Return ONLY valid JSON array with fields: topicId, title, description (the initi
   });
 
   const rawTopics = extractJson(content);
-  return (rawTopics || []).map((t: any) => ({
+
+  // Fallback if extraction fails
+  if (!rawTopics || !Array.isArray(rawTopics) || rawTopics.length === 0) {
+    console.warn('⚠️ Topic extraction failed or returned empty. Using fallback topics.');
+
+    const domainPrefix = domainInfo.primary_domain !== 'Software Engineering' ? `in the context of ${domainInfo.primary_domain}` : '';
+
+    return [
+      {
+        topicId: 'T-PROJECT-OVERVIEW',
+        title: 'Project Architecture & Vision',
+        description: `As a ${targetRole}, can you walk me through the high-level architecture of this ${domainInfo.primary_domain} project and how you handled the core technical challenges?`,
+        category: 'architecture',
+        difficulty: candidateLevel,
+        evaluationSignals: ['architecture_thinking', 'communication'],
+        fulfillmentThreshold: 70,
+        maxFollowUps: 2,
+        currentFulfillment: 0,
+        followUpsAsked: 0,
+        isCompleted: false
+      },
+      {
+        topicId: 'T-KEY-DECISIONS',
+        title: 'Critical Engineering Trade-offs',
+        description: `What was the most significant technical trade-off you made in this project's ${domainInfo.sub_domain || 'implementation'}, and how did it impact the final outcome?`,
+        category: 'tradeoffs',
+        difficulty: candidateLevel,
+        evaluationSignals: ['tradeoffs', 'decision_making'],
+        fulfillmentThreshold: 70,
+        maxFollowUps: 2,
+        currentFulfillment: 0,
+        followUpsAsked: 0,
+        isCompleted: false
+      }
+    ];
+  }
+
+  return rawTopics.map((t: any) => ({
     ...t,
     currentFulfillment: 0,
     followUpsAsked: 0,
