@@ -65,6 +65,18 @@ function getRequestOrigin(event: any): string | undefined {
   return event?.headers?.origin || event?.headers?.Origin;
 }
 
+function normalizeRole(role: string): string {
+  if (!role) return '';
+  return role
+    .toLowerCase()
+    .trim()
+    .replace(/\bml\b/g, 'machine learning')
+    .replace(/\bswe\b/g, 'software engineer')
+    .replace(/\bjunio\b/g, 'junior')
+    .replace(/\benginer\b/g, 'engineer')
+    .replace(/\s+/g, ' ');
+}
+
 function getUserIdFromEvent(event: any): string | null {
   const claims = event?.requestContext?.authorizer?.claims;
   const userId = claims?.sub;
@@ -1419,7 +1431,7 @@ async function handleCreateInterviewSession(event: any, context: any) {
   const requestedRole = config?.targetRole;
 
   // 1. If role is explicitly provided and DIFFERENT from the existing plan, trigger regeneration
-  if (requestedRole && interviewPlan && interviewPlan.targetRole?.toLowerCase().trim() !== requestedRole.toLowerCase().trim()) {
+  if (requestedRole && interviewPlan && normalizeRole(interviewPlan.targetRole) !== normalizeRole(requestedRole)) {
     console.log(`[ORCH] Role mismatch (${interviewPlan.targetRole} vs ${requestedRole}). Triggering Stage 3 regeneration...`);
 
     // Clear the current plan so we don't use the old one
