@@ -1461,10 +1461,12 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   // Use filtered topics if available, else original
   const effectiveTopics = filteredTopics.length > 0 ? filteredTopics : Object.values(interviewPlan.allTopics || {});
+  console.log(`[ORCH] Effective topics count: ${effectiveTopics.length}`);
 
   // Pick session topics from the effective list
   const shuffleArray = (array: any[]) => array.sort(() => Math.random() - 0.5);
   const selectedTopics = shuffleArray([...effectiveTopics]).slice(0, 3);
+  console.log(`[ORCH] Selected ${selectedTopics.length} topics for session.`);
 
 
   // 1. Level Calibration & Intensity Mapping
@@ -1492,7 +1494,12 @@ async function handleCreateInterviewSession(event: any, context: any) {
     for (const bucket of buckets) {
       if (bucket.length > 0) return bucket.pop();
     }
-    if (topicsArray.length > 0) return topicsArray.pop();
+    // Fallback: If no bucket has topics, try ANY topic from the plan that wasn't popped yet
+    if (topicsArray.length > 0) {
+      console.log(`[ORCH] Category buckets exhausted. Popping from remaining topicsArray (${topicsArray.length}).`);
+      return topicsArray.pop();
+    }
+    console.warn('[ORCH] No topics available at all in interviewPlan!');
     return undefined;
   };
 
@@ -1520,7 +1527,8 @@ async function handleCreateInterviewSession(event: any, context: any) {
     fulfillmentMod = 10;
   }
 
-  const finalTopics = [...selectedWarmup, ...selectedDeepDive, ...selectedStretch];
+  const finalTopics = [...selectedWarmup, ...selectedDeepDive, ...selectedStretch].filter(Boolean);
+  console.log(`[ORCH] Final selected topics sequence: ${finalTopics.map(t => t?.topicId).join(', ')}`);
   const newAllTopics: Record<string, Types.InterviewTopic> = {};
 
   finalTopics.forEach((t, i) => {
@@ -1569,7 +1577,13 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   const dbSession = await DB.createInterviewSession(sessionData);
 
-  const firstQuestionText = firstTopic ? `Let's discuss ${firstTopic.title}. ${firstTopic.description}` : "Let's begin the interview.";
+  const firstQuestionText = firstTopic
+    ? `Let's discuss ${firstTopic.title}. ${firstTopic.description}`
+    : "Let's begin the interview focusing on your codebase.";
+
+  if (!firstTopic) {
+    console.warn(`[ORCH] Fallback to generic question. firstTopicId: ${firstTopicId}, topics count: ${finalTopics.length}`);
+  }
 
   // Initialize first topic
   const initialProgress: Types.SessionProgress = {

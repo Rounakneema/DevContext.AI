@@ -314,6 +314,7 @@ const InterviewPage: React.FC = () => {
                 newSession = await create();
                 // If it returned a 202 or processing status without throwing
                 if (newSession && newSession.status === 'processing') {
+                    console.log("[FRONTEND] Session in processing state, triggering re-poll logic.");
                     throw new Error(newSession.error || "Interview plan not found");
                 }
             } catch (e: any) {
@@ -334,8 +335,12 @@ const InterviewPage: React.FC = () => {
                         try {
                             const st: any = await getAnalysisStatus(effectiveAnalysisId);
                             const stage3 = st?.stages?.interview_simulation;
+                            console.log(`[FRONTEND] Polling Stage 3 status: ${stage3?.status}`);
                             // Check specific stage status instead of global workflow state to be safer
-                            if (stage3?.status === "completed") break;
+                            if (stage3?.status === "completed") {
+                                console.log("[FRONTEND] Stage 3 completed! Fetching fresh session.");
+                                break;
+                            }
                             if (stage3?.status === "failed") throw new Error(stage3.errorMessage || "Stage 3 failed");
                         } catch (stErr: any) {
                             if (stErr.message?.includes("failed")) throw stErr;
@@ -346,6 +351,17 @@ const InterviewPage: React.FC = () => {
                 } else {
                     throw e;
                 }
+            }
+            if (!newSession.questions || newSession.questions.length === 0) {
+                console.warn("[FRONTEND] Session created but no questions found. Persisting loading state.");
+                setError("Ready! Starting your interview...");
+                // Wait a bit and try to refresh one more time or show error
+                await new Promise(r => setTimeout(r, 2000));
+                const secondTry = await getInterviewSession(newSession.sessionId);
+                if (!secondTry.questions || secondTry.questions.length === 0) {
+                    throw new Error("No questions found in this session. Please try restarting.");
+                }
+                newSession = secondTry;
             }
             setSession(newSession);
             setCurrentQuestion(newSession.questions?.[0] || null);
@@ -507,6 +523,7 @@ const InterviewPage: React.FC = () => {
                                                 const started = Date.now();
                                                 while (Date.now() - started < 150_000) { // 2.5 mins for 50 questions
                                                     const st: any = await getAnalysisStatus(effectiveAnalysisId);
+                                                    console.log(`[FRONTEND] Polling Question Sheet status: ${st?.stages?.interview_simulation?.status}`);
                                                     if (st?.stages?.interview_simulation?.status === "completed") {
                                                         full = await getAnalysis(effectiveAnalysisId);
                                                         if ((full?.interviewSimulation?.questions?.length ?? 0) > 5) break;
@@ -992,7 +1009,7 @@ const InterviewPage: React.FC = () => {
                         </div>
                     </div>
                     <h2 style={{ fontSize: 32, fontWeight: 900, color: "var(--text)", lineHeight: 1.25, letterSpacing: -0.8, marginBottom: 40 }}>
-                        {currentQuestion.question}
+                        {currentQuestion ? currentQuestion.question : "Please wait, loading next question..."}
                     </h2>
 
                     {phase === "evaluating" ? (
@@ -1005,7 +1022,7 @@ const InterviewPage: React.FC = () => {
                             <div style={{ fontSize: 64, marginBottom: 24 }}>🏆</div>
                             <h2 style={{ fontSize: 32, fontWeight: 900, color: "var(--text)", marginBottom: 12 }}>Topic Mastered!</h2>
                             <p style={{ fontSize: 18, color: "var(--text2)", marginBottom: 40, maxWidth: 500, margin: "0 auto 40px" }}>
-                                You've successfully completed the deep-dive into <strong>{session?.interviewPlan?.allTopics[session?.progress?.activeTopicId || ""]?.title}</strong>.
+                                You've successfully completed the deep-dive into <strong>{session?.interviewPlan?.allTopics[session?.progress?.activeTopicId || ""]?.title || "this topic"}</strong>.
                             </p>
 
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, textAlign: "left", marginBottom: 48, maxWidth: 1000, margin: "0 auto 48px" }}>
