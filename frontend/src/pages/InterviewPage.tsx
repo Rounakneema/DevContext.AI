@@ -450,7 +450,7 @@ const InterviewPage: React.FC = () => {
         } catch (e: any) {
             setError(e.message || "Failed to submit answer."); setPhase("active");
         }
-    }, [session, currentQuestion, answer, startTime, questionElapsed, nextQuestion]);
+    }, [session, currentQuestion, answer, startTime, questionElapsed]);
 
     // Hard-stop the session when time limit is reached.
     useEffect(() => {
