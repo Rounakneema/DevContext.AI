@@ -1406,16 +1406,32 @@ async function handleCreateInterviewSession(event: any, context: any) {
   // to ensure we always use the rich topic-driven plans from Stage 3.
   // interviewPlan = buildFallbackInterviewPlanFromSimulation(fullAnalysis, analysisId, config?.targetRole) || undefined;
 
-  // 2. If plan is missing, return a 404 with a specific message that triggers the frontend to call continueToStage3
+  // 2. If plan is missing, return a 202 with a specific message that triggers the frontend to wait/retry
   if (!interviewPlan) {
     const simulationStatus = fullAnalysis.analysis.stages.interview_simulation.status;
 
     if (simulationStatus === 'completed') {
       // This likely means only SHEET mode was run, so we need to run LIVE mode now.
+      console.log(`[ORCH] Plan missing but Stage 3 complete. Triggering live mode for ${analysisId}`);
+
+      // Update status to processing immediately
+      await DB.updateStageStatus(analysisId, 'interview_simulation', {
+        status: 'processing',
+        startedAt: new Date().toISOString()
+      });
+
+      processStage3(analysisId, 'live', { userId });
+      await DB.updateAnalysisStatus(analysisId, 'processing');
+      await DB.updateWorkflowState(analysisId, 'stage3_pending');
+
       return {
-        statusCode: 404,
+        statusCode: 202,
         headers: getCorsHeaders(getRequestOrigin(event)),
-        body: JSON.stringify({ error: 'Interview topics (live plan) not found. Triggering generation...' })
+        body: JSON.stringify({
+          message: 'Interview topics (live plan) not yet generated. Starting generation...',
+          status: 'processing',
+          retryAfter: 15
+        })
       };
     }
 

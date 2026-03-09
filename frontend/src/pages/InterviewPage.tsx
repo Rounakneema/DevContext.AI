@@ -318,8 +318,15 @@ const InterviewPage: React.FC = () => {
                     throw new Error(newSession.error || "Interview plan not found");
                 }
             } catch (e: any) {
-                const msg = String(e?.message || e || "");
-                if (msg.toLowerCase().includes("complete stage 3") || msg.toLowerCase().includes("stage 2") || msg.toLowerCase().includes("plan not found") || msg.toLowerCase().includes("in progress")) {
+                const msg = String(e?.message || e?.error || e || "");
+                console.log(`[FRONTEND] Caught startSession error: "${msg}"`);
+                if (
+                    msg.toLowerCase().includes("complete stage 3") ||
+                    msg.toLowerCase().includes("stage 2") ||
+                    msg.toLowerCase().includes("plan not found") ||
+                    msg.toLowerCase().includes("plan not yet generated") ||
+                    msg.toLowerCase().includes("in progress")
+                ) {
                     setError("Initializing interview topics based on your code. Please wait...");
                     try {
                         await continueToStage3(effectiveAnalysisId, 'live');
@@ -513,15 +520,17 @@ const InterviewPage: React.FC = () => {
                                         try {
                                             let full = await getAnalysis(effectiveAnalysisId);
 
-                                            // Check if 50 questions exist or if sheet mode was marked complete
-                                            const hasSheet = (full?.interviewSimulation?.mode === 'sheet') || ((full?.interviewSimulation?.questions?.length ?? 0) > 10);
+                                            // Check if 50 questions exist OR if sheet mode was marked complete.
+                                            const hasSheet = (full?.interviewSimulation?.completedModes?.sheet === true) ||
+                                                ((full?.interviewSimulation?.questions?.length ?? 0) > 40);
+
+                                            console.log(`[FRONTEND] PDF Checklist - hasSheet: ${hasSheet}, count: ${full?.interviewSimulation?.questions?.length}`);
 
                                             if (!hasSheet) {
                                                 await continueToStage3(effectiveAnalysisId, 'sheet');
 
-                                                // Polling logic similar to Live Interview
                                                 const started = Date.now();
-                                                while (Date.now() - started < 150_000) { // 2.5 mins for 50 questions
+                                                while (Date.now() - started < 150_000) {
                                                     const st: any = await getAnalysisStatus(effectiveAnalysisId);
                                                     console.log(`[FRONTEND] Polling Question Sheet status: ${st?.stages?.interview_simulation?.status}`);
                                                     if (st?.stages?.interview_simulation?.status === "completed") {
@@ -531,6 +540,12 @@ const InterviewPage: React.FC = () => {
                                                     if (st?.stages?.interview_simulation?.status === "failed") throw new Error("Generation failed");
                                                     await new Promise(r => setTimeout(r, 4000));
                                                 }
+                                                // Final verification
+                                                full = await getAnalysis(effectiveAnalysisId);
+                                            }
+
+                                            if ((full?.interviewSimulation?.questions?.length ?? 0) < 10) {
+                                                throw new Error("Question bank is still being processed. Please try again in 30 seconds.");
                                             }
 
                                             const win = window.open('', '_blank');
@@ -670,7 +685,7 @@ const InterviewPage: React.FC = () => {
                         </div>
                     )}
                 </div>
-            </div>
+            </div >
         );
     }
 
