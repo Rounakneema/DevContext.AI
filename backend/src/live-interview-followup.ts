@@ -12,6 +12,7 @@ interface FollowUpRequest {
     answerEvaluation: any;
     coverageMap: any;
     interviewContext: any;
+    domainInfo?: any;
 }
 
 interface FollowUpResponse {
@@ -32,7 +33,8 @@ export const handler: Handler<FollowUpRequest, FollowUpResponse> = async (event)
         answerGiven,
         answerEvaluation,
         coverageMap,
-        interviewContext
+        interviewContext,
+        domainInfo
     } = event;
 
     try {
@@ -58,7 +60,8 @@ export const handler: Handler<FollowUpRequest, FollowUpResponse> = async (event)
             answerEvaluation,
             needsFollowUp.gaps,
             interviewContext,
-            analysisId
+            analysisId,
+            domainInfo
         );
 
         console.log(`Generated ${followUpQuestions.length} follow-up questions`);
@@ -132,11 +135,13 @@ async function generateFollowUpQuestions(
     evaluation: any,
     gaps: string[],
     interviewContext: any,
-    analysisId: string
+    analysisId: string,
+    domainInfo?: any
 ): Promise<any[]> {
 
-    const prompt = `You are conducting a technical interview. Based on the candidate's answer, generate 1-3 targeted follow-up questions.
+    const prompt = `You are conducting a technical interview. Based on the candidate's answer and the project domain, generate 1-3 targeted follow-up questions.
 
+PROJECT DOMAIN: ${domainInfo?.primary_domain || 'general_software_engineering'}
 ORIGINAL QUESTION:
 ${originalQuestion.question}
 

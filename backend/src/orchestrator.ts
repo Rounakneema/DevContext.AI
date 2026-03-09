@@ -428,6 +428,7 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
       },
       tokenBudget: repoResult.budgetStats,
       s3Key: repoResult.s3Key,
+      domainInfo: repoResult.domainInfo,
       processedAt: new Date().toISOString(),
       processingDurationMs: 0
     });
@@ -446,7 +447,8 @@ async function processAnalysisPipeline(analysisId: string, repositoryUrl: string
       analysisId,
       projectContextMap: repoResult.projectContextMap,
       s3Key: repoResult.s3Key,
-      codeContext: repoResult.codeContext
+      codeContext: repoResult.codeContext,
+      domainInfo: repoResult.domainInfo
     });
 
     const duration = Date.now() - startTime;
@@ -996,7 +998,8 @@ async function processStage2(analysisId: string, context: any) {
         languages: repoMetadata.languages
       },
       projectReview: projectReview || {}, // Pass Stage 1 results to Stage 2
-      s3Key: repoMetadata.s3Key
+      s3Key: repoMetadata.s3Key,
+      domainInfo: repoMetadata.domainInfo
     });
 
     const duration = Date.now() - startTime;
@@ -1088,7 +1091,8 @@ async function processStage3(analysisId: string, mode: string, context: any) {
       projectReview: projectReview || {},
       intelligenceReport: intelligenceReport || {},
       s3Key: repoMetadata.s3Key,
-      mode // Pass mode to Stage 3
+      mode, // Pass mode to Stage 3
+      domainInfo: repoMetadata.domainInfo
     });
 
     if (!stage3Result || stage3Result.success === false) {
@@ -1793,7 +1797,8 @@ async function handleSubmitAnswer(event: any, context: any) {
       missingKeyPoints: [],
       comparison: { weakAnswer: '', strongAnswer: '', yourAnswerCategory: 'weak' },
       feedback: "You chose to end the interview early.",
-      improvementSuggestions: []
+      detailedFeedback: "The interview was ended early at your request. Your overall score and report will be generated based on the questions you completed so far.",
+      improvementSuggestions: ["Complete the full interview session next time for a more comprehensive assessment."]
     };
 
     // Persist the end action as an attempt so the report timeline is consistent.
@@ -1857,8 +1862,9 @@ async function handleSubmitAnswer(event: any, context: any) {
       overallScore: 0,
       criteriaScores: { technicalAccuracy: 0, completeness: 0, clarity: 0, depthOfUnderstanding: 0 },
       strengths: [], weaknesses: [], missingKeyPoints: [], comparison: { weakAnswer: '', strongAnswer: '', yourAnswerCategory: 'weak' },
-      feedback: "You chose to skip this question.",
-      improvementSuggestions: []
+      feedback: "You chose to skip this question. This will be marked as skipped in your final report.",
+      detailedFeedback: "You chose to skip this question. Skipping questions prevents the AI from evaluating your knowledge in this specific area, but allows you to focus on other topics.",
+      improvementSuggestions: ["Try to attempt every question, even if with a partial answer, to get more granular feedback."]
     };
   } else {
     // 1. Evaluate answer with topic context
@@ -1871,7 +1877,7 @@ async function handleSubmitAnswer(event: any, context: any) {
       expectedAnswer: { keyPoints: [topic.description] }
     };
 
-    evaluation = await evaluateAnswerComprehensive(currentQuestion, answer, timeSpentSeconds || 0, topic);
+    evaluation = await evaluateAnswerComprehensive(currentQuestion, answer, timeSpentSeconds || 0, topic, plan.domainInfo);
   }
 
   // 2. Update Performance Signals
@@ -2019,6 +2025,10 @@ async function handleFollowUpQuestion(event: any, context: any) {
   const { questionId, answer, evaluation, coverageMap, interviewContext } = body;
 
   await assertOwnsSessionOrNotFound(event, sessionId);
+  const session = await DB.getInterviewSession(sessionId);
+  const fullAnalysis = session ? await DB.getFullAnalysis(session.analysisId) : null;
+  const domainInfo = session?.customInterviewPlan?.domainInfo || fullAnalysis?.interviewPlan?.domainInfo;
+
   const result = await invokeAsync(process.env.FOLLOWUP_FUNCTION || 'live-interview-followup', {
     analysisId: body.analysisId,
     sessionId,
@@ -2026,7 +2036,8 @@ async function handleFollowUpQuestion(event: any, context: any) {
     answerGiven: answer,
     answerEvaluation: evaluation,
     coverageMap: coverageMap || {},
-    interviewContext: interviewContext || {}
+    interviewContext: interviewContext || {},
+    domainInfo
   });
 
   return {

@@ -18,6 +18,7 @@ interface Stage3Event {
   intelligenceReport: any;
   s3Key: string;
   mode?: 'sheet' | 'live';
+  domainInfo?: import('./types').DomainInfo;
 }
 
 interface Stage3Response {
@@ -27,8 +28,10 @@ interface Stage3Response {
   error?: string;
 }
 
+import { DomainInfo } from './types';
+
 export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
-  const { analysisId, projectContextMap, projectReview, intelligenceReport, s3Key, mode = 'sheet' } = event;
+  const { analysisId, projectContextMap, projectReview, intelligenceReport, s3Key, mode = 'sheet', domainInfo } = event;
 
   try {
     console.log(`🎯 Stage 3 - Mode: ${mode} for ${analysisId}`);
@@ -42,6 +45,23 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
 
     console.log(`Loaded ${codeContext.length} chars of code`);
     await DB.updateStageProgress(analysisId, 'interview_simulation', 30);
+
+    // 🕵️ Hierarchical Domain Detection (Passed from pipeline)
+    const effectiveDomainInfo = domainInfo || {
+      primary_domain: 'Software Engineering',
+      sub_domain: 'General Development',
+      specialization: 'Full-Stack Application',
+      tags: [],
+      confidence: 0.5,
+      evidence: { keywords: [], files: [], dependencies: [] },
+      reasoning: 'Fallback due to missing domain info.'
+    };
+
+    console.log(`📡 Domain Info: ${effectiveDomainInfo.primary_domain} -> ${effectiveDomainInfo.sub_domain} -> ${effectiveDomainInfo.specialization}`);
+    await DB.updateStageProgress(analysisId, 'interview_simulation', 35);
+
+    const userProfile = await DB.getUserProfile(analysisId);
+    const targetRole = userProfile?.targetRole || 'Junior ML Engineer';
 
     // ✅ LOAD EXISTING DATA
     const existingSimulation = await DB.getInterviewSimulation(analysisId);
@@ -79,7 +99,8 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
           projectReview,
           intelligenceReport,
           codeContext,
-          analysisId
+          analysisId,
+          effectiveDomainInfo
         );
 
         interviewPlan = result.plan;
@@ -113,6 +134,7 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
           intelligenceReport,
           codeContext,
           analysisId,
+          effectiveDomainInfo,
           existingTopics
         );
 
@@ -155,6 +177,7 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
   }
 };
 
+
 /**
  * MODE 1: Generate complete question sheet (all 50 questions upfront)
  */
@@ -164,6 +187,7 @@ async function generateQuestionSheet(
   intelligenceReport: any,
   codeContext: string,
   analysisId: string,
+  domainInfo: DomainInfo,
   topics?: Record<string, any>
 ): Promise<any> {
   const startTime = Date.now();
@@ -171,7 +195,7 @@ async function generateQuestionSheet(
 
   console.log('Generating complete question sheet (50 questions)...');
 
-  const prompt = buildQuestionSheetPrompt(contextMap, projectReview, intelligenceReport, codeContext, topics);
+  const prompt = buildQuestionSheetPrompt(contextMap, projectReview, intelligenceReport, codeContext, domainInfo, topics);
 
   const { text: content, inferenceTimeMs, inputTokens, outputTokens } = await callBedrockConverse(
     prompt,
@@ -229,16 +253,18 @@ export async function initializeTopicDrivenInterview(
   projectReview: any,
   intelligenceReport: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo: DomainInfo
 ): Promise<{ simulation: any, plan: any }> {
   await DB.updateStageProgress(analysisId, 'interview_simulation', 45);
 
   console.log('Initializing topic-driven interview mode...');
 
-  const userId = 'demo-user'; // Default for system-level calls
-  const userProfile = await DB.getUserProfile(userId);
+  const userProfile = await DB.getUserProfile(analysisId);
   const targetRole = userProfile?.targetRole || 'Senior SDE';
   const candidateLevel = detectCandidateLevel(userProfile, projectReview);
+
+  console.log(`👤 Candidate: ${analysisId} | Role: ${targetRole} | Level: ${candidateLevel} | Domain: ${domainInfo.primary_domain}`);
 
   // 1. Extract Topics from analysis
   const topics = await extractTopics(
@@ -248,7 +274,8 @@ export async function initializeTopicDrivenInterview(
     codeContext,
     targetRole,
     candidateLevel,
-    analysisId
+    analysisId,
+    domainInfo
   );
   await DB.updateStageProgress(analysisId, 'interview_simulation', 70);
 
@@ -267,7 +294,8 @@ export async function initializeTopicDrivenInterview(
       'scalability_vision',
       'debugging_communication'
     ],
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
+    domainInfo
   };
   await DB.updateStageProgress(analysisId, 'interview_simulation', 95);
 
@@ -305,55 +333,54 @@ async function extractTopics(
   codeContext: string,
   targetRole: string,
   candidateLevel: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo: DomainInfo
 ): Promise<any[]> {
-  const prompt = `You are a Principal Engineer at Google. Analyze this candidate's codebase and extract 12-15 specific INTERVIEW TOPICS for a ${candidateLevel} ${targetRole} interview.
+  const domainGuidelines = getDomainGuidelines(domainInfo);
 
-Topics must be grounded in their code and categorized:
-1. Architecture: High-level structure, data flow, component boundaries.
-  2. Implementation: Specific logic, algorithms, state management, API design.
-  3. Engineering Quality: Testing, error handling, reliability, performance.
+  const prompt = `You are a Principal Engineer and technical interviewer preparing to interview a candidate about their project.
 
-For each topic, define:
-- fulfillmentThreshold: (Junior: 50, Mid: 70, Senior: 85, Staff: 95)
-  - evaluationSignals: (Choose 2-3: architecture_thinking, implementation_depth, code_quality, tradeoff_analysis, scalability_vision, debugging_communication)
+PROJECT DOMAIN CLASSIFICATION:
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus Tags: ${domainInfo.tags.join(', ') || 'N/A'}
+TARGET ROLE: ${targetRole}
+CANDIDATE LEVEL: ${candidateLevel}
 
-═══════════════════════════════════════════════════════════
-                    PROJECT CONTEXT
-═══════════════════════════════════════════════════════════
-${codeContext}
+PROJECT CONTEXT:
+${intelligenceReport?.systemArchitecture?.overview || ''}
+${projectReview?.employabilitySignal?.justification || ''}
 
-REVIEWS:
-Code Quality: ${projectReview?.codeQuality?.overall}/100
-Design Patterns: ${projectReview?.architectureClarity?.designPatterns?.join(', ')}
-Patterns Found: ${intelligenceReport?.systemArchitecture?.architecturalPatterns?.map((p: any) => p.name).join(', ')}
+CODE SNIPPETS:
+${codeContext.substring(0, 5000)}
 
-═══════════════════════════════════════════════════════════
-          EXTRACTION RULES
-═══════════════════════════════════════════════════════════
-- Topics must reference specific files/functions.
-- MUST be appropriate for a ${candidateLevel} candidate. 
-- Junior: Focus on implementation & basic clean code.
-- Senior/Staff: Focus on architecture, tradeoffs, and system design.
-- The 'description' field will serve as the initial question asked to the candidate. It should be designed so that it takes the candidate approximately 3 minutes to answer (not too short, not overly complex).
+YOUR TASK:
+Extract 12-15 INTERVIEW TOPICS for a technical interview.
 
-Return ONLY valid JSON array:
-[
-  {
-    "topicId": "T-ARCH-01",
-    "title": "Short title",
-    "category": "architecture|implementation|engineering_quality",
-    "description": "The actual question text to ask the candidate based on this topic. (Scope this to take ~3 minutes to answer)",
-    "sourceCodeContext": {
-      "files": ["path/to/file.ts"],
-      "lineRanges": {"path/to/file.ts": {"start": 10, "end": 50}}
-    },
-    "evaluationSignals": ["architecture_thinking", "tradeoff_analysis"],
-    "fulfillmentThreshold": 85,
-    "maxFollowUps": 2,
-    "difficulty": "${candidateLevel}"
-  }
-]`;
+CRITICAL RULES:
+
+1. **FOCUS ON PRIMARY DOMAIN**:
+   - Focus on concepts central to ${domainInfo.primary_domain}.
+   - DO NOT ask about generic frameworks unless they are fundamental to the domain.
+
+2. **FOLLOW 5-STAGE PATTERN**: 
+   - Topics 1-3: Project Understanding (Vision, Problem, Key Decisions)
+   - Topics 4-8: Implementation Details (Data Flow, Structure)
+   - Topics 9-12: Domain Expertise (Trade-offs, Core Algorithms/Logic)
+   - Topics 13-15: Edge Cases & Scaling (Production readiness, bottlenecks)
+
+3. **MANDATORY FIRST TOPICS**:
+   - You MUST include a "Project Overview" topic that asks the candidate to walk through their project purpose and high-level structure.
+   - You MUST include a "Key Decisions" topic that focuses on the most critical technical choice identified.
+
+4. **MATCH DIFFICULTY TO LEVEL**:
+   - ${candidateLevel}: focus on ${candidateLevel === 'junior' ? 'implementation & basic clean code' : 'architecture, tradeoffs, and system design'}.
+
+5. **DOMAIN GUIDELINES**:
+${domainGuidelines}
+
+Return ONLY valid JSON array with fields: topicId, title, description (the initial question), category, difficulty, sourceCodeContext, evaluationSignals, fulfillmentThreshold, maxFollowUps.`;
 
   const { text: content, inferenceTimeMs, inputTokens, outputTokens } = await callBedrockConverse(
     prompt,
@@ -403,15 +430,24 @@ async function generateCoreQuestions(
   projectReview: any,
   intelligenceReport: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo: DomainInfo
 ): Promise<any[]> {
+  const domainContext = `
+PROJECT DOMAIN CLASSIFICATION:
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus Tags: ${domainInfo.tags.join(', ') || 'N/A'}
+- Context Reasoning: ${domainInfo.reasoning}
+`;
 
-  const prompt = `You are a Staff Engineer at Google conducting a live technical interview. You have the candidate's codebase in front of you and must generate 18 CORE QUESTIONS that will be asked one-by-one during the interview. These questions must deeply test the candidate's understanding of THEIR OWN code.
+  const prompt = `You are a Principal Software Engineer at a FAANG company (Google/Apple/Amazon) conducting a deep-dive technical interview. You are generating a comprehensive "Question Sheet" containing 50 diverse interview questions based on the candidate's codebase.
 
 ═══════════════════════════════════════════════════════════
-                    REPOSITORY METADATA
+                    PROJECT METADATA
 ═══════════════════════════════════════════════════════════
-Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+${domainContext}
 Languages: ${JSON.stringify(contextMap.languages || {})}
 Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None'}
 Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None'}
@@ -456,14 +492,13 @@ ${codeContext}
 ═══════════════════════════════════════════════════════════
                 LIVE INTERVIEW QUESTION GENERATION
 ═══════════════════════════════════════════════════════════
-Generate 18 CORE QUESTIONS with this distribution:
-• Architecture (5): Probe system structure, layer interactions, data flow paths, component dependencies. Questions must reference specific files and modules from the code.
-• Implementation (4): Probe specific code choices, algorithms, data structures, function design. Reference actual functions and logic visible in the source.
-• Trade-offs (4): Probe why specific approaches were chosen over alternatives, and what the engineer would change. Reference actual design decisions from the code.
-• Scalability (3): Probe bottlenecks, capacity limits, and scaling strategies. Ground questions in the actual architecture observed.
-• Security (2): Probe authentication, authorization, input validation, and data protection. Reference actual security mechanisms (or lack thereof) in the code.
+• Architecture (5): Probe system structure, component interactions, and structural patterns. Questions must reference specific files and modules from the code.
+• Implementation (4): Probe specific code logic, data structures, and functional design visible in the source.
+• Trade-offs (4): Probe the technical compromises made during development.
+• Scalability & Reliability (3): Probe bottlenecks and how the system handles growth or failure.
+• Security & Quality (2): Probe data protection, validation, and engineering standards.
 
-IMPORTANT: Do NOT use generic template questions. Every question must be unique and specifically reference files, patterns, or decisions from THIS codebase.
+IMPORTANT: Do NOT use generic template questions. Every question must be unique and specifically reference files, patterns, or decisions from THIS codebase. Prioritize the identified domain context but DO NOT ignore other significant technical implementations in the repository.
 
 QUESTION QUALITY RULES:
 1. EVERY question must reference specific files, functions, or patterns from the code
@@ -560,30 +595,40 @@ function buildQuestionSheetPrompt(
   projectReview: any,
   intelligenceReport: any,
   codeContext: string,
+  domainInfo: DomainInfo,
   topics?: Record<string, any>
 ): string {
+  const domainGuidelines = getDomainGuidelines(domainInfo);
+  const domainContext = domainInfo ? `
+PROJECT DOMAIN CLASSIFICATION:
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus Tags: ${domainInfo.tags.join(', ') || 'N/A'}
+` : '';
+
   const topicsToAvoid = topics
     ? `\n═══════════════════════════════════════════════════════════\n                 AVOID THESE TOPICS (Already in Live Interview)\n═══════════════════════════════════════════════════════════\n${Object.values(topics).map((t: any) => `• ${t.title}: ${t.description}`).join('\n')}
 
 ⚠️ CRITICAL: Your 50 questions must be DIFFERENT from the topics above. 
-Focus on broader coverage across the entire codebase, not just the core modules.
+Focus on broader coverage across the entire codebase, prioritizing the primary domain identified while ensuring no major technical module is left unexplored.
 Include questions about:
-- Edge cases and error scenarios
-- Code organization and structure
-- Testing approaches (if any)
-- Configuration and setup
-- Utility functions and helpers
-- Documentation quality\n═══════════════════════════════════════════════════════════\n`
+- Structural integrity and design patterns
+- Mission-critical implementation logic
+- Technical tradeoffs and decision rationale
+- Resource management and scaling
+- Failure modes and error handling
+- Quality standards and documentation\n═══════════════════════════════════════════════════════════\n`
     : '';
 
-  return `You are a Staff Software Engineer at Google creating a comprehensive 50-question technical interview bank based on a candidate's actual codebase. Your questions must be deeply grounded in the code — never generic. A great interviewer asks questions that reveal whether the candidate truly understands what they built and WHY.
-${topicsToAvoid}
+  return `You are a Senior Technical Architect designing a multi-phase technical interview plan for a candidate. Your goal is to extract the most relevant "Interview Topics" from their codebase to test their senior-level engineering skills.
 
 ═══════════════════════════════════════════════════════════
-                    REPOSITORY METADATA
+                    PROJECT CONTEXT
 ═══════════════════════════════════════════════════════════
-Languages: ${JSON.stringify(contextMap.languages || {})}
+${domainContext}
 Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+Languages: ${JSON.stringify(contextMap.languages || {})}
 Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None'}
 Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None'}
 Total Files: ${(contextMap.userCodeFiles || []).length}
@@ -644,23 +689,39 @@ ${codeContext}
 ═══════════════════════════════════════════════════════════
                      QUESTION GENERATION TASK
 ═══════════════════════════════════════════════════════════
-Generate 50 QUESTIONS with this distribution:
-• Architecture (12): System design, layer interactions, component relationships, data flow
-• Implementation (12): Specific code choices, algorithms, data structures, logic
-• Trade-offs (10): Why X over Y, consequences of decisions, alternative approaches
-• Scalability (8): Performance bottlenecks, horizontal scaling, caching, database optimization
-• Design Patterns (4): Design patterns used/missing, SOLID principles, DRY/KISS
-• Security (4): Auth, input validation, data protection, vulnerability awareness
+**DOMAIN CALIBRATION (CRITICAL)**:
+Project Domain: ${domainInfo?.primary_domain || 'General Software Engineering'}
+Guidelines:
+${domainGuidelines}
+
+Generate 50 QUESTIONS following the 5-STAGE INTERVIEW PATTERN:
+
+1. **STAGE 1: PROJECT UNDERSTANDING** (12 questions):
+   - Ask about the project's purpose, high-level architecture, and mission-critical components.
+   - Include questions on specifically WHY this project exists and the problems it solves.
+
+2. **STAGE 2: IMPLEMENTATION DETAILS** (12 questions):
+   - Dive into specific logic, data structures, and function design observed in the code.
+   - Trace data flow through the system.
+
+3. **STAGE 3: DOMAIN EXPERTISE** (10 questions):
+   - Technical trade-offs made within ${domainInfo.primary_domain}.
+   - Evaluation of algorithm/technology choices.
+
+4. **STAGE 4: EDGE CASES & ERRORS** (8 questions):
+   - Failure modes, error handling, and defensive programming checks.
+
+5. **STAGE 5: IMPROVEMENTS & SCALING** (8 questions):
+   - How to scale the system for production-level traffic and data volume.
 
 QUESTION QUALITY GUIDELINES:
-- Every question MUST reference specific files, functions, or code patterns from the codebase
-- Questions should test UNDERSTANDING, not memorization
-- Include "Why did you...?" and "What would happen if...?" style questions
-- Mix difficulty levels: 40% mid-level, 40% senior, 20% staff-level
-- Each question must have complete expectedAnswer with keyPoints, acceptableApproaches, and redFlags
+- Every question MUST reference specific files, functions, or code patterns from the codebase.
+- Questions should test UNDERSTANDING, not memorization.
+- Include "Why did you...?" and "What would happen if...?" style questions.
+- Mix difficulty levels: 40% mid-level, 40% senior, 20% staff-level.
+- Each question must have complete expectedAnswer with keyPoints, acceptableApproaches, and redFlags.
 
-Return ONLY valid JSON array. Each question must include:
-questionId, question (referencing specific files/code), category, difficulty, context (with fileReferences and relatedConcepts), expectedAnswer (with keyPoints, acceptableApproaches, redFlags), followUpQuestions (2-3 per question), evaluationCriteria (weights summing to 1.0), tags.
+Return ONLY valid JSON array with fields: questionId, question, category, difficulty, context, expectedAnswer, followUpQuestions, evaluationCriteria, tags.
 
 IMPORTANT: The "question" text must be DIFFERENT from any of the pre-identified topics listed above. Provide a broader coverage of the codebase.`;
 }
@@ -915,4 +976,96 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
 
   if (fileContents.length === 0) throw new Error('Failed to load code files');
   return fileContents.join('\n\n');
+}
+
+/**
+ * Universal Domain Guidelines
+ */
+function getDomainGuidelines(domainInfo?: DomainInfo): string {
+  if (!domainInfo) {
+    return "Focus on general software engineering principles, code quality, and technical tradeoffs.";
+  }
+  const primary = (domainInfo.primary_domain || '').toLowerCase();
+  const sub = (domainInfo.sub_domain || '').toLowerCase();
+  const spec = (domainInfo.specialization || '').toLowerCase();
+  const allDomains = [primary, sub, spec, ...domainInfo.tags.map(t => t.toLowerCase())];
+
+  if (allDomains.some(d => d.includes('ml') || d.includes('machine_learning') || d.includes('deep_learning') || d.includes('ai'))) {
+    return `
+    - Prioritize questions on: Model architecture choice, hyperparameter tuning strategy, data leak prevention, evaluation metric alignment with business goals, and inference efficiency.
+    - Ask about specific data transformations visible in the code.
+    - Focus on data preprocessing and feature engineering.`;
+  }
+
+  if (allDomains.some(d => d.includes('devops') || d.includes('sre') || d.includes('infrastructure') || d.includes('cicd'))) {
+    return `
+    - Prioritize: Infrastructure as Code (IaC) modularity, CI/CD pipeline security/efficiency, container orchestration (K8s/Docker) choices, and monitoring/observability strategy.
+    - Ask about handling of secrets, environment parity, and disaster recovery.`;
+  }
+
+  if (allDomains.some(d => d.includes('security') || d.includes('infosec') || d.includes('penetration'))) {
+    return `
+    - Prioritize: Identity and Access Management (IAM), data encryption at rest and in transit, vulnerability management, and secure coding practices.
+    - Ask about specific threat models and how the architecture mitigates common attacks (OWASP Top 10).`;
+  }
+
+  if (allDomains.some(d => d.includes('cloud') || d.includes('aws') || d.includes('azure') || d.includes('gcp'))) {
+    return `
+    - Prioritize: Cloud-native service selection, cost-optimization, regional availability, and serverless vs provisioned tradeoffs.
+    - Ask about cloud security configuration and networking (VPCs, Subnets).`;
+  }
+
+  if (allDomains.some(d => d.includes('data_engineering') || d.includes('pipeline') || d.includes('etl') || d.includes('big_data'))) {
+    return `
+    - Prioritize: Data partitioning strategies, schema evolution, processing latency (batch vs stream), and data quality validation.
+    - Ask about specific tool choices (Spark, Airflow, Flink) as visible in the code context.`;
+  }
+
+  if (allDomains.some(d => d.includes('web') || d.includes('backend') || d.includes('api') || d.includes('frontend'))) {
+    return `
+    - Prioritize: Concurrency, API contract versioning, database atomicity, and infrastructure reliability.
+    - Ask about authentication strategies and state management if applicable.
+    - Focus on scalability and data consistency.`;
+  }
+
+  if (allDomains.some(d => d.includes('mobile') || d.includes('ios') || d.includes('android'))) {
+    return `
+    - Prioritize: App lifecycle, state management (Redux/Context), offline sync, and UI performance.
+    - Ask about specific navigation patterns and local storage logic.`;
+  }
+
+  return `
+  - Prioritize: Core architectural patterns, key engineering decisions, and production readiness.
+  - Ask about implementation details of primary features.`;
+}
+
+/**
+ * Step 5: Validate Generated Questions
+ */
+async function validateQuestions(
+  questions: any[],
+  contextMap: ProjectContextMap,
+  analysisId: string
+): Promise<any[]> {
+  console.log(`🔍 Validating ${questions.length} questions...`);
+
+  const validQuestions = questions.filter((q: any) => {
+    // Basic structural validation
+    if (!q.question || !q.category || !q.expectedAnswer) return false;
+
+    // Check for hallucinated files
+    if (q.context?.fileReferences) {
+      for (const ref of q.context.fileReferences) {
+        if (ref.file && !contextMap.userCodeFiles.includes(ref.file)) {
+          console.warn(`⚠️ Filtering question due to hallucinated file: ${ref.file}`);
+          return false;
+        }
+      }
+    }
+
+    return true;
+  });
+
+  console.log(`✅ Validation complete: ${validQuestions.length}/${questions.length} passed.`);
+  return validQuestions;
 }

@@ -109,7 +109,7 @@ const LoadingPage: React.FC = () => {
 
       return next;
     });
-  }, [analysisId, navigate, stage3Mode, autoPrinted, sheetWindow]); // Added deps
+  }, []); // Removed unnecessary deps
 
   // WebSocket — instant stage-complete notifications (polling is the fallback)
   useWebSocket(analysisId, {

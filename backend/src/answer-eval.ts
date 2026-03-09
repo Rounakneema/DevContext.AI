@@ -15,7 +15,8 @@ export async function evaluateAnswerComprehensive(
   question: any,
   userAnswer: string,
   timeSpent: number,
-  topic?: any // NEW: Optional topic context
+  topic?: any,
+  domainInfo?: any
 ): Promise<any> {
   const expectedKeyPoints = question.expectedAnswer?.keyPoints || [];
   const redFlags = question.expectedAnswer?.redFlags || [];
@@ -28,6 +29,7 @@ INTERVIEW QUESTION
 ═══════════════════════════════════════════════════════════════════════════
 Category: ${question.category}
 Difficulty: ${question.difficulty}
+Project Domain: ${domainInfo?.primary_domain || 'general_software_engineering'}
 
 Question:
 ${question.question}

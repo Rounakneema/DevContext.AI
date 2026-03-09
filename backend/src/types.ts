@@ -1,6 +1,20 @@
 // Production-Grade Normalized Schema for DevContext AI
 // Following SOLID principles, 3NF normalization, and enterprise patterns
 
+export interface DomainInfo {
+  primary_domain: string;   // e.g. "Artificial Intelligence"
+  sub_domain: string;       // e.g. "Machine Learning"
+  specialization: string;   // e.g. "Natural Language Processing"
+  tags: string[];           // ["RAG", "LLM", "Vector DB"]
+  confidence: number;
+  evidence: {
+    keywords: string[];
+    files: string[];
+    dependencies: string[];
+  };
+  reasoning: string;
+}
+
 // ============================================================================
 // TABLE 1: USERS
 // ============================================================================
@@ -130,6 +144,7 @@ export interface RepositoryMetadata {
   s3Key: string;           // S3 path to cached repository
   processedAt: string;
   processingDurationMs: number;
+  domainInfo?: DomainInfo;
 }
 
 export interface CommitAnalysis {
@@ -482,6 +497,7 @@ export interface InterviewPlan {
   requiredSignals: string[];
 
   generatedAt: string;
+  domainInfo?: any;
 }
 
 export interface ResumeBullet {

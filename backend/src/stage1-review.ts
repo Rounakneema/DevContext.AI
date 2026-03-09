@@ -28,6 +28,7 @@ interface Stage1Event {
   projectContextMap: ProjectContextMap;
   s3Key: string;
   codeContext?: string;
+  domainInfo?: import('./types').DomainInfo;
 }
 
 interface Stage1Response {
@@ -38,7 +39,7 @@ interface Stage1Response {
 }
 
 export const handler: Handler<Stage1Event, Stage1Response> = async (event) => {
-  const { analysisId, projectContextMap, s3Key, codeContext } = event;
+  const { analysisId, projectContextMap, s3Key, codeContext, domainInfo } = event;
 
   try {
     console.log(`Starting Stage 1 (Industry-Grade Analysis) for: ${analysisId}`);
@@ -55,7 +56,7 @@ export const handler: Handler<Stage1Event, Stage1Response> = async (event) => {
     await DB.updateStageProgress(analysisId, 'project_review', 20);
 
     // Generate project review using enhanced industry-standard prompt
-    const projectReview = await generateProjectReview(analysisId, projectContextMap, code);
+    const projectReview = await generateProjectReview(analysisId, projectContextMap, code, domainInfo);
 
     // Validate grounding
     const groundingChecker = new GroundingChecker();
@@ -178,14 +179,24 @@ async function loadCodeContext(s3KeyPrefix: string, contextMap: ProjectContextMa
 async function generateProjectReview(
   analysisId: string,
   contextMap: ProjectContextMap,
-  codeContext: string
+  codeContext: string,
+  domainInfo?: import('./types').DomainInfo
 ): Promise<any> {
   const startTime = Date.now();
+
+  const domainContext = domainInfo ? `
+PROJECT DOMAIN CLASSIFICATION:
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus: ${domainInfo.reasoning}
+` : '';
 
   const commonHeader = `REPO CONTEXT:
 - Total Files: ${contextMap.totalFiles}
 - Languages: ${JSON.stringify(contextMap.languages || {})}
 - Frameworks: ${contextMap.frameworks.join(', ')}
+${domainContext}
 
 CODE SAMPLE:
 ${codeContext}
@@ -274,17 +285,10 @@ Analyze:
 - component responsibilities
 
 2. Design Patterns
-Identify patterns ONLY if supported by evidence.
-
-Possible patterns include:
-Factory, Repository, Service Layer, Strategy, Observer, Adapter.
+Identify specific software design patterns ONLY if supported by evidence. Look for repeatable solutions to common problems in the code.
 
 3. Anti-Patterns
-Detect issues such as:
-- God objects
-- Tight coupling
-- Large files handling too many responsibilities
-- Hardcoded configuration
+Detect structural issues that violate engineering best practices, such as code that is overly complex, tightly coupled, or poorly organized.
 
 4. Engineering Strengths
 Highlight real engineering wins such as:
@@ -409,7 +413,7 @@ Return VALID JSON:
       "startups": "Score 0-100",
       "serviceCompanies": "Score 0-100"
     },
-    "justification": "Summary of কেন candidate fits the industry tiers"
+    "justification": "Professional assessment of the project's technical depth and market relevance."
   }
 }
 `;

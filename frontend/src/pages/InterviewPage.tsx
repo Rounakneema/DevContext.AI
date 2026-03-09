@@ -1107,7 +1107,7 @@ const InterviewPage: React.FC = () => {
                                     </div>
 
                                     <div style={{ fontSize: 16, color: "var(--text)", lineHeight: 1.6, marginBottom: 24, padding: "16px", background: "var(--bg)", borderRadius: 12, border: "1px solid var(--border)" }}>
-                                        {lastEvaluation?.evaluation?.coreEvaluation || "No specific evaluation provided."}
+                                        {lastEvaluation?.evaluation?.detailedFeedback || lastEvaluation?.evaluation?.feedback || "No specific evaluation provided."}
                                     </div>
 
                                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>

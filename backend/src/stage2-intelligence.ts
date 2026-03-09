@@ -19,6 +19,7 @@ interface Stage2Event {
   projectContextMap: ProjectContextMap;
   projectReview: any; // Output from Stage 1
   s3Key: string;
+  domainInfo?: import('./types').DomainInfo;
 }
 
 interface Stage2Response {
@@ -29,7 +30,7 @@ interface Stage2Response {
 }
 
 export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
-  const { analysisId, projectContextMap, projectReview, s3Key } = event;
+  const { analysisId, projectContextMap, projectReview, s3Key, domainInfo } = event;
 
   try {
     console.log(`Starting Stage 2 (Intelligence Report with Parallel Agents) for: ${analysisId}`);
@@ -50,7 +51,8 @@ export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
       projectContextMap,
       projectReview,
       codeContext,
-      analysisId
+      analysisId,
+      domainInfo
     );
 
     console.log('All agents completed. Synthesizing intelligence report...');
@@ -60,7 +62,8 @@ export const handler: Handler<Stage2Event, Stage2Response> = async (event) => {
       agentResults,
       projectContextMap,
       projectReview,
-      analysisId
+      analysisId,
+      domainInfo
     );
 
     await DB.updateStageProgress(analysisId, 'intelligence_report', 95);
@@ -137,7 +140,8 @@ async function runParallelAgents(
   contextMap: ProjectContextMap,
   projectReview: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo?: import('./types').DomainInfo
 ): Promise<any[]> {
   await DB.updateStageProgress(analysisId, 'intelligence_report', 25);
   let completedCount = 0;
@@ -158,11 +162,11 @@ async function runParallelAgents(
 
   // Define 5 specialized agents
   const agentPromises = [
-    trackAgent(runArchitectureAgent(contextMap, projectReview, codeContext, analysisId)),
-    trackAgent(runDesignDecisionsAgent(contextMap, projectReview, codeContext, analysisId)),
-    trackAgent(runTradeoffsAgent(contextMap, projectReview, codeContext, analysisId)),
-    trackAgent(runScalabilityAgent(contextMap, projectReview, codeContext, analysisId)),
-    trackAgent(runResumeBulletsAgent(contextMap, projectReview, codeContext, analysisId))
+    trackAgent(runArchitectureAgent(contextMap, projectReview, codeContext, analysisId, domainInfo)),
+    trackAgent(runDesignDecisionsAgent(contextMap, projectReview, codeContext, analysisId, domainInfo)),
+    trackAgent(runTradeoffsAgent(contextMap, projectReview, codeContext, analysisId, domainInfo)),
+    trackAgent(runScalabilityAgent(contextMap, projectReview, codeContext, analysisId, domainInfo)),
+    trackAgent(runResumeBulletsAgent(contextMap, projectReview, codeContext, analysisId, domainInfo))
   ];
 
   // Run all agents in parallel
@@ -194,8 +198,17 @@ async function runArchitectureAgent(
   contextMap: ProjectContextMap,
   projectReview: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo?: import('./types').DomainInfo
 ): Promise<any> {
+
+  const domainContext = domainInfo ? `
+PROJECT DOMAIN CLASSIFICATION:
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus: ${domainInfo.reasoning}
+` : '';
 
   const prompt = `You are a Principal Software Architect at a FAANG company. You have 20+ years of experience and are conducting an in-depth architecture review of a candidate's codebase. Your analysis must be evidence-based, referencing specific files and code patterns you observe.
 
@@ -204,6 +217,7 @@ async function runArchitectureAgent(
 ═══════════════════════════════════════════════════════════
 Languages: ${JSON.stringify(contextMap.languages || {})}
 Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None detected'}
+${domainContext}
 Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None detected'}
 Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None detected'}
 Total User Code Files: ${(contextMap.userCodeFiles || []).length}
@@ -251,15 +265,15 @@ ${codeContext}
 ═══════════════════════════════════════════════════════════
 Perform a comprehensive architecture deep-dive. You must:
 
-1. LAYER IDENTIFICATION: Identify every architectural layer (Presentation, API, Business Logic, Data Access, Infrastructure). For each layer, identify specific components, their responsibilities, and which files implement them.
+1. LAYER IDENTIFICATION: Identify every architectural layer found in the code. For each layer, identify specific components, their responsibilities, and which files implement them.
 
-2. ARCHITECTURAL PATTERNS: Detect all architectural patterns (MVC, MVP, MVVM, Clean Architecture, Hexagonal, Event-Driven, Microservices, Monolith, Serverless, etc.). Explain exactly HOW each pattern is implemented with file-level evidence.
+2. ARCHITECTURAL PATTERNS: Detect all architectural patterns implemented in the project. Explain exactly HOW each pattern is implemented with file-level evidence.
 
-3. DATA FLOW: Trace the complete data flow from user input to database and back. Identify how data transforms at each layer.
+3. DATA FLOW: Trace the complete data flow from entry points to data persistence and back. Identify how data transforms at each layer.
 
-4. COMPONENT DIAGRAM: Describe relationships between all major components. Which components depend on which? Are there circular dependencies?
+4. COMPONENT DIAGRAM: Describe relationships between all major components and their dependencies.
 
-5. TECHNOLOGY STACK: Catalog every technology used — languages, frameworks, databases, message queues, caching layers, dev tools, CI/CD tools, containerization.
+5. TECHNOLOGY STACK: Catalog every technology used — languages, frameworks, databases, and infrastructure components.
 
 Return ONLY valid JSON in this exact format:
 
@@ -328,15 +342,24 @@ async function runDesignDecisionsAgent(
   contextMap: ProjectContextMap,
   projectReview: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo?: import('./types').DomainInfo
 ): Promise<any> {
 
-  const prompt = `You are a Distinguished Engineer at a top-tier tech company analyzing the key design decisions embedded in a codebase. You specialize in reverse-engineering architectural intent from code artifacts. Your goal is to identify the WHY behind every significant technical choice.
+  const domainContext = domainInfo ? `
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus: ${domainInfo.reasoning}
+` : '';
+
+  const prompt = `You are a Distinguished Engineer at a top-tier tech company analyzing the key design decisions embedded in a codebase.
 
 ═══════════════════════════════════════════════════════════
                     REPOSITORY METADATA
 ═══════════════════════════════════════════════════════════
 Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None detected'}
+${domainContext}
 Languages: ${JSON.stringify(contextMap.languages || {})}
 Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None detected'}
 Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None detected'}
@@ -376,14 +399,14 @@ Identify 6-10 key design decisions made by the engineer. For each decision, prov
 6. EVIDENCE: Which specific files/code prove this decision was made?
 
 Look for decisions about:
-- Database choice (SQL vs NoSQL, which specific DB)
-- Authentication strategy (JWT, sessions, OAuth)
-- API design (REST vs GraphQL, versioning)
-- State management approach
-- Error handling strategy
-- Dependency injection / service patterns
-- Caching strategy
-- Deployment architecture
+- Persistence strategies
+- Authentication and security models
+- API design and communication protocols
+- Application state and data management
+- Error handling and resilience
+- Dependency management and modularity
+- Performance optimization and caching
+- Infrastructure and deployment
 
 Return ONLY valid JSON:
 
@@ -447,16 +470,26 @@ async function runTradeoffsAgent(
   contextMap: ProjectContextMap,
   projectReview: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo?: import('./types').DomainInfo
 ): Promise<any> {
 
-  const prompt = `You are a VP of Engineering at a scale-up evaluating the technical tradeoffs embedded in this codebase. A tradeoff is where the engineer chose X over Y, gaining some benefits but accepting some costs. Your job is to identify these tradeoffs, assess their merit, and evaluate their impact on the system.
+  const domainContext = domainInfo ? `
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus: ${domainInfo.reasoning}
+` : '';
+
+  const prompt = `You are a VP of Engineering at a scale-up evaluating the technical tradeoffs embedded in this codebase.
+ A tradeoff is where the engineer chose X over Y, gaining some benefits but accepting some costs. Your job is to identify these tradeoffs, assess their merit, and evaluate their impact on the system.
 
 ═══════════════════════════════════════════════════════════
                     REPOSITORY METADATA
 ═══════════════════════════════════════════════════════════
 Languages: ${JSON.stringify(contextMap.languages || {})}
 Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+${domainContext}
 Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None'}
 File Count: ${(contextMap.userCodeFiles || []).length}
 
@@ -479,18 +512,7 @@ ${codeContext}
 ═══════════════════════════════════════════════════════════
                      YOUR ANALYSIS TASK
 ═══════════════════════════════════════════════════════════
-Identify 4-6 significant technical tradeoffs. Common tradeoff categories:
-
-- REST vs GraphQL API design
-- SQL vs NoSQL database choice
-- Monolith vs Microservices
-- Server-side rendering vs Client-side rendering
-- Synchronous vs Asynchronous processing
-- Strong typing vs Dynamic typing
-- Normalization vs Denormalization
-- Build-vs-Buy (custom code vs library)
-- Security vs Usability
-- Performance vs Readability
+Identify 4-6 significant technical tradeoffs. Analyze choices where the engineer gained some benefits but accepted specific costs (e.g., speed vs complexity, flexibility vs consistency, etc.).
 
 For each tradeoff, assess:
 1. What was the specific choice point?
@@ -552,16 +574,25 @@ async function runScalabilityAgent(
   contextMap: ProjectContextMap,
   projectReview: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo?: import('./types').DomainInfo
 ): Promise<any> {
 
-  const prompt = `You are a Site Reliability Engineer (SRE) and Application Security Lead at a top-tier tech company. You are evaluating this codebase for production readiness, scalability bottlenecks, and security vulnerabilities.
+  const domainContext = domainInfo ? `
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus: ${domainInfo.reasoning}
+` : '';
+
+  const prompt = `You are a Site Reliability Engineer (SRE) and Application Security Lead at a top-tier tech company.
 
 ═══════════════════════════════════════════════════════════
                     REPOSITORY METADATA
 ═══════════════════════════════════════════════════════════
 Languages: ${JSON.stringify(contextMap.languages || {})}
 Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+${domainContext}
 Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None'}
 File Count: ${(contextMap.userCodeFiles || []).length}
 
@@ -592,17 +623,16 @@ ${codeContext}
 Perform two analyses:
 
 PART 1 — SCALABILITY ANALYSIS:
-1. Estimate current capacity (users, RPS, data volume)
-2. Identify ALL bottlenecks (database queries, N+1 problems, missing indexes, blocking I/O, memory leaks, connection pooling issues)
-3. Identify architectural constraints that limit horizontal scaling
-4. Provide actionable improvement recommendations ranked by impact/effort
+1. Estimate current capacity based on the observed architecture.
+2. Identify all technical bottlenecks (e.g., inefficient operations, resource contention, blocking patterns).
+3. Identify architectural constraints that limit growth.
+4. Provide actionable improvement recommendations.
 
 PART 2 — SECURITY POSTURE:
-1. Identify vulnerabilities (injection, XSS, CSRF, exposed secrets, insecure auth, missing input validation)
-2. Assess authentication mechanism (JWT, sessions, OAuth)
-3. Assess authorization patterns (RBAC, ABAC, middleware guards)
-4. Check sensitive data handling (encryption, hashing, environment variables)
-5. List security best practices followed AND missing
+1. Identify vulnerabilities observed in the code.
+2. Assess the implemented authentication and authorization patterns.
+3. Check sensitive data handling and protection mechanisms.
+4. List security best practices followed and missing.
 
 Return ONLY valid JSON:
 
@@ -691,8 +721,17 @@ async function runResumeBulletsAgent(
   contextMap: ProjectContextMap,
   projectReview: any,
   codeContext: string,
-  analysisId: string
+  analysisId: string,
+  domainInfo?: import('./types').DomainInfo
 ): Promise<any> {
+
+  const domainContext = domainInfo ? `
+PROJECT DOMAIN CLASSIFICATION:
+- Primary: ${domainInfo.primary_domain}
+- Sub-domain: ${domainInfo.sub_domain}
+- Specialization: ${domainInfo.specialization}
+- Focus: ${domainInfo.reasoning}
+` : '';
 
   const prompt = `You are a Senior Career Coach and Technical Recruiter at Google who specializes in crafting ATS-optimized resume bullets. You are reviewing an engineer's codebase to generate compelling, quantified resume achievements based on what they actually built.
 
@@ -701,6 +740,7 @@ async function runResumeBulletsAgent(
 ═══════════════════════════════════════════════════════════
 Languages: ${JSON.stringify(contextMap.languages || {})}
 Frameworks: ${(contextMap.frameworks || []).join(', ') || 'None'}
+${domainContext}
 Entry Points: ${(contextMap.entryPoints || []).join(', ') || 'None'}
 Core Modules: ${(contextMap.coreModules || []).join(', ') || 'None'}
 Total Files: ${(contextMap.userCodeFiles || []).length}
@@ -741,15 +781,11 @@ CATEGORIES TO COVER:
 - performance: Optimizations, scaling, caching, query optimization
 - leadership: Code organization, best practices, documentation
 
-FORMAT GUIDANCE (do NOT copy these — create NEW bullets from the actual code above):
-✓ GOOD format: "[Action Verb] + [specific system/feature from THIS codebase] + [actual technologies from THIS repo] + [realistic scale estimate based on architecture]"
-✓ GOOD: References actual files, modules, and patterns visible in the code
-✓ GOOD: Quantifies impact using realistic estimates grounded in the codebase's architecture
-
-✗ BAD: Vague one-liners with no specifics (e.g., "Built a website")
-✗ BAD: Just listing technologies without describing what was built
-✗ BAD: Generic statements like "Implemented features" or "Worked on the backend"
-✗ BAD: Mentioning technologies, frameworks, or metrics NOT present in this codebase
+FORMAT GUIDANCE:
+- Every bullet must follow the formula: [Strong Action Verb] + [Specific System/Feature] + [Actual Technologies] + [Realistic Scale/Impact].
+- Base every bullet on ACTUAL code evidence visible in the provided repository.
+- Avoid generic statements; be specific about the technical implementation and the engineer's role.
+- Quantify impact using realistic estimates derived from the codebase's architecture (e.g., handling X endpoints, processing Y data types, supporting Z concurrent operations).
 
 CRITICAL: Every technology, pattern, and metric you mention MUST come from the actual code above. Do NOT invent technologies or numbers that aren't supported by the codebase.
 
@@ -806,7 +842,8 @@ async function synthesizeIntelligenceReport(
   agentResults: any[],
   contextMap: ProjectContextMap,
   projectReview: any,
-  analysisId: string
+  analysisId: string,
+  domainInfo?: import('./types').DomainInfo
 ): Promise<any> {
 
   console.log('Synthesizing final report from agent outputs...');
