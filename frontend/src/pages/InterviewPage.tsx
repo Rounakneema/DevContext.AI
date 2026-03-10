@@ -18,6 +18,14 @@ import { renderAndPrintQuestionSheet } from "../utils/exportReport";
 import InterviewRadarChart from "../components/interview/InterviewRadarChart";
 import AiGeneratedNotice from "../components/AiGeneratedNotice";
 
+const GlobalStyles = () => (
+    <style dangerouslySetInnerHTML={{
+        __html: `
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.95); } }
+    `}} />
+);
+
 type Phase = "config" | "loading" | "active" | "evaluating" | "topic_review" | "feedback" | "done";
 
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
@@ -218,6 +226,15 @@ const ConfigSection: React.FC<{ label: string; hint?: string; children: React.Re
 
 
 const InterviewPage: React.FC = () => {
+    return (
+        <>
+            <GlobalStyles />
+            <InterviewPageContent />
+        </>
+    );
+};
+
+const InterviewPageContent: React.FC = () => {
     const navigate = useNavigate();
     const { analysisId } = useParams<{ analysisId: string }>();
     const [searchParams] = useSearchParams();
@@ -400,7 +417,7 @@ const InterviewPage: React.FC = () => {
             }
             if (!newSession.questions || newSession.questions.length === 0) {
                 console.warn("[FRONTEND] Session created but no questions found. Persisting loading state.");
-                setError("Ready! Starting your interview...");
+                setLoadingMessage("Finalizing your questions... Almost ready!");
                 // Wait a bit and try to refresh one more time or show error
                 await new Promise(r => setTimeout(r, 2000));
                 const secondTry = await getInterviewSession(newSession.sessionId);
@@ -739,16 +756,53 @@ const InterviewPage: React.FC = () => {
 
     /* LOADING */
     if (phase === "loading") {
+        const percentageMatch = loadingMessage?.match(/\((\d+)%\)/);
+        const percentage = percentageMatch ? percentageMatch[1] : null;
+        const baseMessage = loadingMessage?.replace(/\(\d+%\)/, "").trim() || "Preparing your interview...";
+
         return (
             <div style={{ ...pageStyle, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <BgBlobs />
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ width: 56, height: 56, border: "4px solid var(--accent-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 24px" }} />
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
-                        {loadingMessage || "Preparing your interview..."}
+                <div style={{
+                    width: "100%", maxWidth: 480, padding: 48, textAlign: "center",
+                    background: "rgba(255, 255, 255, 0.03)",
+                    backdropFilter: "blur(20px)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 32,
+                    boxShadow: "0 24px 80px rgba(0,0,0,0.4)"
+                }}>
+                    <div style={{ position: "relative", width: 80, height: 80, margin: "0 auto 32px" }}>
+                        <div style={{
+                            position: "absolute", inset: 0, borderRadius: "50%",
+                            border: "4px solid var(--accent-light)", opacity: 0.2
+                        }} />
+                        <div style={{
+                            position: "absolute", inset: 0, borderRadius: "50%",
+                            border: "4px solid transparent", borderTopColor: "var(--accent)",
+                            animation: "spin 1s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite"
+                        }} />
+                        {percentage && (
+                            <div style={{
+                                position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 13, fontWeight: 800, color: "var(--accent)"
+                            }}>
+                                {percentage}%
+                            </div>
+                        )}
                     </div>
-                    <div style={{ fontSize: 14, color: "var(--text2)" }}>
-                        {loadingMessage ? "This ensures the evaluation is accurate for your specific role." : "Generating project-specific questions"}
+
+                    <h2 style={{ fontSize: 24, fontWeight: 800, color: "var(--text)", marginBottom: 12, letterSpacing: "-0.02em" }}>
+                        {baseMessage}
+                    </h2>
+                    <p style={{ fontSize: 15, color: "var(--text3)", lineHeight: 1.6, maxWidth: 320, margin: "0 auto" }}>
+                        {loadingMessage ? "Tailoring questions to your specific role and project context for a more accurate evaluation." : "We're analyzing your project to generate the most relevant technical questions."}
+                    </p>
+
+                    <div style={{ marginTop: 40, padding: "12px 20px", background: "rgba(255, 255, 255, 0.05)", borderRadius: 16, display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)", animation: "pulse 1.5s ease-in-out infinite" }} />
+                        <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text3)" }}>
+                            AI Pipeline Active
+                        </span>
                     </div>
                 </div>
             </div>
