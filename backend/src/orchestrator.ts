@@ -72,8 +72,12 @@ function normalizeRole(role: string): string {
     .trim()
     .replace(/\bml\b/g, 'machine learning')
     .replace(/\bswe\b/g, 'software engineer')
+    .replace(/\bsde\b/g, 'software engineer')
+    .replace(/\bsed\b/g, 'software engineer') // common typo
+    .replace(/\bjun\b/g, 'junior')
     .replace(/\bjunio\b/g, 'junior')
-    .replace(/\benginn?e+rs?\b/g, 'engineer') // Robustly handle engineer, enginer, enginner, engineers
+    .replace(/\beng\b/g, 'engineer')
+    .replace(/\benginn?e+rs?\b/g, 'engineer')
     .replace(/\s+/g, ' ');
 }
 

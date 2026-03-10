@@ -148,6 +148,36 @@ const PhaseBadge: React.FC<{ phase: string; active: boolean }> = ({ phase, activ
     </div>
 );
 
+const SUGGESTED_ROLES = [
+    "Junior Machine Learning Engineer",
+    "Senior Machine Learning Engineer",
+    "Junior Software Engineer",
+    "Senior Software Engineer",
+    "Staff Software Engineer",
+    "Junior Frontend Engineer",
+    "Senior Frontend Engineer",
+    "Junior Backend Engineer",
+    "Senior Backend Engineer",
+    "Fullstack Developer",
+    "Junior Data Scientist",
+    "Senior Data Scientist",
+    "Junior Data Engineer",
+    "Senior Data Engineer",
+    "DevOps Engineer",
+    "Site Reliability Engineer (SRE)",
+    "Security Engineer",
+    "QA Automation Engineer",
+    "Embedded Systems Engineer",
+    "Mobile Engineer (iOS)",
+    "Mobile Engineer (Android)",
+    "Cloud Architect",
+    "Product Manager (Technical)",
+    "Data Analyst",
+    "UI/UX Engineer",
+    "Junior Blockchain Developer",
+    "Senior Blockchain Developer"
+];
+
 const pageStyle: React.CSSProperties = {
     minHeight: "100vh", background: "var(--bg)", color: "var(--text)",
     fontFamily: "Geist, -apple-system, sans-serif",
@@ -600,7 +630,16 @@ const InterviewPage: React.FC = () => {
 
                     <div style={configCardStyle}>
                         <ConfigSection label="Target Role" hint="Questions will be calibrated to this level">
-                            <input value={role} onChange={e => setRole(e.target.value)} style={cfgInputStyle} placeholder="e.g. Senior Software Engineer" />
+                            <input
+                                list="role-suggestions"
+                                value={role}
+                                onChange={e => setRole(e.target.value)}
+                                style={cfgInputStyle}
+                                placeholder="e.g. Senior Software Engineer"
+                            />
+                            <datalist id="role-suggestions">
+                                {SUGGESTED_ROLES.map(r => <option key={r} value={r} />)}
+                            </datalist>
                         </ConfigSection>
                         <ConfigSection label="Question Focus">
                             <div style={{ display: "flex", gap: 10 }}>
