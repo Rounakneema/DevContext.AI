@@ -525,7 +525,7 @@ export const continueToStage2 = (analysisId: string) =>
     method: 'POST',
   });
 
-export const continueToStage3 = (analysisId: string, mode: 'sheet' | 'live' = 'sheet') =>
+export const continueToStage3 = (analysisId: string, mode: 'sheet' | 'live' = 'sheet', targetRole?: string, candidateLevel?: string) =>
   apiCall<{
     analysisId: string;
     message: string;
@@ -533,7 +533,7 @@ export const continueToStage3 = (analysisId: string, mode: 'sheet' | 'live' = 's
     estimatedCompletionTime: number;
   }>(`/analysis/${analysisId}/continue-stage3`, {
     method: 'POST',
-    body: JSON.stringify({ mode }),
+    body: JSON.stringify({ mode, targetRole, candidateLevel }),
   });
 
 export const cancelAnalysis = (analysisId: string) =>

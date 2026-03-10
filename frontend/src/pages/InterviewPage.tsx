@@ -360,10 +360,12 @@ const InterviewPageContent: React.FC = () => {
             let newSession: any;
             try {
                 newSession = await create();
-                // If it returned a 202 or processing status without throwing
+                // If it STILL returns a 202 even after stage 3 completion, handle it as processing
+                // instead of falling through to an error.
                 if (newSession && (newSession.status === 'processing' || newSession.status === 'regeneration_triggered')) {
-                    console.log("[FRONTEND] Session in processing/regeneration state, triggering re-poll logic.");
-                    throw new Error(newSession.message || newSession.error || "Interview plan not found");
+                    console.log("[FRONTEND] Session STILL in processing state after polling. Retrying after delay...");
+                    await new Promise(r => setTimeout(r, 2000));
+                    newSession = await create();
                 }
             } catch (e: any) {
                 const msg = String(e?.message || e?.error || e || "");
@@ -378,7 +380,8 @@ const InterviewPageContent: React.FC = () => {
                 ) {
                     setLoadingMessage("Detecting role change. Preparing fresh, role-specific questions for you...");
                     try {
-                        await continueToStage3(effectiveAnalysisId, 'live');
+                        // Pass the current role to ensure regeneration uses the requested role
+                        await continueToStage3(effectiveAnalysisId, 'live', role);
                     } catch {
                         // Ignore if already running
                     }
@@ -408,23 +411,42 @@ const InterviewPageContent: React.FC = () => {
                         }
                         await new Promise((r) => setTimeout(r, 3000));
                     }
+
+                    // After polling loop finishes, wait a tiny bit more for DB consistency
+                    await new Promise(r => setTimeout(r, 1000));
                     newSession = await create();
+
+                    // Final check: if it's still returning status instead of a session, try one more time
+                    if (newSession && !newSession.sessionId && newSession.status === 'processing') {
+                        await new Promise(r => setTimeout(r, 2000));
+                        newSession = await create();
+                    }
                 } else {
                     throw e;
                 }
             } finally {
                 setLoadingMessage(null);
             }
+
+            if (!newSession || (!newSession.questions && !newSession.sessionId)) {
+                throw new Error("Could not initialize session. Please try again.");
+            }
+
             if (!newSession.questions || newSession.questions.length === 0) {
                 console.warn("[FRONTEND] Session created but no questions found. Persisting loading state.");
                 setLoadingMessage("Finalizing your questions... Almost ready!");
                 // Wait a bit and try to refresh one more time or show error
                 await new Promise(r => setTimeout(r, 2000));
-                const secondTry = await getInterviewSession(newSession.sessionId);
-                if (!secondTry.questions || secondTry.questions.length === 0) {
-                    throw new Error("No questions found in this session. Please try restarting.");
+
+                if (newSession.sessionId) {
+                    const secondTry = await getInterviewSession(newSession.sessionId);
+                    if (!secondTry.questions || secondTry.questions.length === 0) {
+                        throw new Error("No questions found in this session. Please try restarting.");
+                    }
+                    newSession = secondTry;
+                } else {
+                    throw new Error("Session initialized but no data found. Please try again.");
                 }
-                newSession = secondTry;
             }
             setSession(newSession);
             setCurrentQuestion(newSession.questions?.[0] || null);

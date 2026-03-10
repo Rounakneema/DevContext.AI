@@ -77,7 +77,7 @@ function normalizeRole(role: string): string {
     .replace(/\bjun\b/g, 'junior')
     .replace(/\bjunio\b/g, 'junior')
     .replace(/\beng\b/g, 'engineer')
-    .replace(/\benginn?e+rs?\b/g, 'engineer')
+    .replace(/\bengin(n?e+r)s?\b/g, 'engineer')
     .replace(/\s+/g, ' ');
 }
 
@@ -884,7 +884,10 @@ async function handleContinueStage3(event: any, context: any) {
 
   const body = JSON.parse(event.body || '{}');
   const requestedMode = body.mode || 'sheet';
-  const repoContext = { userId: getUserIdFromEvent(event) };
+  const roleOverride = body.targetRole;
+  const levelOverride = body.candidateLevel;
+  const userId = getUserIdFromEvent(event);
+  const repoContext = { userId };
 
   // Check if Stage 3 already completed
   if (analysis.stages.interview_simulation.status === 'completed') {
@@ -897,7 +900,7 @@ async function handleContinueStage3(event: any, context: any) {
     const sheetComplete = simulation?.completedModes?.sheet || false;
     const liveComplete = simulation?.completedModes?.live || false;
 
-    console.log(`📊 Modes status: sheet=${sheetComplete}, live=${liveComplete}, requested=${requestedMode}`);
+    console.log(`📊 Modes status: sheet=${sheetComplete}, live=${liveComplete}, requested=${requestedMode}, roleOverride=${roleOverride}`);
 
     // DECISION: Re-trigger only if requested mode is NOT complete
     const needsRegeneration =
@@ -913,7 +916,7 @@ async function handleContinueStage3(event: any, context: any) {
         startedAt: new Date().toISOString()
       });
 
-      processStage3(analysisId, requestedMode, repoContext);
+      processStage3(analysisId, requestedMode, repoContext, roleOverride, levelOverride);
       await DB.updateAnalysisStatus(analysisId, 'processing');
       await DB.updateWorkflowState(analysisId, 'stage3_pending');
 
@@ -946,7 +949,7 @@ async function handleContinueStage3(event: any, context: any) {
   }
 
   // First time running Stage 3
-  processStage3(analysisId, requestedMode, context);
+  processStage3(analysisId, requestedMode, { userId }, roleOverride, levelOverride);
   await DB.updateAnalysisStatus(analysisId, 'processing');
   await DB.updateWorkflowState(analysisId, 'stage3_pending');
 
@@ -1096,6 +1099,7 @@ async function processStage3(analysisId: string, mode: string, context: any, rol
 
     const stage3Result = await invokeAsync(STAGE3_FUNCTION!, {
       analysisId,
+      userId: context.userId,
       projectContextMap: {
         totalFiles: repoMetadata.totalFiles,
         frameworks: repoMetadata.frameworks,

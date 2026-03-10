@@ -13,6 +13,7 @@ const MODEL_ID = MISTRAL_LARGE_MODEL;
 
 interface Stage3Event {
   analysisId: string;
+  userId: string;
   projectContextMap: ProjectContextMap;
   projectReview: any;
   intelligenceReport: any;
@@ -33,7 +34,7 @@ interface Stage3Response {
 import { DomainInfo } from './types';
 
 export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
-  const { analysisId, projectContextMap, projectReview, intelligenceReport, s3Key, mode = 'sheet', domainInfo, targetRole: roleOverride, candidateLevel: levelOverride } = event;
+  const { analysisId, userId, projectContextMap, projectReview, intelligenceReport, s3Key, mode = 'sheet', domainInfo, targetRole: roleOverride, candidateLevel: levelOverride } = event;
 
   try {
     console.log(`🎯 Stage 3 - Mode: ${mode} for ${analysisId}`);
@@ -62,8 +63,10 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
     console.log(`📡 Domain Info: ${effectiveDomainInfo.primary_domain} -> ${effectiveDomainInfo.sub_domain} -> ${effectiveDomainInfo.specialization}`);
     await DB.updateStageProgress(analysisId, 'interview_simulation', 35);
 
-    const userProfile = await DB.getUserProfile(analysisId);
-    const targetRole = userProfile?.targetRole || 'Junior ML Engineer';
+    const userProfile = userId ? await DB.getUserProfile(userId) : null;
+    const targetRole = roleOverride || userProfile?.targetRole || 'Junior ML Engineer';
+
+    console.log(`🎯 Selection - Role: ${targetRole} (Override: ${roleOverride || 'None'}), User: ${userId}`);
 
     // ✅ LOAD EXISTING DATA
     const existingSimulation = await DB.getInterviewSimulation(analysisId);
@@ -102,6 +105,7 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
           intelligenceReport,
           codeContext,
           analysisId,
+          userId,
           effectiveDomainInfo,
           roleOverride,
           levelOverride
@@ -258,6 +262,7 @@ export async function initializeTopicDrivenInterview(
   intelligenceReport: any,
   codeContext: string,
   analysisId: string,
+  userId: string,
   domainInfo: DomainInfo,
   roleOverride?: string,
   levelOverride?: string
@@ -266,7 +271,7 @@ export async function initializeTopicDrivenInterview(
 
   console.log('Initializing topic-driven interview mode...');
 
-  const userProfile = await DB.getUserProfile(analysisId);
+  const userProfile = userId ? await DB.getUserProfile(userId) : null;
   const targetRole = roleOverride || userProfile?.targetRole || 'Senior SDE';
   const candidateLevel = levelOverride || detectCandidateLevel(userProfile, projectReview);
 
