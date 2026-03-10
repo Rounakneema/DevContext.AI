@@ -215,7 +215,8 @@ export async function getFullAnalysis(analysisId: string): Promise<Types.Analysi
           { PK: `ANALYSIS#${analysisId}`, SK: 'INTELLIGENCE_REPORT' },
           { PK: `ANALYSIS#${analysisId}`, SK: 'INTERVIEW_SIMULATION' },
           { PK: `ANALYSIS#${analysisId}`, SK: 'INTERVIEW_PLAN' }
-        ]
+        ],
+        ConsistentRead: true
       }
     }
   }));
