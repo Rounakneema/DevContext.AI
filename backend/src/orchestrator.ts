@@ -73,7 +73,7 @@ function normalizeRole(role: string): string {
     .replace(/\bml\b/g, 'machine learning')
     .replace(/\bswe\b/g, 'software engineer')
     .replace(/\bjunio\b/g, 'junior')
-    .replace(/\benginer\b/g, 'engineer')
+    .replace(/\benginn?e+rs?\b/g, 'engineer') // Robustly handle engineer, enginer, enginner, engineers
     .replace(/\s+/g, ' ');
 }
 
