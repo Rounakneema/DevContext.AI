@@ -1,5 +1,4 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { evaluateAnswerComprehensive } from './answer-eval';
 import { initializeTopicDrivenInterview } from './stage3-questions';
 
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
@@ -14,6 +13,8 @@ const REPO_PROCESSOR_FUNCTION = process.env.REPO_PROCESSOR_FUNCTION;
 const STAGE1_FUNCTION = process.env.STAGE1_FUNCTION;
 const STAGE2_FUNCTION = process.env.STAGE2_FUNCTION;
 const STAGE3_FUNCTION = process.env.STAGE3_FUNCTION;
+const ANSWER_EVAL_FUNCTION = process.env.ANSWER_EVAL_FUNCTION || 'devcontext-backend-AnswerEvalFunction-ghzpC1YACLzv';
+const FOLLOWUP_FUNCTION = process.env.FOLLOWUP_FUNCTION || 'devcontext-backend-FollowUpFunction-TassooKt6h4T';
 const CACHE_BUCKET = process.env.CACHE_BUCKET;
 const MAIN_TABLE = process.env.MAIN_TABLE!;
 
@@ -1440,6 +1441,21 @@ async function handleCreateInterviewSession(event: any, context: any) {
 
   // 1. If role is explicitly provided and DIFFERENT from the existing plan, trigger regeneration
   if (requestedRole && interviewPlan && normalizeRole(interviewPlan.targetRole) !== normalizeRole(requestedRole)) {
+    const simulationStatus = fullAnalysis.analysis.stages.interview_simulation.status;
+
+    if (simulationStatus === 'processing') {
+      console.log(`[ORCH] Role mismatch detected, but Stage 3 is already processing. Waiting...`);
+      return {
+        statusCode: 202,
+        headers: getCorsHeaders(getRequestOrigin(event)),
+        body: JSON.stringify({
+          message: 'Regenerating interview topics for requested role: ' + requestedRole,
+          status: 'processing',
+          retryAfter: 15
+        })
+      };
+    }
+
     console.log(`[ORCH] Role mismatch (${interviewPlan.targetRole} vs ${requestedRole}). Triggering Stage 3 regeneration...`);
 
     // Clear the current plan so we don't use the old one
@@ -1578,28 +1594,30 @@ async function handleCreateInterviewSession(event: any, context: any) {
     return undefined;
   };
 
-  // Target: 3 distinct topics representing "2 major, 1 codebase/follow-up"
+  // Target: 5 distinct topics representing ALL signals
   const selectedWarmup = [
     popTopic(wantsArch ? [archBuckets, implBuckets, eqBuckets] : wantsImpl ? [implBuckets, archBuckets, eqBuckets] : [eqBuckets, implBuckets, archBuckets])
   ].filter(Boolean) as Types.InterviewTopic[];
 
   const selectedDeepDive = [
-    popTopic(wantsImpl ? [implBuckets, archBuckets, eqBuckets] : wantsArch ? [archBuckets, implBuckets, eqBuckets] : [eqBuckets, implBuckets, archBuckets])
+    popTopic(wantsImpl ? [implBuckets, archBuckets, eqBuckets] : wantsArch ? [archBuckets, implBuckets, eqBuckets] : [eqBuckets, implBuckets, archBuckets]),
+    popTopic(wantsArch ? [archBuckets, implBuckets, eqBuckets] : wantsImpl ? [implBuckets, archBuckets, eqBuckets] : [eqBuckets, implBuckets, archBuckets])
   ].filter(Boolean) as Types.InterviewTopic[];
 
   const selectedStretch = [
-    popTopic(wantsEQ ? [eqBuckets, implBuckets, archBuckets] : wantsArch ? [archBuckets, implBuckets, eqBuckets] : [implBuckets, archBuckets, eqBuckets])
+    popTopic(wantsEQ ? [eqBuckets, implBuckets, archBuckets] : wantsArch ? [archBuckets, implBuckets, eqBuckets] : [implBuckets, archBuckets, eqBuckets]),
+    popTopic(wantsImpl ? [implBuckets, archBuckets, eqBuckets] : wantsArch ? [archBuckets, implBuckets, eqBuckets] : [eqBuckets, implBuckets, archBuckets])
   ].filter(Boolean) as Types.InterviewTopic[];
 
-  let globalMaxFollowUps = 1;
+  let globalMaxFollowUps = 2; // Normal
   let fulfillmentMod = 0;
 
   if (intensity === 'fast') {
-    globalMaxFollowUps = 0;
-    fulfillmentMod = -15;
+    globalMaxFollowUps = 1; // 15m -> ~5 questions (few followups)
+    fulfillmentMod = -10;
   } else if (intensity === 'deep') {
-    globalMaxFollowUps = 3;
-    fulfillmentMod = 10;
+    globalMaxFollowUps = 4; // 60m -> ~15-20 questions total
+    fulfillmentMod = 15;
   }
 
   const finalTopics = [...selectedWarmup, ...selectedDeepDive, ...selectedStretch].filter(Boolean);
@@ -1607,9 +1625,13 @@ async function handleCreateInterviewSession(event: any, context: any) {
   const newAllTopics: Record<string, Types.InterviewTopic> = {};
 
   finalTopics.forEach((t, i) => {
-    // Limit to exactly 5 questions total for normal flow (1+1 for first two topics, 1+0 for last)
-    t.maxFollowUps = intensity === 'normal' ? (i < 2 ? 1 : 0) : globalMaxFollowUps;
-    t.fulfillmentThreshold = Math.max(10, Math.min(100, (t.fulfillmentThreshold || 70) + fulfillmentMod));
+    // Sanitize input values from LLM plan to prevent NaN
+    const baseFollowUps = typeof t.maxFollowUps === 'number' && !isNaN(t.maxFollowUps) ? t.maxFollowUps : (Number(t.maxFollowUps) || 2);
+    const baseFulfillment = typeof t.fulfillmentThreshold === 'number' && !isNaN(t.fulfillmentThreshold) ? t.fulfillmentThreshold : (Number(t.fulfillmentThreshold) || 70);
+
+    // Apply global intensity limits
+    t.maxFollowUps = globalMaxFollowUps;
+    t.fulfillmentThreshold = Math.max(10, Math.min(100, baseFulfillment + fulfillmentMod));
     newAllTopics[t.topicId] = t;
   });
 
@@ -1923,15 +1945,19 @@ async function handleSubmitAnswer(event: any, context: any) {
       expectedAnswer: { keyPoints: [topic.description] }
     };
 
-    evaluation = await evaluateAnswerComprehensive(
-      currentQuestion,
-      answer,
-      timeSpentSeconds || 0,
+    // Perform evaluation using Lambda invocation for distinct logging and modularity
+    console.log(`[ORCH] Invoking evaluation for topic ${topic.topicId}`);
+    evaluation = await invokeAsync(ANSWER_EVAL_FUNCTION, {
+      analysisId: session.analysisId,
+      sessionId,
+      question: topic,
+      userAnswer: answer,
+      timeSpent: 60, // Fixed placeholder for now as session doesn't track lastQuestionTime reliably
       topic,
-      plan.domainInfo,
-      plan.targetRole,
-      plan.candidateLevel
-    );
+      domainInfo: plan.domainInfo,
+      targetRole: plan.targetRole,
+      candidateLevel: plan.candidateLevel
+    });
   }
 
   // 2. Update Performance Signals
@@ -1955,8 +1981,9 @@ async function handleSubmitAnswer(event: any, context: any) {
     topic.currentFulfillment = Math.max(topic.currentFulfillment || 0, topic.fulfillmentThreshold || 0);
     topic.isCompleted = true;
   } else {
-    topic.currentFulfillment = Math.max(topic.currentFulfillment, evaluation.topicFulfillment || 0);
-    topic.isCompleted = topic.currentFulfillment >= topic.fulfillmentThreshold;
+    const topicFulfillment = typeof evaluation.topicFulfillment === 'number' && !isNaN(evaluation.topicFulfillment) ? evaluation.topicFulfillment : 0;
+    topic.currentFulfillment = Math.max(topic.currentFulfillment || 0, topicFulfillment);
+    topic.isCompleted = topic.currentFulfillment >= (topic.fulfillmentThreshold || 70);
   }
 
   // 4. Determine next step (Follow-up vs Next Topic)
@@ -1964,15 +1991,30 @@ async function handleSubmitAnswer(event: any, context: any) {
 
   let followUpQuestions: string[] = [];
   if (nextStep.type === 'follow_up') {
-    // Generate follow-up for the same topic
-    const followUpPrompt = `Generate a single deep-dive follow-up question for the topic: "${topic.title}".
-    The candidate just answered: "${answer}".
-    Evaluation found missed points: ${evaluation.keyPointsCoverage?.missed?.join(', ')}.
-    Probe deeper into logic and tradeoffs.`;
+    // Invoke specialized FollowUp Lambda for dynamic generation
+    console.log(`[ORCH] Invoking FollowUp Lambda for topic ${topic.topicId}`);
+    const followUpResult = await invokeAsync(FOLLOWUP_FUNCTION, {
+      analysisId: session.analysisId,
+      sessionId,
+      questionAsked: topic,
+      answerGiven: answer,
+      answerEvaluation: evaluation,
+      coverageMap: {}, // To be populated if needed
+      interviewContext: {
+        previousFulfillment: topic.currentFulfillment,
+        role: plan.targetRole,
+        candidateLevel: plan.candidateLevel
+      },
+      domainInfo: plan.domainInfo
+    });
 
-    // Simplification: generate it now or call follow-up lambda
-    // For now, we'll return a placeholder or call follow-up logic
-    followUpQuestions = [evaluation.followUpRecommendations?.[0]?.question || `Can you go deeper into ${topic.title}?`].filter(Boolean);
+    if (followUpResult && Array.isArray(followUpResult.followUpQuestions) && followUpResult.followUpQuestions.length > 0) {
+      followUpQuestions = followUpResult.followUpQuestions.map((q: any) => typeof q === 'string' ? q : q.question);
+    } else {
+      // Fallback to static recommendation or placeholder
+      followUpQuestions = [evaluation.followUpRecommendations?.[0]?.question || `Can you go deeper into ${topic.title}?`].filter(Boolean);
+    }
+
     topic.followUpsAsked = (topic.followUpsAsked || 0) + 1;
   }
 
@@ -2160,6 +2202,10 @@ function calculateAverageScore(session: any, newScore: number): number {
   const totalAnswered = session.progress.questionsAnswered || 0;
   const currentAvg = session.progress.averageScore || 0;
   const score = typeof newScore === 'number' && !isNaN(newScore) ? newScore : 0;
+
+  // Protect against divide by zero or NaN if questionsAnswered is weird
+  if (totalAnswered < 0) return score;
+
   return Math.round((currentAvg * totalAnswered + score) / (totalAnswered + 1));
 }
 
@@ -2196,7 +2242,7 @@ function calculateCategoryPerformance(attempts: any[]): any {
       categories[category] = { total: 0, count: 0 };
     }
     const score = Number(attempt?.evaluation?.overallScore);
-    if (!Number.isFinite(score)) return;
+    if (isNaN(score) || !Number.isFinite(score)) return;
     categories[category].total += score;
     categories[category].count += 1;
   });

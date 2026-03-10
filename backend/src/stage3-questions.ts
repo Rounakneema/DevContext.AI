@@ -49,16 +49,13 @@ export const handler: Handler<Stage3Event, Stage3Response> = async (event) => {
     console.log(`Loaded ${codeContext.length} chars of code`);
     await DB.updateStageProgress(analysisId, 'interview_simulation', 30);
 
-    // 🕵️ Hierarchical Domain Detection (Passed from pipeline)
-    const effectiveDomainInfo = domainInfo || {
-      primary_domain: 'Software Engineering',
-      sub_domain: 'General Development',
-      specialization: 'Full-Stack Application',
-      tags: [],
-      confidence: 0.5,
-      evidence: { keywords: [], files: [], dependencies: [] },
-      reasoning: 'Fallback due to missing domain info.'
-    };
+    // 🕵️ Step 1: Robust Code-First Domain Detection
+    const effectiveDomainInfo = await detectDomain(
+      intelligenceReport,
+      projectContextMap,
+      codeContext,
+      analysisId
+    );
 
     console.log(`📡 Domain Info: ${effectiveDomainInfo.primary_domain} -> ${effectiveDomainInfo.sub_domain} -> ${effectiveDomainInfo.specialization}`);
     await DB.updateStageProgress(analysisId, 'interview_simulation', 35);
@@ -288,8 +285,6 @@ export async function initializeTopicDrivenInterview(
     analysisId,
     domainInfo
   );
-  await DB.updateStageProgress(analysisId, 'interview_simulation', 70);
-
   // 2. Build Interview Plan (Phases)
   const plan = {
     analysisId,
@@ -308,12 +303,27 @@ export async function initializeTopicDrivenInterview(
     generatedAt: new Date().toISOString(),
     domainInfo
   };
+
+  // 3. Generate 5-Stage Question Set (Step 3)
+  const questions = await generateUniversalQuestions(
+    plan,
+    codeContext,
+    domainInfo
+  );
+  await DB.updateStageProgress(analysisId, 'interview_simulation', 85);
+
+  // 4. Validate and Filter (Step 4)
+  const validatedQuestions = await validateQuestions(
+    questions,
+    contextMap,
+    analysisId
+  );
   await DB.updateStageProgress(analysisId, 'interview_simulation', 95);
 
   const simulation = {
-    questions: [],
-    categoryCounts: { architecture: 0, implementation: 0, tradeoffs: 0, scalability: 0, designPatterns: 0, debugging: 0 },
-    difficultyDistribution: { junior: 0, midLevel: 0, senior: 0, staff: 0 },
+    questions: validatedQuestions,
+    categoryCounts: calculateCategoryCounts(validatedQuestions),
+    difficultyDistribution: calculateDifficultyDistribution(validatedQuestions),
     mode: 'live',
     modelMetadata: { modelId: MODEL_ID, tokensIn: 0, tokensOut: 0, inferenceTimeMs: 0, temperature: 0 },
     generatedAt: new Date().toISOString(),
@@ -351,11 +361,8 @@ async function extractTopics(
 
   const prompt = `You are a Principal Engineer and technical interviewer preparing to interview a candidate about their project.
 
-PROJECT DOMAIN CLASSIFICATION:
-- Primary: ${domainInfo.primary_domain}
-- Sub-domain: ${domainInfo.sub_domain}
-- Specialization: ${domainInfo.specialization}
-- Focus Tags: ${domainInfo.tags.join(', ') || 'N/A'}
+PROJECT DOMAIN: ${domainInfo.primary_domain}
+SECONDARY DOMAINS: ${domainInfo.sub_domain}, ${domainInfo.specialization}
 TARGET ROLE: ${targetRole}
 CANDIDATE LEVEL: ${candidateLevel}
 
@@ -367,30 +374,29 @@ CODE SNIPPETS:
 ${codeContext.substring(0, 5000)}
 
 YOUR TASK:
-Extract 8-10 DEEP-DIVE INTERVIEW TOPICS for a technical interview. (Fewer topics with higher quality/depth is PREFERRED over many generic ones).
+Extract 12-15 PROJECT-SPECIFIC INTERVIEW TOPICS that a REAL interviewer would ask.
 
 CRITICAL RULES:
 
-1. **FOCUS ON PRIMARY DOMAIN**:
-   - Focus on concepts central to ${domainInfo.primary_domain}.
-   - DO NOT ask about generic frameworks unless they are fundamental to the domain.
+1. **FOLLOW REAL INTERVIEW STRUCTURE**:
+   - Topics 1-3: Project Understanding (Vision, Problem Statement, Architecture Overview)
+   - Topics 4-8: Implementation Details (Core Logic, Data Flow, Design Patterns)
+   - Topics 9-12: Domain Expertise (Algorithm choices, framework usage, best practices for ${domainInfo.primary_domain})
+   - Topics 13-15: Scaling, Edge Cases & Improvements (Trade-offs, failure modes, future roadmap)
 
-2. **FOLLOW PHASES**: 
-   - Topics 1-2: Project Vision & Architecture (High-level)
-   - Topics 3-6: Technical Implementation & Core Logic (Deep-dive)
-   - Topics 7-10: Trade-offs, Edge Cases & Performance (Advanced)
+2. **MANDATORY FIRST TOPICS**:
+   - You MUST include "Project Overview" and "Key Decisions" in the first 3 topics.
 
-3. **MANDATORY FIRST TOPICS**:
-   - You MUST include a "Project Overview" topic.
-   - You MUST include a "Key Decisions" topic.
+3. **MATCH DIFFICULTY TO LEVEL**:
+   - ${candidateLevel}: focus on ${candidateLevel === 'junior' ? 'implementation & basic code logic' : 'architecture, trade-offs, and scalability'}.
 
-4. **MATCH DIFFICULTY TO LEVEL**:
-   - ${candidateLevel}: focus on ${candidateLevel === 'junior' ? 'implementation & basic clean code' : 'architecture, tradeoffs, and system design'}.
+4. **DENSE SIGNAL MAPPING**:
+   - Every topic MUST map to 2-3 evaluationSignals from: [architecture_thinking, code_quality, implementation_depth, tradeoff_analysis, scalability_vision, debugging_communication].
 
 5. **DOMAIN GUIDELINES**:
 ${domainGuidelines}
 
-Return ONLY valid JSON array with fields: topicId, title, description (the initial question), category, difficulty, sourceCodeContext, evaluationSignals, fulfillmentThreshold, maxFollowUps.`;
+Return ONLY valid JSON array with fields: topicId, title, description, category, difficulty, evaluationSignals, fulfillmentThreshold (70), maxFollowUps (1-2).`;
 
   const { text: content, inferenceTimeMs, inputTokens, outputTokens } = await callBedrockConverse(
     prompt,
@@ -424,7 +430,7 @@ Return ONLY valid JSON array with fields: topicId, title, description (the initi
         description: `As a ${targetRole}, can you walk me through the high-level architecture of this ${domainInfo.primary_domain} project and how you handled the core technical challenges?`,
         category: 'architecture',
         difficulty: candidateLevel,
-        evaluationSignals: ['architecture_thinking', 'communication'],
+        evaluationSignals: ['architecture_thinking', 'communication', 'scalability_vision'],
         fulfillmentThreshold: 70,
         maxFollowUps: 2,
         currentFulfillment: 0,
@@ -437,7 +443,20 @@ Return ONLY valid JSON array with fields: topicId, title, description (the initi
         description: `What was the most significant technical trade-off you made in this project's ${domainInfo.sub_domain || 'implementation'}, and how did it impact the final outcome?`,
         category: 'tradeoffs',
         difficulty: candidateLevel,
-        evaluationSignals: ['tradeoffs', 'decision_making'],
+        evaluationSignals: ['tradeoff_analysis', 'decision_making', 'implementation_depth'],
+        fulfillmentThreshold: 70,
+        maxFollowUps: 2,
+        currentFulfillment: 0,
+        followUpsAsked: 0,
+        isCompleted: false
+      },
+      {
+        topicId: 'T-CODE-QUALITY',
+        title: 'Code Standards & Maintainability',
+        description: `Looking at your implementation of ${domainInfo.specialization || 'core modules'}, how did you ensure code quality and maintainability while meeting project requirements?`,
+        category: 'engineering_quality',
+        difficulty: candidateLevel,
+        evaluationSignals: ['code_quality', 'debugging_communication'],
         fulfillmentThreshold: 70,
         maxFollowUps: 2,
         currentFulfillment: 0,
@@ -451,21 +470,42 @@ Return ONLY valid JSON array with fields: topicId, title, description (the initi
     ...t,
     currentFulfillment: 0,
     followUpsAsked: 0,
-    isCompleted: false
+    isCompleted: false,
+    fulfillmentThreshold: typeof t.fulfillmentThreshold === 'number' && !isNaN(t.fulfillmentThreshold)
+      ? t.fulfillmentThreshold
+      : (Number(t.fulfillmentThreshold) || 70),
+    maxFollowUps: typeof t.maxFollowUps === 'number' && !isNaN(t.maxFollowUps)
+      ? t.maxFollowUps
+      : (Number(t.maxFollowUps) || 1)
   }));
 }
 
 function categorizeTopicsIntoPhases(topics: any[]) {
   const sorted = [...topics].sort((a, b) => {
-    // Basic implementation first, then architecture
-    const catPriority: any = { implementation: 1, engineering_quality: 2, architecture: 3 };
-    return (catPriority[a.category] || 0) - (catPriority[b.category] || 0);
+    // FORCE Overview to be first
+    const aLower = String(a.title || '').toLowerCase();
+    const bLower = String(b.title || '').toLowerCase();
+
+    if (aLower.includes('overview') || a.topicId === 'T-PROJECT-OVERVIEW') return -1;
+    if (bLower.includes('overview') || b.topicId === 'T-PROJECT-OVERVIEW') return 1;
+
+    // Priority: Architecture (High-level) -> Trade-offs -> Implementation -> Quality
+    const catPriority: any = {
+      architecture: 1,
+      tradeoffs: 2,
+      implementation: 3,
+      engineering_quality: 4,
+      dsa: 5,
+      behavioral: 6
+    };
+
+    return (catPriority[a.category] || 99) - (catPriority[b.category] || 99);
   });
 
   return {
-    warmup: sorted.slice(0, 3).map(t => t.topicId),
-    deep_dive: sorted.slice(3, 8).map(t => t.topicId),
-    stretch: sorted.slice(8, 11).map(t => t.topicId)
+    warmup: sorted.slice(0, 1).map(t => t.topicId),
+    deep_dive: sorted.slice(1, 4).map(t => t.topicId), // Increased deep dive count to match 5 topic requirement
+    stretch: sorted.slice(4, 6).map(t => t.topicId)
   };
 }
 
@@ -1089,6 +1129,78 @@ function getDomainGuidelines(domainInfo?: DomainInfo): string {
 /**
  * Step 5: Validate Generated Questions
  */
+/**
+ * Step 3: 5-Stage Universal Question Generation
+ */
+async function generateUniversalQuestions(
+  plan: any,
+  codeContext: string,
+  domainInfo: DomainInfo
+): Promise<any[]> {
+  console.log('🚀 Generating 5-stage universal questions...');
+
+  const topicsList = Object.values(plan.allTopics)
+    .map((t: any) => `- ${t.title}: ${t.description} (Category: ${t.category})`)
+    .join('\n');
+
+  const prompt = `You are conducting a technical interview for a ${plan.candidateLevel} ${plan.targetRole} position.
+
+PROJECT DOMAIN: ${domainInfo.primary_domain}
+CANDIDATE LEVEL: ${plan.candidateLevel}
+
+TOPICS TO COVER:
+${topicsList}
+
+CODE CONTEXT (THE SOURCE OF TRUTH):
+${codeContext.substring(0, 8000)}
+
+YOUR TASK:
+Generate 15-18 interview questions that a REAL interviewer would ask, following the 5-STAGE INTERVIEW PATTERN.
+
+STAGES TO FOLLOW:
+1. PROJECT UNDERSTANDING (3-4 questions): Big picture, vision, architecture overview.
+2. IMPLEMENTATION DETAILS (5-6 questions): Core logic, data flow, specific file/function walkthroughs.
+3. DOMAIN EXPERTISE (5-6 questions): ${domainInfo.primary_domain} concepts, algorithm choices, trade-offs.
+4. EDGE CASES (2 questions): Failure scenarios, boundary conditions.
+5. IMPROVEMENTS (2 questions): Future thinking, scalability, technical debt.
+
+DIFFICULTY RULES:
+- ${plan.candidateLevel.toUpperCase()} LEVEL: Calibrate complexity to this level.
+- Reference ACTUAL files and patterns seen in the code.
+- Focus on UNDERSTANDING and DECISIONS, not generic trivia.
+
+Return ONLY a valid JSON object with "questions" array:
+{
+  "questions": [
+    {
+      "questionId": "Q-001",
+      "topicId": "topic_id",
+      "stage": "project_understanding",
+      "question": "The actual question referencing specific code...",
+      "difficulty": "senior",
+      "category": "architecture",
+      "evaluationSignals": ["architecture_thinking"],
+      "expectedAnswer": {
+        "keyPoints": ["point 1", "point 2"],
+        "redFlags": ["flag 1"]
+      }
+    }
+  ]
+}`;
+
+  try {
+    const { text: content } = await callBedrockConverse(prompt, MODEL_ID, { maxTokens: 8000, temperature: 0.6 });
+    const result = extractJson(content);
+    return result?.questions || [];
+  } catch (err) {
+    console.error('Question generation failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Step 4: Robust Validation & Filtering
+ */
 async function validateQuestions(
   questions: any[],
   contextMap: ProjectContextMap,
@@ -1096,23 +1208,112 @@ async function validateQuestions(
 ): Promise<any[]> {
   console.log(`🔍 Validating ${questions.length} questions...`);
 
-  const validQuestions = questions.filter((q: any) => {
-    // Basic structural validation
-    if (!q.question || !q.category || !q.expectedAnswer) return false;
+  if (questions.length === 0) return [];
 
-    // Check for hallucinated files
-    if (q.context?.fileReferences) {
-      for (const ref of q.context.fileReferences) {
-        if (ref.file && !contextMap.userCodeFiles.includes(ref.file)) {
-          console.warn(`⚠️ Filtering question due to hallucinated file: ${ref.file}`);
-          return false;
-        }
-      }
+  const actualFiles = contextMap.userCodeFiles || [];
+
+  const prompt = `You are a quality control system for interview questions.
+ACTUAL PROJECT FILES:
+${actualFiles.join('\n')}
+
+GENERATED QUESTIONS:
+${JSON.stringify(questions.map(q => ({ id: q.questionId, q: q.question, refs: q.context?.fileReferences || [] })))}
+
+YOUR TASK:
+Validate each question. Flag halluncinations (referencing files that don't exist) or domain mismatches.
+
+Return ONLY a JSON array of VALID question IDs:
+["Q-001", "Q-002", ...]`;
+
+  try {
+    const { text: content } = await callBedrockConverse(prompt, MODEL_ID, { maxTokens: 1000, temperature: 0 });
+    const validIds = extractJson(content);
+
+    if (Array.isArray(validIds)) {
+      return questions.filter(q => validIds.includes(q.questionId));
     }
+  } catch (err) {
+    console.error('Validation failed, using basic filtering:', err);
+  }
 
+  // Basic fallback validation
+  return questions.filter(q => {
+    if (!q.question || !q.expectedAnswer) return false;
     return true;
   });
+}
+/**
+ * Step 1: Robust Code-First Domain Detection
+ */
+async function detectDomain(
+  intelligenceReport: any,
+  contextMap: ProjectContextMap,
+  codeContext: string,
+  analysisId: string
+): Promise<DomainInfo> {
+  console.log(`🔍 Detecting domain for analysis ${analysisId}...`);
 
-  console.log(`✅ Validation complete: ${validQuestions.length}/${questions.length} passed.`);
-  return validQuestions;
+  const prompt = `You are a senior technical interviewer analyzing a software project.
+Target: Identify the PRIMARY DOMAIN and SECONDARY DOMAINS of this project based heavily on CODE EVIDENCE.
+
+PROJECT SUMMARY (Use for high-level context):
+${intelligenceReport?.systemArchitecture?.overview || 'No overview available'}
+
+FILE STRUCTURE:
+${(contextMap.userCodeFiles || []).slice(0, 100).join('\n')}
+
+DEPENDENCIES:
+${JSON.stringify(contextMap.languages || {})}
+${JSON.stringify(contextMap.coreModules || [])}
+
+CODE SNIPPETS (THE SOURCE OF TRUTH):
+${codeContext.substring(0, 8000)}
+
+INSTRUCTIONS:
+1. Identify the PRIMARY domain (e.g., machine_learning, web_backend, devops, blockchain, etc.).
+2. Identify SECONDARY domains (max 3).
+3. Provide CONFIDENCE score (0-1).
+4. Rely heavily on imports, file names, and logic. If the README says one thing but the code says another, the CODE WINS.
+
+Return ONLY a valid JSON object:
+{
+  "primary_domain": "machine_learning",
+  "sub_domain": "disease_prediction",
+  "specialization": "healthcare_ai",
+  "tags": ["scikit-learn", "flask"],
+  "confidence": 0.85,
+  "evidence": {
+    "keywords": ["fit", "predict", "RandomForest"],
+    "files": ["model.py", "train.csv"],
+    "dependencies": ["sklearn"]
+  },
+  "reasoning": "Explain why this domain was chosen over generic SDE."
+}`;
+
+  try {
+    const { text: content, inferenceTimeMs, inputTokens, outputTokens } = await callBedrockConverse(
+      prompt,
+      MODEL_ID,
+      { maxTokens: 2000, temperature: 0.2 }
+    );
+
+    const detected = extractJson(content);
+    if (detected && detected.primary_domain) {
+      console.log(`✅ Domain detected: ${detected.primary_domain} (${detected.confidence})`);
+      return detected;
+    }
+  } catch (error) {
+    console.error('Domain detection failed:', error);
+  }
+
+  // Fallback
+  return {
+    primary_domain: 'Software Engineering',
+    sub_domain: 'General Development',
+    specialization: 'Project Hub',
+    tags: [],
+    confidence: 0.3,
+    evidence: { keywords: [], files: [], dependencies: [] },
+    reasoning: 'Fallback due to detection error.'
+  };
 }

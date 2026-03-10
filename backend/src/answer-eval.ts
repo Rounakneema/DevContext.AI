@@ -1,4 +1,6 @@
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { callBedrockConverse, extractJson, MISTRAL_LARGE_MODEL } from './bedrock-client';
+import * as CostTracker from './cost-tracker';
 
 // Using Mistral Large 3 via Bedrock Converse API
 const MODEL_ID = MISTRAL_LARGE_MODEL;
@@ -332,3 +334,49 @@ Before finishing the response:
     throw new Error(`Evaluation service unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
+
+/**
+ * Lambda Handler for Answer Evaluation
+ * Supports both direct Lambda invocation and API Gateway proxy
+ */
+export const handler: APIGatewayProxyHandler = async (event: any) => {
+  try {
+    const body = typeof event.body === 'string' ? JSON.parse(event.body) : (event || {});
+    const { question, userAnswer, timeSpent, topic, domainInfo, targetRole, candidateLevel, analysisId } = body;
+
+    if (!question || userAnswer === undefined) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Missing question or userAnswer' })
+      };
+    }
+
+    const evaluation = await evaluateAnswerComprehensive(
+      question,
+      userAnswer,
+      timeSpent || 0,
+      topic,
+      domainInfo,
+      targetRole,
+      candidateLevel
+    );
+
+    // Track AI cost if analysisId is provided
+    if (analysisId) {
+      // Note: evaluateAnswerComprehensive already tracks via internal calls if implemented, 
+      // but we ensure it's logged here if passed through.
+      console.log(`[EVAL] Evaluation complete for analysis ${analysisId}`);
+    }
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify(evaluation)
+    };
+  } catch (error) {
+    console.error('[EVAL] Handler failure:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Evaluation failed', message: error instanceof Error ? error.message : 'Unknown error' })
+    };
+  }
+};

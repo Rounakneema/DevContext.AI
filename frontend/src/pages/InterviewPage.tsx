@@ -360,12 +360,12 @@ const InterviewPageContent: React.FC = () => {
             let newSession: any;
             try {
                 newSession = await create();
-                // If it STILL returns a 202 even after stage 3 completion, handle it as processing
-                // instead of falling through to an error.
+                // If the backend returns a 202-style response (processing/regenerating),
+                // throw a specific error to trigger the polling recovery flow below.
                 if (newSession && (newSession.status === 'processing' || newSession.status === 'regeneration_triggered')) {
-                    console.log("[FRONTEND] Session STILL in processing state after polling. Retrying after delay...");
-                    await new Promise(r => setTimeout(r, 2000));
-                    newSession = await create();
+                    const msg = newSession.message || "Regeneration in progress";
+                    console.log(`[FRONTEND] Session trigger: ${msg}. Entering polling flow.`);
+                    throw new Error(msg);
                 }
             } catch (e: any) {
                 const msg = String(e?.message || e?.error || e || "");

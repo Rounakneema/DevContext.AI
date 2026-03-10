@@ -208,6 +208,7 @@ Resources:
           STAGE2_FUNCTION: !Ref Stage2Function
           STAGE3_FUNCTION: !Ref Stage3Function
           FOLLOWUP_FUNCTION: !GetAtt FollowUpFunction.Arn
+          ANSWER_EVAL_FUNCTION: !GetAtt AnswerEvalFunction.Arn
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MainTable
