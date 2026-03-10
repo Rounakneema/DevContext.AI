@@ -374,7 +374,7 @@ const InterviewPageContent: React.FC = () => {
                     msg.toLowerCase().includes("plan not found") ||
                     msg.toLowerCase().includes("plan not yet generated") ||
                     msg.toLowerCase().includes("in progress") ||
-                    msg.toLowerCase().includes("regeneration")
+                    msg.toLowerCase().includes("regenerat") // Handles both 'regeneration' and 'Regenerating'
                 ) {
                     setLoadingMessage("Detecting role change. Preparing fresh, role-specific questions for you...");
                     try {
