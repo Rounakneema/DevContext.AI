@@ -15,3 +15,5 @@ test-*.js
 check-*.js
 *.test.js
 *.test.ts
+
+.codex
